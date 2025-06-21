@@ -48,6 +48,17 @@ pub enum HttpMethod {
     DELETE,
 }
 
+impl From<HttpMethod> for Method {
+    fn from(method: HttpMethod) -> Self {
+        match method {
+            HttpMethod::GET => Method::GET,
+            HttpMethod::POST => Method::POST,
+            HttpMethod::PUT => Method::PUT,
+            HttpMethod::DELETE => Method::DELETE,
+        }
+    }
+}
+
 pub struct HttpResponse {
     response: reqwest::Response,
 }
@@ -78,7 +89,7 @@ impl HttpClient {
             debug!(method = ?request.method, "[request]");
             debug!(url = request.url, "[request]");
             let url = Url::parse(&request.url)?;
-            let mut http_request = Request::new(reqwest_method(request.method), url);
+            let mut http_request = Request::new(request.method.into(), url);
             for (key, value) in request.headers {
                 debug!("[header] {}={}", key, value);
                 http_request.headers_mut().insert(key, value.parse()?);
@@ -98,15 +109,6 @@ impl HttpClient {
         }
         .instrument(span)
         .await
-    }
-}
-
-fn reqwest_method(method: HttpMethod) -> Method {
-    match method {
-        HttpMethod::GET => Method::GET,
-        HttpMethod::POST => Method::POST,
-        HttpMethod::PUT => Method::PUT,
-        HttpMethod::DELETE => Method::DELETE,
     }
 }
 
