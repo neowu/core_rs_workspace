@@ -18,7 +18,7 @@ pub use tower_http::services::ServeFile;
 use tracing::debug;
 use tracing::info;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 use crate::log;
 use crate::web::client_info::client_info;
 
@@ -40,7 +40,7 @@ pub async fn start_http_server(
     router: Router,
     mut shutdown_signal: broadcast::Receiver<()>,
     config: HttpServerConfig,
-) -> Result<(), Exception> {
+) -> CoreRsResult<()> {
     let app = Router::new();
     let app = app.merge(router);
     let app = app.layer(middleware::from_fn(http_server_layer));

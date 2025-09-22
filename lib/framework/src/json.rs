@@ -6,9 +6,9 @@ use serde::Serialize;
 use serde::de::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
-pub fn load_file<T>(path: &Path) -> Result<T, Exception>
+pub fn load_file<T>(path: &Path) -> CoreRsResult<T>
 where
     T: DeserializeOwned,
 {
@@ -22,7 +22,7 @@ where
         .map_err(|err| exception!(message = format!("failed to deserialize, json={json}"), source = err))
 }
 
-pub fn from_json<'a, T>(json: &'a str) -> Result<T, Exception>
+pub fn from_json<'a, T>(json: &'a str) -> CoreRsResult<T>
 where
     T: Deserialize<'a>,
 {
@@ -30,7 +30,7 @@ where
         .map_err(|err| exception!(message = format!("failed to deserialize, json={json}"), source = err))
 }
 
-pub fn to_json<T>(object: &T) -> Result<String, Exception>
+pub fn to_json<T>(object: &T) -> CoreRsResult<String>
 where
     T: Serialize + Debug,
 {

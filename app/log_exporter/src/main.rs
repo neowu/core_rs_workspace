@@ -4,7 +4,7 @@ use axum::Router;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset::asset_path;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
 use framework::kafka::consumer::MessageConsumer;
@@ -45,7 +45,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new(config: &AppConfig) -> Result<Self, Exception> {
+    fn new(config: &AppConfig) -> CoreRsResult<Self> {
         let hostname = hostname::get()?.to_string_lossy().to_string();
         let hash = &format!("{:x}", sha2::Sha256::digest(hostname))[0..6];
 
@@ -67,7 +67,7 @@ struct Topics {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() -> CoreRsResult<()> {
     log::init_with_action(ConsoleAppender);
 
     let config: AppConfig = json::load_file(&asset_path("assets/conf.json")?)?;

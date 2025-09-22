@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::kafka::consumer::ConsumerConfig;
 use framework::kafka::consumer::Message;
 use framework::kafka::consumer::MessageConsumer;
@@ -32,7 +32,7 @@ struct Topics {
 }
 
 #[tokio::main]
-pub async fn main() -> Result<(), Exception> {
+pub async fn main() -> CoreRsResult<()> {
     log::init_with_action(ConsoleAppender);
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
@@ -62,7 +62,7 @@ pub async fn main() -> Result<(), Exception> {
     Ok(())
 }
 
-async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {
+async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> CoreRsResult<()> {
     if let Some(ref key) = message.key {
         if key == "1" {
             let value = message.payload()?;
@@ -89,7 +89,7 @@ async fn process_message(mut rx: Receiver<TestMessage>) {
     println!("finished");
 }
 
-async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) -> Result<(), Exception> {
+async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) -> CoreRsResult<()> {
     for message in messages {
         if let Some(ref key) = message.key {
             if key == "1" {

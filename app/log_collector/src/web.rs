@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::result::Result;
 use std::sync::Arc;
 
 use axum::Extension;
@@ -16,7 +15,7 @@ use axum::routing::post;
 use chrono::DateTime;
 use chrono::Utc;
 use framework::exception;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::json;
@@ -185,7 +184,7 @@ impl Event {
     const MAX_INFO_VALUE_LENGTH: usize = 500_000;
     const MAX_ESTIMATED_LENGTH: usize = 900_000; // by default kafka message limit is 1M, leave 100k for rest of message
 
-    fn validate(&self) -> Result<(), Exception> {
+    fn validate(&self) -> CoreRsResult<()> {
         // Validate action for OK result
         if matches!(self.result, EventResult::Ok) && self.action.is_empty() {
             return Err(validation_error!(
@@ -220,7 +219,7 @@ impl Event {
         map: &HashMap<String, String>,
         max_key_length: usize,
         max_value_length: usize,
-    ) -> Result<usize, Exception> {
+    ) -> CoreRsResult<usize> {
         let mut estimated_length = 0;
         for (key, value) in map {
             if key.len() > max_key_length {
@@ -242,7 +241,7 @@ impl Event {
         Ok(estimated_length)
     }
 
-    fn validate_stats(stats: &HashMap<String, f64>, max_key_length: usize) -> Result<usize, Exception> {
+    fn validate_stats(stats: &HashMap<String, f64>, max_key_length: usize) -> CoreRsResult<usize> {
         let mut estimated_length = 0;
         for key in stats.keys() {
             if key.len() > max_key_length {

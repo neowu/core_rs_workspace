@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
 pub trait PathBufExt {
-    fn into_absolute_path(self) -> Result<PathBuf, Exception>;
+    fn into_absolute_path(self) -> CoreRsResult<PathBuf>;
 }
 
 impl PathBufExt for PathBuf {
-    fn into_absolute_path(self) -> Result<PathBuf, Exception> {
+    fn into_absolute_path(self) -> CoreRsResult<PathBuf> {
         if self.is_absolute() {
             return Ok(self);
         }

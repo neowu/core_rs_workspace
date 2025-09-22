@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::kafka::consumer::Message;
 use rdkafka::message::ToBytes;
 use serde::Deserialize;
@@ -32,10 +32,7 @@ pub struct EventMessage {
     info: HashMap<String, String>,
 }
 
-pub async fn event_message_handler(
-    state: Arc<AppState>,
-    messages: Vec<Message<EventMessage>>,
-) -> Result<(), Exception> {
+pub async fn event_message_handler(state: Arc<AppState>, messages: Vec<Message<EventMessage>>) -> CoreRsResult<()> {
     let now = Utc::now().date_naive();
     let path = local_file_path("event", now, &state)?;
 

@@ -1,6 +1,6 @@
 use axum::Router;
 use framework::asset::asset_path;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::log;
 use framework::log::ConsoleAppender;
 use framework::shutdown::Shutdown;
@@ -17,7 +17,7 @@ mod web;
 pub struct AppState {}
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() -> CoreRsResult<()> {
     log::init_with_action(ConsoleAppender);
 
     let shutdown = Shutdown::new();

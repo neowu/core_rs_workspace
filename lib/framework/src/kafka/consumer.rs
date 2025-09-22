@@ -27,7 +27,7 @@ use tracing::error;
 use tracing::info;
 
 use super::topic::Topic;
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 use crate::json::from_json;
 use crate::log;
 
@@ -40,7 +40,7 @@ pub struct Message<T: DeserializeOwned> {
 }
 
 impl<T: DeserializeOwned> Message<T> {
-    pub fn payload(&self) -> Result<T, Exception> {
+    pub fn payload(&self) -> CoreRsResult<T> {
         from_json(&self.payload)
     }
 }
@@ -101,7 +101,7 @@ where
     pub fn add_handler<H, Fut, M>(&mut self, topic: &Topic<M>, handler: H)
     where
         H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+        Fut: Future<Output = CoreRsResult<()>> + Send + 'static,
         M: DeserializeOwned + Send + 'static,
     {
         let topic = topic.name;
@@ -116,7 +116,7 @@ where
     pub fn add_bulk_handler<H, Fut, M>(&mut self, topic: &Topic<M>, handler: H)
     where
         H: Fn(S, Vec<Message<M>>) -> Fut + Copy + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+        Fut: Future<Output = CoreRsResult<()>> + Send + 'static,
         M: DeserializeOwned + Send + 'static,
     {
         let topic = topic.name;
@@ -128,7 +128,7 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, mut shutdown_signel: broadcast::Receiver<()>) -> Result<(), Exception> {
+    pub async fn start(self, state: S, mut shutdown_signel: broadcast::Receiver<()>) -> CoreRsResult<()> {
         let handlers = self.handlers;
         let consumer: BaseConsumer = self.config.create()?;
         let topics: Vec<&str> = handlers.keys().cloned().collect();
@@ -228,7 +228,7 @@ fn poll_message_groups(
 async fn handle_bulk_messages<H, S, M, Fut>(topic: &'static str, messages: Vec<Message<M>>, handler: H, state: S)
 where
     H: Fn(S, Vec<Message<M>>) -> Fut,
-    Fut: Future<Output = Result<(), Exception>>,
+    Fut: Future<Output = CoreRsResult<()>>,
     M: DeserializeOwned,
 {
     log::start_action("message", None, async {
@@ -258,7 +258,7 @@ async fn handle_messages<H, S, M, Fut>(topic: &'static str, messages: Vec<Messag
 where
     S: Clone + Send + Sync + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
-    Fut: Future<Output = Result<(), Exception>> + Send,
+    Fut: Future<Output = CoreRsResult<()>> + Send,
     M: DeserializeOwned + Send + 'static,
 {
     let mut handles = Vec::with_capacity(messages.len());
@@ -300,7 +300,7 @@ where
 async fn handle_message<H, S, M, Fut>(topic: &'static str, message: Message<M>, handler: H, state: S)
 where
     H: Fn(S, Message<M>) -> Fut,
-    Fut: Future<Output = Result<(), Exception>>,
+    Fut: Future<Output = CoreRsResult<()>>,
     M: DeserializeOwned,
 {
     let ref_id = message.headers.get("ref_id").map(|value| value.to_owned());

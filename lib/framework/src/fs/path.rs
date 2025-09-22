@@ -1,13 +1,13 @@
 use std::path::Path;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
 pub trait PathExt {
-    fn file_extension(&self) -> Result<&str, Exception>;
+    fn file_extension(&self) -> CoreRsResult<&str>;
 }
 
 impl PathExt for Path {
-    fn file_extension(&self) -> Result<&str, Exception> {
+    fn file_extension(&self) -> CoreRsResult<&str> {
         self.extension()
             .ok_or_else(|| exception!(message = format!("file must have extension, path={}", self.to_string_lossy())))?
             .to_str()

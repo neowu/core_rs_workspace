@@ -8,6 +8,8 @@ use serde::Serialize;
 
 pub mod error_code;
 
+pub type CoreRsResult<T> = Result<T, Exception>;
+
 pub struct Exception {
     pub severity: Severity,
     pub code: Option<String>,

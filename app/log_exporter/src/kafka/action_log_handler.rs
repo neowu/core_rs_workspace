@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::json;
 use framework::kafka::consumer::Message;
 use rdkafka::message::ToBytes;
@@ -49,7 +49,7 @@ pub struct PerformanceStatMessage {
 pub async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
-) -> Result<(), Exception> {
+) -> CoreRsResult<()> {
     let now = Utc::now().date_naive();
     let path = local_file_path("action", now, &state)?;
 

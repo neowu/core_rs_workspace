@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use framework::exception;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::exception::Severity;
 use framework::log;
 use framework::log::ConsoleAppender;
@@ -53,7 +53,7 @@ async fn test_action() {
 }
 
 #[instrument]
-async fn handle_request(success: bool) -> Result<(), Exception> {
+async fn handle_request(success: bool) -> CoreRsResult<()> {
     let span = info_span!("http", test_value = field::Empty, elapsed = field::Empty);
     async {
         info!(request_id = 123, "Processing request,");

@@ -11,7 +11,7 @@ use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
 pub struct HttpClient {
     client: reqwest::Client,
@@ -66,7 +66,7 @@ pub struct HttpResponse {
 }
 
 impl HttpClient {
-    pub async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, Exception> {
+    pub async fn execute(&self, request: HttpRequest) -> CoreRsResult<HttpResponse> {
         let span = debug_span!("http_client", url = request.url, method = ?request.method);
         async {
             debug!(method = ?request.method, "[request]");

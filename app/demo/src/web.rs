@@ -1,7 +1,7 @@
 use axum::Router;
 use axum::debug_handler;
 use axum::routing::post;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::validation_error;
 use framework::web::body::Json;
 use framework::web::error::HttpResult;
@@ -21,7 +21,7 @@ struct HelloRequest {
 }
 
 impl HelloRequest {
-    fn validate(&self) -> Result<(), Exception> {
+    fn validate(&self) -> CoreRsResult<()> {
         if self.message.len() > 10 {
             let exception = validation_error!(message = "message len must less than 10");
             warn!("test log, error={exception:?}");

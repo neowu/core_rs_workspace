@@ -16,6 +16,7 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use crate::exception::CoreRsResult;
 use crate::exception::Exception;
 use crate::exception::Severity;
 
@@ -87,7 +88,7 @@ macro_rules! log_event {
 
 pub async fn start_action<T>(action: &str, ref_id: Option<String>, task: T)
 where
-    T: Future<Output = Result<(), Exception>>,
+    T: Future<Output = CoreRsResult<()>>,
 {
     let action_id = id_generator::random_id();
     let action_span = info_span!("action", action, action_id, ref_id);

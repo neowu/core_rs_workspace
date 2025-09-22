@@ -13,7 +13,7 @@ use tracing::info;
 use trigger::DailyTrigger;
 use trigger::FixedRateTrigger;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 use crate::log;
 
 mod trigger;
@@ -66,7 +66,7 @@ where
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: Duration)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
-        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+        Fut: Future<Output = CoreRsResult<()>> + Send + 'static,
     {
         let trigger = Box::new(FixedRateTrigger { interval });
         self.add_job(name, job, trigger);
@@ -75,7 +75,7 @@ where
     pub fn schedule_daily<J, Fut>(&mut self, name: &'static str, job: J, time: NaiveTime)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
-        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+        Fut: Future<Output = CoreRsResult<()>> + Send + 'static,
     {
         let trigger = Box::new(DailyTrigger {
             time_zone: self.timezone,
@@ -87,7 +87,7 @@ where
     fn add_job<J, Fut>(&mut self, name: &'static str, job: J, trigger: Box<dyn Trigger>)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
-        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+        Fut: Future<Output = CoreRsResult<()>> + Send + 'static,
     {
         let job = move |state: S, context| process_job(job, state, context);
         self.schedules.push(Schedule {
@@ -97,7 +97,7 @@ where
         });
     }
 
-    pub async fn start(self, state: S, shutdown_signel: broadcast::Receiver<()>) -> Result<(), Exception>
+    pub async fn start(self, state: S, shutdown_signel: broadcast::Receiver<()>) -> CoreRsResult<()>
     where
         S: Clone,
     {
@@ -145,7 +145,7 @@ where
 async fn process_job<S, J, Fut>(job: J, state: S, context: JobContext)
 where
     J: Fn(S, JobContext) -> Fut,
-    Fut: Future<Output = Result<(), Exception>>,
+    Fut: Future<Output = CoreRsResult<()>>,
 {
     log::start_action("job", None, async move {
         let name = context.name;

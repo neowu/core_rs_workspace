@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use framework::asset::asset_path;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::json;
 use framework::kafka::producer::Producer;
 use framework::kafka::topic::Topic;
@@ -28,7 +28,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new(config: &AppConfig) -> Result<Self, Exception> {
+    fn new(config: &AppConfig) -> CoreRsResult<Self> {
         Ok(AppState {
             topics: Topics {
                 event: Topic::new("event"),
@@ -43,7 +43,7 @@ struct Topics {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() -> CoreRsResult<()> {
     log::init_with_action(ConsoleAppender);
 
     let config: AppConfig = json::load_file(&asset_path("assets/conf.json")?)?;

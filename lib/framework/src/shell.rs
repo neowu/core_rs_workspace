@@ -4,9 +4,9 @@ use tracing::debug;
 use tracing::debug_span;
 
 use crate::exception;
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
-pub async fn run(command: &str) -> Result<String, Exception> {
+pub async fn run(command: &str) -> CoreRsResult<String> {
     let span = debug_span!("shell", command);
 
     async {

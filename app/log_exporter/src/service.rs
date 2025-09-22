@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use chrono::Datelike;
 use chrono::NaiveDate;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::shell;
 use tracing::info;
 
 use crate::AppState;
 
-pub fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> Result<PathBuf, Exception> {
+pub fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> CoreRsResult<PathBuf> {
     let dir = &state.log_dir;
     let year = date.year();
     let hash = &state.hash;
@@ -23,7 +23,7 @@ pub fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> Re
     Ok(path)
 }
 
-pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
+pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> CoreRsResult<()> {
     info!("clean up archives, date={date}");
 
     let action_log_path = local_file_path("action", date, state)?;
@@ -39,7 +39,7 @@ pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exc
     Ok(())
 }
 
-pub async fn upload_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
+pub async fn upload_archive(date: NaiveDate, state: &Arc<AppState>) -> CoreRsResult<()> {
     let action_log_path = local_file_path("action", date, state)?;
     if action_log_path.exists() {
         let remote_path = remote_path("action", date, state);
@@ -57,11 +57,7 @@ pub async fn upload_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<()
     Ok(())
 }
 
-async fn convert_parquet_and_upload(
-    local_path_buf: PathBuf,
-    remote_path: &str,
-    columns: &str,
-) -> Result<(), Exception> {
+async fn convert_parquet_and_upload(local_path_buf: PathBuf, remote_path: &str, columns: &str) -> CoreRsResult<()> {
     let local_path = local_path_buf.to_string_lossy();
     info!("convert to parquet, path={local_path}");
     let parquet_path_buf = local_path_buf.with_extension("parquet");

@@ -13,7 +13,7 @@ use tracing::debug;
 use tracing::debug_span;
 
 use super::topic::Topic;
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 use crate::json::to_json;
 use crate::log::current_action_id;
 
@@ -36,7 +36,7 @@ impl Producer {
         }
     }
 
-    pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> Result<(), Exception>
+    pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> CoreRsResult<()>
     where
         T: Serialize + Debug,
     {

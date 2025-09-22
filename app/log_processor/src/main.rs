@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::Arc;
 
 use framework::asset::asset_path;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
 use framework::kafka::consumer::MessageConsumer;
@@ -33,7 +33,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new(config: &AppConfig) -> Result<Self, Exception> {
+    fn new(config: &AppConfig) -> CoreRsResult<Self> {
         Ok(AppState {
             opensearch: Opensearch::new(&config.opensearch_uri),
         })
@@ -41,7 +41,7 @@ impl AppState {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() -> CoreRsResult<()> {
     log::init_with_action(ConsoleAppender);
 
     let config: AppConfig = json::load_file(&asset_path("assets/conf.json")?)?;
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Exception> {
     Ok(())
 }
 
-async fn put_index_templates(opensearch: &Opensearch) -> Result<(), Exception> {
+async fn put_index_templates(opensearch: &Opensearch) -> CoreRsResult<()> {
     opensearch
         .put_index_template(
             "action",

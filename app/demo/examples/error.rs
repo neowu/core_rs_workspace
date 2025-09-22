@@ -1,4 +1,4 @@
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::exception::Severity;
 use framework::validation_error;
 
@@ -9,11 +9,11 @@ pub fn main() {
     println!("{error:?}");
 }
 
-fn test() -> Result<(), Exception> {
+fn test() -> CoreRsResult<()> {
     Err(validation_error!(message = "some field is wrong"))
 }
 
-fn test2() -> Result<(), Exception> {
+fn test2() -> CoreRsResult<()> {
     Err(validation_error!(
         severity = Severity::Error,
         message = "some field is wrong"

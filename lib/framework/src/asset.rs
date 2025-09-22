@@ -3,9 +3,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::exception;
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 
-pub fn asset_path(path: &str) -> Result<PathBuf, Exception> {
+pub fn asset_path(path: &str) -> CoreRsResult<PathBuf> {
     let exe_path = current_exe()?;
     let asset_path = find_asset_path(&exe_path, path);
     if asset_path.exists() {

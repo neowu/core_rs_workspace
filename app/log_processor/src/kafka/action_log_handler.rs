@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -75,7 +75,7 @@ pub struct TraceDocument {
 pub async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
-) -> Result<(), Exception> {
+) -> CoreRsResult<()> {
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
     let mut traces: Vec<(String, TraceDocument)> = vec![];
     for message in messages {

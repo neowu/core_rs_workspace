@@ -1,12 +1,12 @@
 use framework::exception;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::http::HeaderName;
 use framework::http::HttpClient;
 use framework::http::HttpMethod::POST;
 use framework::http::HttpRequest;
 use tracing::info;
 
-pub async fn import(kibana_uri: &str, objects: String) -> Result<(), Exception> {
+pub async fn import(kibana_uri: &str, objects: String) -> CoreRsResult<()> {
     let http_client = HttpClient::default();
     let mut request = HttpRequest::new(
         POST,

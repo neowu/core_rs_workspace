@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tracing::debug;
 
-use crate::exception::Exception;
+use crate::exception::CoreRsResult;
 use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::json;
@@ -30,7 +30,7 @@ where
         match result {
             Ok(body) => {
                 debug!("[request] body={body}");
-                let body_object: Result<T, Exception> = json::from_json(&body);
+                let body_object: CoreRsResult<T> = json::from_json(&body);
                 match body_object {
                     Ok(value) => Ok(Self(value)),
                     Err(exception) => Err(exception!(

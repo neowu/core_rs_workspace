@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -27,9 +27,6 @@ pub struct EventMessage {
     info: HashMap<String, String>,
 }
 
-pub async fn event_message_handler(
-    _state: Arc<AppState>,
-    _messages: Vec<Message<EventMessage>>,
-) -> Result<(), Exception> {
+pub async fn event_message_handler(_state: Arc<AppState>, _messages: Vec<Message<EventMessage>>) -> CoreRsResult<()> {
     Ok(())
 }

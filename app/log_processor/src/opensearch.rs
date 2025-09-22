@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use framework::exception;
-use framework::exception::Exception;
+use framework::exception::CoreRsResult;
 use framework::http::HttpClient;
 use framework::http::HttpMethod::POST;
 use framework::http::HttpMethod::PUT;
@@ -22,7 +22,7 @@ impl Opensearch {
         }
     }
 
-    pub async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {
+    pub async fn put_index_template(&self, name: &str, template: String) -> CoreRsResult<()> {
         let uri = &self.uri;
         let mut request = HttpRequest::new(PUT, format!("{uri}/_index_template/{name}"));
         request.body(template, "application/json");
@@ -35,7 +35,7 @@ impl Opensearch {
         Ok(())
     }
 
-    pub async fn bulk_index<T>(&self, index: &str, documents: Vec<(String, T)>) -> Result<(), Exception>
+    pub async fn bulk_index<T>(&self, index: &str, documents: Vec<(String, T)>) -> CoreRsResult<()>
     where
         T: Serialize + Debug,
     {
