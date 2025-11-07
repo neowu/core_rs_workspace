@@ -76,7 +76,7 @@ pub struct HttpResponse {
 
 impl HttpClient {
     pub async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, Exception> {
-        let span = debug_span!("http_client", url = request.url, method = ?request.method);
+        let span = debug_span!("http", url = request.url, method = ?request.method);
         async {
             let http_request = create_request(request)?;
 
@@ -92,7 +92,7 @@ impl HttpClient {
             {
                 debug!("[response] body={body}");
             }
-            debug!(read_bytes = body.len(), "stats");
+            debug!(http_read_bytes = body.len(), "stats");
 
             Ok(HttpResponse { status, headers, body })
         }
@@ -101,7 +101,7 @@ impl HttpClient {
     }
 
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
-        let span = debug_span!("http_client", url = request.url, method = ?request.method);
+        let span = debug_span!("http", url = request.url, method = ?request.method);
         async {
             request.headers.insert(header::ACCEPT, "text/event-stream".to_string());
             let http_request = create_request(request)?;
@@ -153,7 +153,7 @@ fn create_request(request: HttpRequest) -> Result<Request, Exception> {
     }
     if let Some(body) = request.body {
         debug!("[request] body={body}");
-        debug!(write_bytes = body.len(), "stats");
+        debug!(http_write_bytes = body.len(), "stats");
         *http_request.body_mut() = Some(Body::from(body));
     }
     Ok(http_request)
@@ -210,10 +210,10 @@ impl EventSource {
 impl Drop for EventSource {
     fn drop(&mut self) {
         debug!(
-            http_client_sse_read_entries = self.read_entries,
-            http_client_sse_read_bytes = self.read_bytes,
-            http_client_sse_elapsed = self.start_time.elapsed().as_nanos(),
-            http_client_sse_count = 1,
+            sse_read_entries = self.read_entries,
+            sse_read_bytes = self.read_bytes,
+            sse_elapsed = self.start_time.elapsed().as_nanos(),
+            sse_count = 1,
             "stats"
         );
     }

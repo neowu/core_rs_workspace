@@ -64,7 +64,7 @@ impl Elasticsearch {
                 body.push_str(&json::to_json(doc)?);
                 body.push('\n');
             }
-            debug!(write_entries = documents.len(), write_bytes = body.len(), "stats");
+            debug!(es_write_entries = documents.len(), es_write_bytes = body.len(), "stats");
             request.body(body, "application/json");
 
             let response = self.client.execute(request).await?;

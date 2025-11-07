@@ -178,13 +178,9 @@ thread={:?}"#,
             event.record(&mut visitor);
             action_log.logs.push(log);
 
-            // omit operation if parent span is action span
-            let operation = context.event_span(event).map(|s| s.name()).filter(|o| *o != "action");
-
             // hanldle "context" and "stats" event
             let mut visitor = ContextVisitor {
                 action_log,
-                operation,
                 context_type: None,
             };
             event.record(&mut visitor);
@@ -310,7 +306,6 @@ enum ContextType {
 
 struct ContextVisitor<'a> {
     action_log: &'a mut ActionLog,
-    operation: Option<&'a str>,
     context_type: Option<ContextType>,
 }
 
@@ -333,18 +328,7 @@ impl Visit for ContextVisitor<'_> {
 
     fn record_u128(&mut self, field: &Field, value: u128) {
         if let Some(ContextType::Stats) = self.context_type {
-            let field_name = field.name();
-            let field = match field_name {
-                "read_entries" | "read_bytes" | "write_entries" | "write_bytes" => {
-                    if let Some(operation) = self.operation {
-                        format!("{operation}_{field_name}")
-                    } else {
-                        field.name().to_owned()
-                    }
-                }
-                _ => field.name().to_owned(),
-            };
-            let stats_value = self.action_log.stats.entry(field).or_default();
+            let stats_value = self.action_log.stats.entry(field.name().to_owned()).or_default();
             *stats_value += value;
         } else if let Some(ContextType::Context) = self.context_type {
             self.action_log.context.insert(field.name(), format!("{value}"));

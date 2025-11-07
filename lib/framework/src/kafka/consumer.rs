@@ -232,11 +232,13 @@ where
     M: DeserializeOwned,
 {
     log::start_action("message", None, async {
+        let mut kafka_read_bytes = 0;
         for message in messages.iter() {
             debug!(key = message.key, payload = message.payload, "[message]");
+            kafka_read_bytes += message.payload.len();
         }
         debug!(topic, "context");
-        debug!(message_count = messages.len(), "stats");
+        debug!(kafka_read_entries = messages.len(), kafka_read_bytes, "stats");
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");
@@ -318,7 +320,11 @@ where
             debug!("[header] {}={}", key, value);
         }
         debug!(topic, key = message.key, "context");
-        debug!(message_count = 1, "stats");
+        debug!(
+            kafka_read_entries = 1,
+            kafka_read_bytes = message.payload.len(),
+            "stats"
+        );
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");

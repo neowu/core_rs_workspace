@@ -40,9 +40,11 @@ impl Producer {
     where
         T: Serialize + Debug,
     {
-        let span = debug_span!("message_producer", topic = topic.name, key);
+        let span = debug_span!("kafka", topic = topic.name, key);
         async {
             let payload = to_json(message)?;
+
+            debug!(kafka_write_entries = 1, kafka_write_bytes = payload.len(), "stats");
 
             let mut record = FutureRecord::<String, String>::to(topic.name)
                 .timestamp(Utc::now().timestamp_millis())
