@@ -17,11 +17,11 @@ pub struct StatMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
-    host: String,
+    host: Option<String>,
     result: String,
     error_code: Option<String>,
     error_message: Option<String>,
-    stats: HashMap<String, f64>,
+    stats: Option<HashMap<String, f64>>,
     info: Option<HashMap<String, String>>,
 }
 
@@ -30,11 +30,11 @@ pub struct StatDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
-    host: String,
+    host: Option<String>,
     result: String,
     error_code: Option<String>,
     error_message: Option<String>,
-    stats: HashMap<String, f64>,
+    stats: Option<HashMap<String, f64>>,
     info: Option<HashMap<String, String>>,
 }
 

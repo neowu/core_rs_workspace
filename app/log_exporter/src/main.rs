@@ -85,7 +85,7 @@ async fn main() -> Result<(), Exception> {
     task::spawn_task(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
         scheduler.schedule_daily(
-            "process-log-job",
+            "process_log_job",
             process_log_job,
             NaiveTime::from_hms_opt(1, 0, 0).unwrap(),
         );

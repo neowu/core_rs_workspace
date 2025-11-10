@@ -5,6 +5,7 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpMethod::DELETE;
+use framework::http::HttpMethod::GET;
 use framework::http::HttpMethod::POST;
 use framework::http::HttpMethod::PUT;
 use framework::http::HttpRequest;
@@ -81,7 +82,7 @@ impl Elasticsearch {
         let span = debug_span!("es");
         async {
             let uri = &self.uri;
-            let request = HttpRequest::new(PUT, format!("{uri}/_cluster/state"));
+            let request = HttpRequest::new(GET, format!("{uri}/_cluster/state"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
                 return Err(exception!(message = format!("failed to get state")));
