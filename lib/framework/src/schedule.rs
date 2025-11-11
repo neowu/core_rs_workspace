@@ -117,7 +117,7 @@ where
                     info!(
                         name = context.name,
                         scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
-                        "scheduled job"
+                        "run scheduled job"
                     );
                     let waiting_time = (context.scheduled_time - previous).to_std().unwrap();
                     previous = context.scheduled_time;
