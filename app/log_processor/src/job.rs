@@ -26,7 +26,8 @@ pub async fn cleanup_old_index_job(state: Arc<AppState>, context: JobContext) ->
 }
 
 fn created_date(index: &str) -> Option<NaiveDate> {
-    static INDEX_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[\w.\-]+-(\d{4}\.\d{2}\.\d{2})"#).unwrap());
+    static INDEX_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"^\w[\w.\-]+-(\d{4}\.\d{2}\.\d{2})$"#).unwrap());
 
     if let Some(captures) = INDEX_REGEX.captures(index) {
         let date = captures[1].to_string();
@@ -47,6 +48,11 @@ mod tests {
         assert_eq!(
             super::created_date("action-2025.11.05"),
             NaiveDate::from_ymd_opt(2025, 11, 5)
-        )
+        );
+        assert_eq!(
+            super::created_date(".ds-.edr-workflow-insights-default-2025.04.24-000001"),
+            None
+        );
+        assert_eq!(super::created_date(".kibana-2025.04.25"), None);
     }
 }
