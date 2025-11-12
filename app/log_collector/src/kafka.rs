@@ -17,6 +17,6 @@ pub struct EventMessage {
     pub error_message: Option<String>,
     pub elapsed: i64,
     pub context: HashMap<String, String>,
-    pub stats: HashMap<String, f64>,
-    pub info: HashMap<String, String>,
+    pub stats: Option<HashMap<String, f64>>,
+    pub info: Option<HashMap<String, String>>,
 }

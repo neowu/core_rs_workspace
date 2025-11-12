@@ -163,8 +163,8 @@ struct Event {
     #[serde(rename = "errorMessage")]
     error_message: Option<String>,
     context: HashMap<String, String>,
-    stats: HashMap<String, f64>,
-    info: HashMap<String, String>,
+    stats: Option<HashMap<String, f64>>,
+    info: Option<HashMap<String, String>>,
     #[serde(rename = "elapsedTime")]
     elapsed_time: i64,
 }
@@ -204,9 +204,12 @@ impl Event {
         // Validate maps and estimate size
         let mut estimated_length = 0;
         estimated_length += Event::validate_map(&self.context, Event::MAX_KEY_LENGTH, Event::MAX_CONTEXT_VALUE_LENGTH)?;
-        estimated_length += Event::validate_map(&self.info, Event::MAX_KEY_LENGTH, Event::MAX_INFO_VALUE_LENGTH)?;
-        estimated_length += Event::validate_stats(&self.stats, Event::MAX_KEY_LENGTH)?;
-
+        if let Some(info) = &self.info {
+            estimated_length += Event::validate_map(info, Event::MAX_KEY_LENGTH, Event::MAX_INFO_VALUE_LENGTH)?;
+        }
+        if let Some(stats) = &self.stats {
+            estimated_length += Event::validate_stats(stats, Event::MAX_KEY_LENGTH)?;
+        }
         if estimated_length > Event::MAX_ESTIMATED_LENGTH {
             return Err(validation_error!(
                 message = format!("event is too large, estimatedLength={estimated_length}")
