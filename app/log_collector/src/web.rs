@@ -21,9 +21,11 @@ use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::json;
 use framework::log;
+use framework::validate::Validator;
 use framework::validation_error;
 use framework::web::client_info::ClientInfo;
 use framework::web::error::HttpResult;
+use framework_validator::Validate;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
@@ -91,6 +93,7 @@ async fn event_post(
 ) -> HttpResult<HeaderMap> {
     if !body.is_empty() {
         let request: SendEventRequest = json::from_json(&body)?;
+        request.validate()?;
         process_events(&state, &app, request, client_info).await?;
     }
 
@@ -115,6 +118,11 @@ async fn process_events(
     let now = Utc::now();
     for event in request.events {
         if let Err(error) = event.validate() {
+            warn!("skip invalid event, error={error:?}");
+            continue;
+        }
+
+        if let Err(error) = event.custom_validate() {
             warn!("skip invalid event, error={error:?}");
             continue;
         }
@@ -148,18 +156,22 @@ async fn process_events(
     Ok(())
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Validate, Deserialize, Debug)]
 struct SendEventRequest {
+    #[validate(length(min = 1))]
     events: Vec<Event>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Validate, Deserialize, Debug)]
 struct Event {
     date: DateTime<Utc>,
     result: EventResult,
+    #[validate(length(max = 200))]
     action: String,
+    #[validate(length(max = 200))]
     #[serde(rename = "errorCode")]
     error_code: Option<String>,
+    #[validate(length(max = 1000))]
     #[serde(rename = "errorMessage")]
     error_message: Option<String>,
     context: HashMap<String, String>,
@@ -185,7 +197,7 @@ impl Event {
     const MAX_INFO_VALUE_LENGTH: usize = 500_000;
     const MAX_ESTIMATED_LENGTH: usize = 900_000; // by default kafka message limit is 1M, leave 100k for rest of message
 
-    fn validate(&self) -> Result<(), Exception> {
+    fn custom_validate(&self) -> Result<(), Exception> {
         // Validate action for OK result
         if matches!(self.result, EventResult::Ok) && self.action.is_empty() {
             return Err(validation_error!(

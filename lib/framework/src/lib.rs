@@ -11,4 +11,5 @@ pub mod schedule;
 pub mod shell;
 pub mod shutdown;
 pub mod task;
+pub mod validate;
 pub mod web;

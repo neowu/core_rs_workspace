@@ -1,0 +1,13 @@
+[package]
+name = "framework_validator"
+version = "0.3.6"
+edition = "2024"
+
+[dependencies]
+framework.workspace = true
+quote = "*"
+syn = "*"
+proc-macro2 = "*"
+
+[lib]
+proc-macro = true

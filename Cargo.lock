@@ -487,6 +487,7 @@ dependencies = [
  "bytes",
  "chrono",
  "framework",
+ "framework_validator",
  "futures",
  "serde",
  "tokio",
@@ -588,6 +589,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "framework_validator"
+version = "0.3.6"
+dependencies = [
+ "framework",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1140,6 +1151,7 @@ dependencies = [
  "axum",
  "chrono",
  "framework",
+ "framework_validator",
  "serde",
  "tokio",
  "tracing",

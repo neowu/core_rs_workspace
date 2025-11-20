@@ -4,6 +4,7 @@ members = ["app/*", "lib/*"]
 
 [workspace.dependencies]
 framework = { path = "lib/framework", features = ["kafka"] }
+framework_validator = { path = "lib/framework_validator"}
 
 tracing = "*"
 serde = { version = "*", features = ["derive"] }
