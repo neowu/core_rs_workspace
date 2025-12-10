@@ -38,6 +38,8 @@ pub struct PerformanceStatMessage {
     count: i64,
     read_entries: Option<i64>,
     write_entries: Option<i64>,
+    read_bytes: Option<i64>,
+    write_bytes: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
