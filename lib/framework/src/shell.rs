@@ -3,7 +3,6 @@ use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
 
-use crate::exception;
 use crate::exception::Exception;
 
 pub async fn run(command: &str) -> Result<String, Exception> {

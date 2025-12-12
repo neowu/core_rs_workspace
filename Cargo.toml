@@ -13,6 +13,15 @@ tokio = { version = "*", features = ["full"] }
 axum = { version = "*", features = ["macros"] }
 chrono = { version = "*", features = ["serde"] }
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true
 
 # [profile.release]
 # debug = "line-tables-only"
