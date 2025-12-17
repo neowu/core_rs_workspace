@@ -14,9 +14,9 @@ struct Example1 {
     context: Vec<u32>,
     #[validate(length(max = 3))]
     last_name: Option<String>,
+
     #[validate(nested)]
     child: Child1,
-
     #[validate(nested)]
     optional_child: Option<Child1>,
 }
