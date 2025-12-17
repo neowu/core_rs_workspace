@@ -54,17 +54,44 @@ fn build_body(fields: Vec<FieldDefinition>) -> Vec<TokenStream> {
                 .expect("validate attr should be splitted by comma");
 
             for meta in nested {
-                if let Meta::List(list) = meta {
-                    if list.path.is_ident("range") {
-                        impls.append(&mut build_range_validator(&field, &list));
+                match meta {
+                    Meta::List(list) => {
+                        if list.path.is_ident("range") {
+                            impls.append(&mut build_range_validator(&field, &list));
+                        }
+                        if list.path.is_ident("length") {
+                            impls.append(&mut build_length_validator(&field, &list));
+                        }
                     }
-                    if list.path.is_ident("length") {
-                        impls.append(&mut build_length_validator(&field, &list));
+                    Meta::Path(path) => {
+                        if path.is_ident("nested") {
+                            impls.append(&mut build_nested_validator(&field));
+                        }
                     }
+                    _ => (),
                 }
             }
         }
     }
+    impls
+}
+
+fn build_nested_validator(field: &FieldDefinition) -> Vec<TokenStream> {
+    let field_ident = field.ident;
+    let mut impls = vec![];
+
+    if field.is_optional {
+        impls.push(quote!(
+            if let Some(ref value) = self.#field_ident {
+                value.validate()?;
+            }
+        ));
+    } else {
+        impls.push(quote!(
+            self.#field_ident.validate()?;
+        ));
+    }
+
     impls
 }
 
