@@ -12,8 +12,8 @@ struct Example1 {
     age2: Option<i32>,
     #[validate(length(max = 10))]
     context: Vec<u32>,
-    #[validate(length(max = 3))]
-    last_name: Option<String>,
+    #[validate(not_blank, length(max = 5))]
+    last_name: String,
 
     #[validate(nested)]
     child: Child1,
@@ -34,7 +34,7 @@ fn main() -> Result<(), Exception> {
         age: 4,
         context: vec![1, 2, 3, 4],
         age2: Some(4),
-        last_name: Some("hel".to_owned()),
+        last_name: "   ".to_owned(),
         child: Child1 {
             name: "hello".to_owned(),
         },

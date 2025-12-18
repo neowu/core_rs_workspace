@@ -14,6 +14,15 @@ use crate::field::FieldDefinition;
 
 mod field;
 
+/**
+`#[derive(Validate)]` supports following field validations:
+```
+#[validate(range(max = 10, min = 1))]   // for Numeric
+#[validate(length(max = 10, min = 1))]   // for String, Collections
+#[validate(nested)]                     // for nested struct
+#[validate(not_blank)]                  // for String
+```
+*/
 #[proc_macro_derive(Validate, attributes(validate))]
 pub fn validate(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     build_impl(item.into()).into()
@@ -67,12 +76,38 @@ fn build_body(fields: Vec<FieldDefinition>) -> Vec<TokenStream> {
                         if path.is_ident("nested") {
                             impls.append(&mut build_nested_validator(&field));
                         }
+                        if path.is_ident("not_blank") {
+                            impls.append(&mut build_not_blank_validator(&field));
+                        }
                     }
                     _ => (),
                 }
             }
         }
     }
+    impls
+}
+
+fn build_not_blank_validator(field: &FieldDefinition) -> Vec<TokenStream> {
+    let field_ident = field.ident;
+    let field_name = &field.name;
+
+    let mut impls = vec![];
+
+    if field.is_optional {
+        impls.push(quote!(
+            if let Some(ref value) = self.#field_ident && value.chars().all(char::is_whitespace) {
+                return Err(framework::validation_error!(message = format!("{} must not be blank", #field_name)));
+            }
+        ));
+    } else {
+        impls.push(quote!(
+            if self.#field_ident.chars().all(char::is_whitespace) {
+                return Err(framework::validation_error!(message = format!("{} must not be blank", #field_name)));
+            }
+        ));
+    }
+
     impls
 }
 
