@@ -46,9 +46,9 @@ struct ActionLog {
     logs: Vec<String>,
 }
 
-const MAX_LOG_MESSAGE_LEN: usize = 10_000;
-const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
-const MAX_ERROR_MESSAGE_LEN: usize = 200;
+// const MAX_LOG_MESSAGE_LEN: usize = 10_000;
+// const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
+// const MAX_ERROR_MESSAGE_LEN: usize = 200;
 
 impl<T, S> Layer<S> for ActionLogLayer<T>
 where
@@ -180,7 +180,7 @@ thread={:?}"#,
 
             let mut visitor = LogVisitor(&mut log);
             event.record(&mut visitor);
-            log.truncate(MAX_LOG_MESSAGE_LEN); // TODO: think about if append "...(truncated)"
+            // log.truncate(MAX_LOG_MESSAGE_LEN); // TODO: think about if append "...(truncated)", safe truncate
             action_log.logs.push(log);
 
             // hanldle "context" and "stats" event
@@ -341,8 +341,8 @@ impl Visit for ContextVisitor<'_> {
 
     fn record_str(&mut self, field: &Field, value: &str) {
         if let Some(ContextType::Context) = self.context_type {
-            let mut value = value.to_owned();
-            value.truncate(MAX_CONTEXT_VALUE_LEN); // TODO: think about if append "...(truncated)"
+            let value = value.to_owned();
+            // value.truncate(MAX_CONTEXT_VALUE_LEN); // TODO: think about if append "...(truncated)"
             self.action_log.context.insert(field.name(), value);
         }
     }
@@ -375,8 +375,8 @@ impl Visit for ErrorVisitor {
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         if field.name() == "message" {
-            let mut message = format!("{value:?}");
-            message.truncate(MAX_ERROR_MESSAGE_LEN);
+            let message = format!("{value:?}");
+            // message.truncate(MAX_ERROR_MESSAGE_LEN);
             self.message = Some(message);
         }
     }

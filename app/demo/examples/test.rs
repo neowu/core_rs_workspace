@@ -87,6 +87,11 @@
 // }
 
 pub fn main() {
-    let x = [0x73, 0xef, 0x17, 0x6d];
-    println!("{:?}", x);
+    let s = "Löwe 老虎 Léopard";
+
+    println!("{}", s.is_char_boundary(6));
+    println!("{}", s.is_char_boundary(7));
+    println!("{}", s.is_char_boundary(8));
+    println!("{}", s.is_char_boundary(9));
+    println!("{}", &s[..7]);
 }
