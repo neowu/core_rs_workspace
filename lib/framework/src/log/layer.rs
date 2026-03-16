@@ -46,9 +46,9 @@ struct ActionLog {
     logs: Vec<String>,
 }
 
-// const MAX_LOG_MESSAGE_LEN: usize = 10_000;
-// const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
-// const MAX_ERROR_MESSAGE_LEN: usize = 200;
+const MAX_LOG_MESSAGE_LEN: usize = 10_000;
+const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
+const MAX_ERROR_MESSAGE_LEN: usize = 200;
 
 impl<T, S> Layer<S> for ActionLogLayer<T>
 where
@@ -180,8 +180,9 @@ thread={:?}"#,
 
             let mut visitor = LogVisitor(&mut log);
             event.record(&mut visitor);
-            // log.truncate(MAX_LOG_MESSAGE_LEN); // TODO: think about if append "...(truncated)", safe truncate
-            action_log.logs.push(log);
+            action_log
+                .logs
+                .push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
 
             // hanldle "context" and "stats" event
             let mut visitor = ContextVisitor {
@@ -342,8 +343,10 @@ impl Visit for ContextVisitor<'_> {
     fn record_str(&mut self, field: &Field, value: &str) {
         if let Some(ContextType::Context) = self.context_type {
             let value = value.to_owned();
-            // value.truncate(MAX_CONTEXT_VALUE_LEN); // TODO: think about if append "...(truncated)"
-            self.action_log.context.insert(field.name(), value);
+            self.action_log.context.insert(
+                field.name(),
+                truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")),
+            );
         }
     }
 
@@ -376,8 +379,48 @@ impl Visit for ErrorVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         if field.name() == "message" {
             let message = format!("{value:?}");
-            // message.truncate(MAX_ERROR_MESSAGE_LEN);
-            self.message = Some(message);
+            self.message = Some(truncate(message, MAX_ERROR_MESSAGE_LEN, None));
         }
+    }
+}
+
+fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
+    if len >= value.len() {
+        return value;
+    }
+
+    let mut new_len = len;
+    while new_len > 0 && !value.is_char_boundary(new_len) {
+        new_len -= 1;
+    }
+
+    value.truncate(new_len);
+    if let Some(suffix) = suffix {
+        value.push_str(suffix);
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::log::layer::truncate;
+
+    #[test]
+    fn test_truncate() {
+        let value = "123老虎456".to_owned();
+        assert_eq!(truncate(value.clone(), 3, None), "123".to_owned());
+        assert_eq!(truncate(value.clone(), 4, None), "123".to_owned());
+        assert_eq!(truncate(value.clone(), 5, None), "123".to_owned());
+        assert_eq!(
+            truncate(value.clone(), 6, Some("...(truncated)")),
+            "123老...(truncated)".to_owned()
+        );
+        assert_eq!(truncate(value.clone(), 7, None), "123老".to_owned());
+        assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
+        assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
+        assert_eq!(
+            truncate(value.clone(), 10, Some("...(truncated)")),
+            "123老虎4...(truncated)".to_owned()
+        );
     }
 }

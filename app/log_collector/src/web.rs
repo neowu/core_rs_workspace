@@ -21,6 +21,7 @@ use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::json;
 use framework::log;
+use framework::string::StringExt;
 use framework::validate::Validator;
 use framework::validation_error;
 use framework::web::body::TextBody;
@@ -241,7 +242,7 @@ impl Event {
         let mut estimated_length = 0;
         for (key, value) in map {
             if key.len() > max_key_length {
-                let truncated = truncate(key, 50);
+                let truncated = key.truncate_to_max(50);
                 return Err(validation_error!(
                     message = format!("key is too long, key={truncated}...(truncated)")
                 ));
@@ -249,7 +250,7 @@ impl Event {
             estimated_length += key.len();
 
             if value.len() > max_value_length {
-                let truncated = truncate(value, 200);
+                let truncated = value.truncate_to_max(200);
                 return Err(validation_error!(
                     message = format!("value is too long, key={key}, value={truncated}...(truncated)")
                 ));
@@ -263,7 +264,7 @@ impl Event {
         let mut estimated_length = 0;
         for key in stats.keys() {
             if key.len() > max_key_length {
-                let truncated = truncate(key, 50);
+                let truncated = key.truncate_to_max(50);
                 return Err(validation_error!(
                     message = format!("key is too long, key={truncated}...(truncated)")
                 ));
@@ -272,8 +273,4 @@ impl Event {
         }
         Ok(estimated_length)
     }
-}
-
-fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len { s } else { &s[..max_len] }
 }

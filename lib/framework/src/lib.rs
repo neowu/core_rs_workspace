@@ -12,6 +12,7 @@ pub mod log;
 pub mod schedule;
 pub mod shell;
 pub mod shutdown;
+pub mod string;
 pub mod task;
 pub mod validate;
 pub mod web;
