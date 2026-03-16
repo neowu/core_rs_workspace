@@ -3,7 +3,7 @@ resolver = "3"
 members = ["app/*", "lib/*"]
 
 [workspace.dependencies]
-framework = { path = "lib/framework", features = ["kafka"] }
+framework = { path = "lib/framework", features = ["kafka", "db"] }
 framework_validator = { path = "lib/framework_validator"}
 
 tracing = "*"

@@ -1,6 +1,6 @@
 [package]
 name = "framework"
-version = "0.3.6"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
@@ -19,16 +19,15 @@ axum-extra = { version = "*", features = ["cookie"] }
 axum-server = { version = "*", features = ["tls-rustls"] }
 tower-http = {version ="*", features = ["fs"]}
 
-reqwest = { version = "*", default-features = false, features = [
-    "stream",
-    "rustls-tls",
-] }
+reqwest = { version = "0", features = ["stream"] }
 
 rdkafka = { version = "*", default-features = false, features = [
     "dynamic-linking",
     "tokio",
     "zstd",
 ], optional = true }
+
+sqlx = { version = "*", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "mysql"], optional = true }
 
 chrono.workspace = true
 uuid = { version = "*", features = ["v7"] }
@@ -40,4 +39,5 @@ bs58 = "*"
 indexmap = { version = "*", features = ["serde"] }
 
 [features]
+db = ["dep:sqlx"]
 kafka = ["dep:rdkafka"]

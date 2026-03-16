@@ -46,6 +46,10 @@ struct ActionLog {
     logs: Vec<String>,
 }
 
+const MAX_LOG_MESSAGE_LEN: usize = 10_000;
+const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
+const MAX_ERROR_MESSAGE_LEN: usize = 200;
+
 impl<T, S> Layer<S> for ActionLogLayer<T>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -176,6 +180,7 @@ thread={:?}"#,
 
             let mut visitor = LogVisitor(&mut log);
             event.record(&mut visitor);
+            log.truncate(MAX_LOG_MESSAGE_LEN); // TODO: think about if append "...(truncated)"
             action_log.logs.push(log);
 
             // hanldle "context" and "stats" event
@@ -257,8 +262,7 @@ fn close_action(mut action_log: ActionLog) -> ActionLogMessage {
     if action_log.result.level() > ActionResult::Ok.level() {
         action_log.logs.push(format!(
             r#"elapsed={elapsed:?}
-=== action end ===
-"#
+=== action end ==="#
         ));
         trace = Some(action_log.logs.join("\n"));
     }
@@ -337,7 +341,9 @@ impl Visit for ContextVisitor<'_> {
 
     fn record_str(&mut self, field: &Field, value: &str) {
         if let Some(ContextType::Context) = self.context_type {
-            self.action_log.context.insert(field.name(), value.to_owned());
+            let mut value = value.to_owned();
+            value.truncate(MAX_CONTEXT_VALUE_LEN); // TODO: think about if append "...(truncated)"
+            self.action_log.context.insert(field.name(), value);
         }
     }
 
@@ -369,12 +375,9 @@ impl Visit for ErrorVisitor {
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         if field.name() == "message" {
-            let message = format!("{value:?}");
-            self.message = Some(if message.len() > 200 {
-                message[..200].to_string()
-            } else {
-                message
-            });
+            let mut message = format!("{value:?}");
+            message.truncate(MAX_ERROR_MESSAGE_LEN);
+            self.message = Some(message);
         }
     }
 }

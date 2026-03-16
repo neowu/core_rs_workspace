@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Deref;
 
 use axum::extract::FromRequest;
 use axum::extract::Request;
@@ -15,6 +16,41 @@ use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::json;
 use crate::web::error::HttpError;
+
+pub struct TextBody(pub String);
+
+impl Deref for TextBody {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<S> FromRequest<S> for TextBody
+where
+    S: Send + Sync,
+{
+    type Rejection = HttpError;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let result = String::from_request(request, state).await;
+        match result {
+            Ok(body) => {
+                debug!("[request] body={body}");
+                Ok(TextBody(body))
+            }
+            Err(rejection) => {
+                let error_message = rejection.body_text();
+                Err(exception!(
+                    severity = Severity::Warn,
+                    code = error_code::BAD_REQUEST,
+                    message = format!("failed to read body, error={error_message}")
+                )
+                .into())
+            }
+        }
+    }
+}
 
 pub struct Json<T>(pub T);
 

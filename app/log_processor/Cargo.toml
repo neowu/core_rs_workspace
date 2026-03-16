@@ -1,10 +1,10 @@
 [package]
 name = "log_processor"
-version = "0.3.9"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
-framework.workspace = true
+framework = { workspace = true, features = ["kafka"] }
 
 tracing.workspace = true
 serde.workspace = true

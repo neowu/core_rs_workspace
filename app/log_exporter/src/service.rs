@@ -67,7 +67,7 @@ async fn convert_parquet_and_upload(
     let parquet_path_buf = local_path_buf.with_extension("parquet");
     let parquet_path = parquet_path_buf.to_string_lossy();
     let command = format!(
-        r#"SET memory_limit='256MB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT 'parquet');"#
+        r#"SET memory_limit='512MB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT parquet, COMPRESSION zstd);"#
     );
     shell::run(&format!("duckdb -c \"{command}\"")).await?;
 
