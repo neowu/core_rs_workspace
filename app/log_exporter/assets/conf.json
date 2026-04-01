@@ -1,5 +1,5 @@
 {
   "log_dir": "/var/log/app",
   "kafka_uri": "dev.internal:9092",
-  "bucekt": "gs://archive"
+  "bucket": "gs://archive"
 }

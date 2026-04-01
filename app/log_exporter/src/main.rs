@@ -1,3 +1,4 @@
+use std::fs;
 use std::sync::Arc;
 
 use axum::Router;
@@ -23,6 +24,8 @@ use kafka::event_handler::EventMessage;
 use kafka::event_handler::event_message_handler;
 use serde::Deserialize;
 use sha2::Digest;
+use sha2::Sha256;
+use tracing::info;
 
 mod job;
 mod kafka;
@@ -42,12 +45,23 @@ pub struct AppState {
     log_dir: String,
     hash: String,
     bucket: String,
+
+    duckdb_memory_limit: u32, // in bytes
 }
 
 impl AppState {
     fn new(config: &AppConfig) -> Result<Self, Exception> {
         let hostname = hostname::get()?.to_string_lossy().to_string();
-        let hash = &format!("{:x}", sha2::Sha256::digest(hostname))[0..6];
+        let hash = hash(&hostname);
+
+        let duckdb_memory_limit = if fs::exists("/sys/fs/cgroup/memory.max")? {
+            let max_memory = fs::read_to_string("/sys/fs/cgroup/memory.max")?.parse::<u32>()?;
+            info!("detected cgroup v2, max_memory={max_memory}");
+            max_memory / 2
+        } else {
+            info!("not in cgroup v2 env");
+            200_000_000
+        };
 
         Ok(AppState {
             topics: Topics {
@@ -55,10 +69,16 @@ impl AppState {
                 event: Topic::new("event"),
             },
             log_dir: config.log_dir.clone(),
-            hash: hash.to_owned(),
+            hash,
             bucket: config.bucket.clone(),
+            duckdb_memory_limit,
         })
     }
+}
+
+fn hash(hostname: &str) -> String {
+    let hash = Sha256::digest(hostname);
+    hex::encode(hash)[0..6].to_owned()
 }
 
 struct Topics {
@@ -107,4 +127,15 @@ async fn main() -> Result<(), Exception> {
     task::shutdown().await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::hash;
+
+    #[test]
+    fn test_hash() {
+        let hash = hash("host");
+        assert_eq!(hash, "4740ae");
+    }
 }

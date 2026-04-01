@@ -44,14 +44,14 @@ pub async fn upload_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<()
     if action_log_path.exists() {
         let remote_path = remote_path("action", date, state);
         let columns = "{'date': 'TIMESTAMPTZ', id: 'STRING', app: 'STRING', host: 'STRING', result: 'STRING', action: 'STRING', ref_ids: 'STRING[]', correlation_ids: 'STRING[]', clients: 'STRING[]', error_code: 'STRING', error_message: 'STRING', elapsed: 'LONG', context: 'MAP(STRING, STRING[])', stats: 'MAP(STRING, DOUBLE)', perf_stats: 'MAP(STRING, MAP(STRING, DOUBLE))'}";
-        convert_parquet_and_upload(action_log_path, &remote_path, columns).await?;
+        convert_parquet_and_upload(action_log_path, &remote_path, columns, state.duckdb_memory_limit).await?;
     }
 
     let event_path = local_file_path("event", date, state)?;
     if event_path.exists() {
         let remote_path = remote_path("event", date, state);
         let columns = "{'date': 'TIMESTAMPTZ', id: 'STRING', app: 'STRING', received_time: 'TIMESTAMPTZ', result: 'STRING', action: 'STRING', error_code: 'STRING', error_message: 'STRING', elapsed: 'LONG', context: 'MAP(STRING, STRING)', stats: 'MAP(STRING, DOUBLE)', info: 'MAP(STRING, STRING)'}";
-        convert_parquet_and_upload(event_path, &remote_path, columns).await?;
+        convert_parquet_and_upload(event_path, &remote_path, columns, state.duckdb_memory_limit).await?;
     }
 
     Ok(())
@@ -61,13 +61,15 @@ async fn convert_parquet_and_upload(
     local_path_buf: PathBuf,
     remote_path: &str,
     columns: &str,
+    duckdb_memory_limit: u32,
 ) -> Result<(), Exception> {
     let local_path = local_path_buf.to_string_lossy();
     info!("convert to parquet, path={local_path}");
     let parquet_path_buf = local_path_buf.with_extension("parquet");
     let parquet_path = parquet_path_buf.to_string_lossy();
     let command = format!(
-        r#"SET memory_limit='512MB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT parquet, COMPRESSION zstd);"#
+        r#"SET memory_limit='{}KB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT parquet, COMPRESSION zstd);"#,
+        duckdb_memory_limit / 1000
     );
     shell::run(&format!("duckdb -c \"{command}\"")).await?;
 
