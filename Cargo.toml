@@ -23,6 +23,6 @@ chrono = { version = "*", features = ["serde"] }
 # inherits = "dev"
 # debug = true
 
-# [profile.release]
-# debug = "line-tables-only"
-# opt-level = 3
+[profile.release]
+debug = "line-tables-only"
+opt-level = 3

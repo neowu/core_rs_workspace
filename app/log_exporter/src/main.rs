@@ -1,4 +1,5 @@
 use std::fs;
+use std::fs::read_to_string;
 use std::sync::Arc;
 
 use axum::Router;
@@ -12,6 +13,7 @@ use framework::kafka::consumer::MessageConsumer;
 use framework::kafka::topic::Topic;
 use framework::log;
 use framework::log::ConsoleAppender;
+use framework::number::parse_u32;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
 use framework::task;
@@ -54,15 +56,6 @@ impl AppState {
         let hostname = hostname::get()?.to_string_lossy().to_string();
         let hash = hash(&hostname);
 
-        let duckdb_memory_limit = if fs::exists("/sys/fs/cgroup/memory.max")? {
-            let max_memory = fs::read_to_string("/sys/fs/cgroup/memory.max")?.parse::<u32>()?;
-            info!("detected cgroup v2, max_memory={max_memory}");
-            max_memory / 2
-        } else {
-            info!("not in cgroup v2 env");
-            200_000_000
-        };
-
         Ok(AppState {
             topics: Topics {
                 action: Topic::new("action-log-v2"),
@@ -71,7 +64,7 @@ impl AppState {
             log_dir: config.log_dir.clone(),
             hash,
             bucket: config.bucket.clone(),
-            duckdb_memory_limit,
+            duckdb_memory_limit: duckdb_memory_limit()?,
         })
     }
 }
@@ -79,6 +72,17 @@ impl AppState {
 fn hash(hostname: &str) -> String {
     let hash = Sha256::digest(hostname);
     hex::encode(hash)[0..6].to_owned()
+}
+
+fn duckdb_memory_limit() -> Result<u32, Exception> {
+    if fs::exists("/sys/fs/cgroup/memory.max")? {
+        let max_memory = parse_u32(read_to_string("/sys/fs/cgroup/memory.max")?.trim())?;
+        info!("detected cgroup v2, max_memory={max_memory}, set duckdb_memory_limit to 50%");
+        Ok(max_memory / 2)
+    } else {
+        info!("not in cgroup v2 env, set duckdb_memory_limit to 200MB");
+        Ok(200_000_000)
+    }
 }
 
 struct Topics {

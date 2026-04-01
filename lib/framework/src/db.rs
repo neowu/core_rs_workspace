@@ -1,35 +1,47 @@
-// use std::marker::PhantomData;
-// use std::sync::Arc;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
-// use sqlx::Pool;
-// use sqlx::Postgres;
-// use sqlx::postgres::PgRow;
+use sqlx::FromRow;
+use sqlx::Pool;
+use sqlx::Postgres;
+use sqlx::postgres::PgRow;
 
-// pub struct Database {
-//     pool: Pool<Postgres>,
-// }
+pub struct Database {
+    pub pool: Pool<Postgres>,
+}
 
-// pub struct Repository<T: Entity> {
-//     db: Arc<Database>,
-//     _marker: PhantomData<T>,
-// }
+pub struct Repository<T>
+where
+    T: Entity + for<'a> FromRow<'a, PgRow>,
+{
+    pub db: Arc<Database>,
+    pub _marker: PhantomData<T>,
+}
 
-// pub trait Entity {}
+pub trait Entity {
+    fn select_sql() -> String;
+}
 
-// pub trait Id {}
+pub trait Id {
+    fn to_string(&self) -> String;
+}
 
-// impl Id for String {}
+impl Id for String {
+    fn to_string(&self) -> String {
+        self.clone()
+    }
+}
 
-// impl<T: Entity> Repository<T> {
-//     pub async fn get(&self, id: &dyn Id) -> Option<T> {
-//         // let count: T = sqlx::query_as("")
-//         //     .map(|row: PgRow| {
-//         //         entity = T {};
-//         //         return entity;
-//         //     })
-//         //     .fetch_optional(&self.db.pool)
-//         //     .await
-//         //     .unwrap();
-//         None
-//     }
-// }
+impl<T> Repository<T>
+where
+    T: Entity + for<'a> FromRow<'a, PgRow> + Send + Sync + Unpin,
+{
+    pub async fn get(&self, id: impl Id) -> Option<T> {
+        let sql = T::select_sql();
+        sqlx::query_as(&sql)
+            .bind(id.to_string())
+            .fetch_optional(&self.db.pool)
+            .await
+            .unwrap()
+    }
+}

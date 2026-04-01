@@ -1,6 +1,6 @@
 pub mod asset;
-// #[cfg(feature = "db")]
-// pub mod db;
+#[cfg(feature = "db")]
+pub mod db;
 #[macro_use]
 pub mod exception;
 pub mod fs;
@@ -9,6 +9,7 @@ pub mod json;
 #[cfg(feature = "kafka")]
 pub mod kafka;
 pub mod log;
+pub mod number;
 pub mod schedule;
 pub mod shell;
 pub mod shutdown;
