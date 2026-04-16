@@ -44,7 +44,7 @@ impl Producer {
         async {
             let payload = to_json(message)?;
 
-            debug!(kafka_write_entries = 1, kafka_write_bytes = payload.len(), "stats");
+            debug!(kafka_write_messages = 1, kafka_write_bytes = payload.len(), "stats");
 
             let mut record = FutureRecord::<String, String>::to(topic.name)
                 .timestamp(Utc::now().timestamp_millis())

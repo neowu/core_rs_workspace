@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use futures::TryFutureExt;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 use tokio_postgres::Client;
@@ -7,6 +8,9 @@ use tokio_postgres::Config;
 use tokio_postgres::NoTls;
 pub use tokio_postgres::Row;
 pub use tokio_postgres::types::ToSql;
+use tracing::Instrument;
+use tracing::debug;
+use tracing::debug_span;
 
 use crate::exception;
 use crate::exception::Exception;
@@ -20,6 +24,8 @@ struct Connection {
     client: Client,
     cancel_token: CancelToken,
 }
+
+type QueryParam = dyn ToSql + Sync;
 
 impl ResourceManager for ConnectionManager {
     type Target = Connection;
@@ -38,7 +44,7 @@ impl ResourceManager for ConnectionManager {
     }
 
     async fn is_valid(item: &Self::Target) -> bool {
-        item.client.execute("SELECT 1", &[]).await.is_ok()
+        item.client.check_connection().await.is_ok()
     }
 
     fn is_closed(item: &Self::Target) -> bool {
@@ -66,39 +72,72 @@ impl Database {
     }
 }
 
-pub async fn execute(database: &Database, statement: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Exception> {
-    let connection = database
-        .pool
-        .get_with_timeout(database.connection_checkout_timeout)
+pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
+    let span = debug_span!("db");
+    async {
+        let connection = database
+            .pool
+            .get_with_timeout(database.connection_checkout_timeout)
+            .await?;
+
+        let updated_rows = with_timeout(
+            connection
+                .client
+                .execute(statement, params)
+                .map_err(|err| exception!(message = "failed to execute", source = err)),
+            database.query_timeout,
+            &connection.cancel_token,
+        )
         .await?;
 
-    connection
-        .client
-        .execute(statement, params)
-        .await
-        .map_err(|err| exception!(message = "failed to execute", source = err))
+        debug!(db_write_rows = updated_rows, "stats");
+
+        Ok(updated_rows)
+    }
+    .instrument(span)
+    .await
 }
 
-pub async fn select_one<T>(
-    database: &Database,
-    statement: &str,
-    params: &[&(dyn ToSql + Sync)],
-) -> Result<Option<T>, Exception>
+pub async fn select_one<T>(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<Option<T>, Exception>
 where
     T: From<Row>,
 {
-    let connection = database
-        .pool
-        .get_with_timeout(database.connection_checkout_timeout)
+    let span = debug_span!("db");
+    async {
+        let connection = database
+            .pool
+            .get_with_timeout(database.connection_checkout_timeout)
+            .await?;
+
+        let row = with_timeout(
+            connection
+                .client
+                .query_opt(statement, params)
+                .map_err(|err| exception!(message = "failed to select_one", source = err)),
+            database.query_timeout,
+            &connection.cancel_token,
+        )
         .await?;
 
-    let result = timeout(database.query_timeout, connection.client.query_opt(statement, params)).await;
+        debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
 
+        Ok(row.map(T::from))
+    }
+    .instrument(span)
+    .await
+}
+
+async fn with_timeout<T>(
+    operation: impl Future<Output = Result<T, Exception>>,
+    query_timeout: Duration,
+    cancel_token: &CancelToken,
+) -> Result<T, Exception> {
+    let result = timeout(query_timeout, operation).await;
     match result {
-        Ok(Ok(row)) => Ok(row.map(T::from)),
-        Ok(Err(err)) => Err(exception!(message = "failed to select_one", source = err)),
+        Ok(result) => result,
         Err(_elapsed) => {
-            let cancel_result = connection.cancel_token.cancel_query(NoTls).await;
+            debug!("cancel query");
+            let cancel_result = cancel_token.cancel_query(NoTls).await;
             match cancel_result {
                 Ok(_) => Err(exception!(message = "query timed out")),
                 Err(err) => Err(exception!(message = "query timed out, failed to cancel", source = err)),

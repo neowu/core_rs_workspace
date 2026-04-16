@@ -51,13 +51,3 @@ async fn main() -> Result<(), Exception> {
     let app = app.with_state(state);
     start_http_server(app, signal, HttpServerConfig::default()).await
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test1() {
-        let x = 1;
-        let y = x + 1;
-        println!("{y}");
-    }
-}

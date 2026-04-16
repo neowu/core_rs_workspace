@@ -4,7 +4,6 @@ use axum::routing::post;
 use framework::exception::Exception;
 use framework::validation_error;
 use framework::web::body::Json;
-// use framework::web::body::TextBody;
 use framework::web::error::HttpResult;
 use serde::Deserialize;
 use serde::Serialize;
@@ -38,26 +37,9 @@ struct HelloResponse {
 }
 
 #[debug_handler]
-async fn hello(Json(request): Json<Option<HelloRequest>>) -> HttpResult<Json<HelloResponse>> {
-    if let Some(request) = request {
-        request.validate()?;
-        return Ok(Json(HelloResponse {
-            message: request.message,
-        }));
-    }
-
+async fn hello(Json(request): Json<HelloRequest>) -> HttpResult<Json<HelloResponse>> {
+    request.validate()?;
     Ok(Json(HelloResponse {
-        message: "other".to_string(),
+        message: request.message,
     }))
 }
-
-// #[debug_handler]
-// async fn hello2(body: TextBody) -> HttpResult<Json<HelloResponse>> {
-//     println!("!!! {}", body.0);
-
-//     warn!("test");
-
-//     Ok(Json(HelloResponse {
-//         message: "hello".to_string(),
-//     }))
-// }

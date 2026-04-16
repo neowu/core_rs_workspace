@@ -238,7 +238,7 @@ where
             kafka_read_bytes += message.payload.len();
         }
         debug!(topic, "context");
-        debug!(kafka_read_entries = messages.len(), kafka_read_bytes, "stats");
+        debug!(kafka_read_messages = messages.len(), kafka_read_bytes, "stats");
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");
