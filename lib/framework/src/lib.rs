@@ -10,6 +10,7 @@ pub mod json;
 pub mod kafka;
 pub mod log;
 pub mod number;
+pub mod pool;
 pub mod schedule;
 pub mod shell;
 pub mod shutdown;

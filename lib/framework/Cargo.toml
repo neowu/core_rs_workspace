@@ -27,7 +27,7 @@ rdkafka = { version = "*", default-features = false, features = [
     "zstd",
 ], optional = true }
 
-sqlx = { version = "*", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "mysql"], optional = true }
+tokio-postgres = { version = "*", optional = true }
 
 chrono.workspace = true
 uuid = { version = "*", features = ["v7"] }
@@ -39,5 +39,5 @@ bs58 = "*"
 indexmap = { version = "*", features = ["serde"] }
 
 [features]
-db = ["dep:sqlx"]
+db = ["dep:tokio-postgres"]
 kafka = ["dep:rdkafka"]
