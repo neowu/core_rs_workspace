@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 use tokio_postgres::Client;
 use tokio_postgres::Config;
@@ -52,6 +53,7 @@ struct ConnectionManager {
 pub struct Database {
     pool: ResourcePool<ConnectionManager>,
     connection_checkout_timeout: Duration,
+    query_timeout: Duration,
 }
 
 impl Database {
@@ -59,6 +61,7 @@ impl Database {
         Database {
             pool: ResourcePool::new(ConnectionManager { config }, 50, Duration::from_secs(30)),
             connection_checkout_timeout: Duration::from_secs(5),
+            query_timeout: Duration::from_secs(5),
         }
     }
 }
@@ -89,16 +92,18 @@ where
         .get_with_timeout(database.connection_checkout_timeout)
         .await?;
 
-    let row = connection
-        .client
-        .query_one(statement, params)
-        .await
-        .map_err(|err| exception!(message = "failed to select_one", source = err))?;
+    let result = timeout(database.query_timeout, connection.client.query_opt(statement, params)).await;
 
-    if row.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(T::from(row)))
+    match result {
+        Ok(Ok(row)) => Ok(row.map(T::from)),
+        Ok(Err(err)) => Err(exception!(message = "failed to select_one", source = err)),
+        Err(_elapsed) => {
+            let cancel_result = connection.cancel_token.cancel_query(NoTls).await;
+            match cancel_result {
+                Ok(_) => Err(exception!(message = "query timed out")),
+                Err(err) => Err(exception!(message = "query timed out, failed to cancel", source = err)),
+            }
+        }
     }
 }
 
