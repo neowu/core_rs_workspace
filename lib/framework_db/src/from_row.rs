@@ -6,21 +6,22 @@ pub(crate) fn from_row_impl(
     struct_name: &syn::Ident,
     fields: &Vec<(&syn::Field, FieldInfo)>,
 ) -> proc_macro2::TokenStream {
-    // From<Row>: map all fields from their column names
-    let from_assignments = fields.iter().map(|(field, info)| {
+    // TryFrom<Row, Error=PgError>: map all fields from their column names
+    let assignments = fields.iter().map(|(field, info)| {
         let fname = &field.ident;
         let col = &info.column;
-        quote! { #fname: row.get(#col), }
+        quote! { #fname: row.try_get(#col)?, }
     });
 
-    let from_row_impl = quote! {
-        impl From<framework::db::Row> for #struct_name {
-            fn from(row: framework::db::Row) -> #struct_name {
-                #struct_name {
-                    #(#from_assignments)*
-                }
+    let try_from_impl = quote! {
+        impl ::std::convert::TryFrom<framework::db::Row> for #struct_name {
+            type Error = framework::db::PgError;
+            fn try_from(row: framework::db::Row) -> ::std::result::Result<#struct_name, framework::db::PgError> {
+                Ok(#struct_name {
+                    #(#assignments)*
+                })
             }
         }
     };
-    from_row_impl
+    try_from_impl
 }

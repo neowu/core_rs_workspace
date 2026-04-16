@@ -101,7 +101,7 @@ pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam
 
 pub async fn select_one<T>(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<Option<T>, Exception>
 where
-    T: From<Row>,
+    T: TryFrom<Row, Error = PgError>,
 {
     let span = debug_span!("db");
     async {
@@ -122,7 +122,9 @@ where
 
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
 
-        Ok(row.map(T::from))
+        row.map(T::try_from)
+            .transpose()
+            .map_err(|err| exception!(message = "failed to map row", source = err))
     }
     .instrument(span)
     .await
@@ -150,13 +152,13 @@ async fn with_timeout<T>(
 #[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait InsertWithAutoIncrementId {
-    async fn __insert(&self, client: &tokio_postgres::Client) -> Result<i64, tokio_postgres::Error>;
+    async fn __insert(&self, client: &Client) -> Result<i64, PgError>;
 }
 
 #[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Insert {
-    async fn __insert(&self, client: &tokio_postgres::Client) -> Result<u64, tokio_postgres::Error>;
-    async fn __insert_ignore(&self, client: &tokio_postgres::Client) -> Result<u64, tokio_postgres::Error>;
-    async fn __upsert(&self, client: &tokio_postgres::Client) -> Result<bool, tokio_postgres::Error>;
+    async fn __insert(&self, client: &Client) -> Result<u64, PgError>;
+    async fn __insert_ignore(&self, client: &Client) -> Result<u64, PgError>;
+    async fn __upsert(&self, client: &Client) -> Result<bool, PgError>;
 }

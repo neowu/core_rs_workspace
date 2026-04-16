@@ -208,12 +208,13 @@ mod tests {
         let output = entity_impl(source);
 
         assert_eq!(output.to_string(), quote! {
-                impl From < framework::db::Row> for TestEntity {
-                    fn from (row: framework::db::Row) -> TestEntity {
-                        TestEntity {
-                            id: row.get("id"),
-                            col1: row.get("col1"),
-                        }
+                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
+                    type Error = framework::db::PgError;
+                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                        Ok(TestEntity {
+                            id: row.try_get("id")?,
+                            col1: row.try_get("col1")?,
+                        })
                     }
                 }
 
@@ -248,12 +249,13 @@ mod tests {
         let output = entity_impl(source);
 
         assert_eq!(output.to_string(), quote! {
-                impl From < framework::db::Row> for TestEntity {
-                    fn from (row: framework::db::Row) -> TestEntity {
-                        TestEntity {
-                            id: row.get("id"),
-                            col1: row.get("col1"),
-                        }
+                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
+                    type Error = framework::db::PgError;
+                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                        Ok(TestEntity {
+                            id: row.try_get("id")?,
+                            col1: row.try_get("col1")?,
+                        })
                     }
                 }
 
