@@ -27,7 +27,7 @@ rdkafka = { version = "*", default-features = false, features = [
     "zstd",
 ], optional = true }
 
-tokio-postgres = { version = "*", optional = true }
+tokio-postgres = { version = "*", features = ["default", "with-chrono-0_4"], optional = true }
 
 chrono.workspace = true
 uuid = { version = "*", features = ["v7"] }

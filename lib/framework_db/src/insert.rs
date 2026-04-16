@@ -34,9 +34,9 @@ pub(crate) fn insert_with_auto_increment_id_impl(
         impl framework::db::InsertWithAutoIncrementId for #struct_name {
             async fn __insert(
                 &self,
-                client: &tokio_postgres::Client,
-            ) -> ::std::result::Result<tokio_postgres::Row, tokio_postgres::Error> {
-                client.query_one(#sql, &[#(#params)*]).await
+                client: &framework::db::Client,
+            ) -> ::std::result::Result<i64, framework::db::PgError> {
+                client.query_one_scalar(#sql, &[#(#params)*]).await
             }
         }
     }
@@ -57,17 +57,51 @@ pub(crate) fn insert_impl(
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!("INSERT INTO \"{table_name}\" ({cols}) VALUES ({placeholders})");
-    let params = fields.iter().map(|(f, _)| {
-        let fname = &f.ident;
-        quote! { &self.#fname, }
-    });
+
+    let pk_cols = fields
+        .iter()
+        .filter(|(_, i)| i.assigned_pk)
+        .map(|(_, i)| i.column.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let non_pk_fields: Vec<_> = fields.iter().filter(|(_, i)| !i.assigned_pk).collect();
+    let update_set = non_pk_fields
+        .iter()
+        .map(|(_, i)| format!("{} = EXCLUDED.{}", i.column.as_str(), i.column.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sql_ignore = format!("{sql} ON CONFLICT DO NOTHING");
+    let sql_upsert =
+        format!("{sql} ON CONFLICT ({pk_cols}) DO UPDATE SET {update_set} RETURNING (xmax = 0) AS inserted");
+
+    let params: Vec<_> = fields
+        .iter()
+        .map(|(f, _)| {
+            let fname = &f.ident;
+            quote! { &self.#fname, }
+        })
+        .collect();
+
     quote! {
         impl framework::db::Insert for #struct_name {
             async fn __insert(
                 &self,
-                client: &tokio_postgres::Client,
-            ) -> ::std::result::Result<u64, tokio_postgres::Error> {
+                client: &framework::db::Client,
+            ) -> ::std::result::Result<u64, framework::db::PgError> {
                 client.execute(#sql, &[#(#params)*]).await
+            }
+            async fn __insert_ignore(
+                &self,
+                client: &framework::db::Client,
+            ) -> ::std::result::Result<u64, framework::db::PgError> {
+                client.execute(#sql_ignore, &[#(#params)*]).await
+            }
+            async fn __upsert(
+                &self,
+                client: &framework::db::Client,
+            ) -> ::std::result::Result<bool, framework::db::PgError> {
+                client.query_one_scalar(#sql_upsert, &[#(#params)*]).await
             }
         }
     }

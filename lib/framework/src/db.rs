@@ -3,8 +3,9 @@ use std::time::Duration;
 use futures::TryFutureExt;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
-use tokio_postgres::Client;
-use tokio_postgres::Config;
+pub use tokio_postgres::Client;
+pub use tokio_postgres::Config;
+pub use tokio_postgres::Error as PgError;
 use tokio_postgres::NoTls;
 pub use tokio_postgres::Row;
 pub use tokio_postgres::types::ToSql;
@@ -149,11 +150,13 @@ async fn with_timeout<T>(
 #[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait InsertWithAutoIncrementId {
-    async fn __insert(&self, client: &tokio_postgres::Client) -> Result<Row, tokio_postgres::Error>;
+    async fn __insert(&self, client: &tokio_postgres::Client) -> Result<i64, tokio_postgres::Error>;
 }
 
 #[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Insert {
     async fn __insert(&self, client: &tokio_postgres::Client) -> Result<u64, tokio_postgres::Error>;
+    async fn __insert_ignore(&self, client: &tokio_postgres::Client) -> Result<u64, tokio_postgres::Error>;
+    async fn __upsert(&self, client: &tokio_postgres::Client) -> Result<bool, tokio_postgres::Error>;
 }

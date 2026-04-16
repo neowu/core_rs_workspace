@@ -147,10 +147,42 @@ fn parse_primary_key(field: &syn::Field) -> (bool, bool) {
                     Err(meta.error("unknown primary_key argument, expected `auto_increment`"))
                 }
             });
-            return if auto_increment { (true, false) } else { (false, true) };
+            if auto_increment {
+                assert_option_i64(field);
+                return (true, false);
+            }
+            return (false, true);
         }
     }
     (false, false)
+}
+
+fn assert_option_i64(field: &syn::Field) {
+    let field_name = field.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+    let is_option_i64 = match &field.ty {
+        syn::Type::Path(type_path) => {
+            let segments = &type_path.path.segments;
+            if segments.len() == 1 && segments[0].ident == "Option" {
+                match &segments[0].arguments {
+                    syn::PathArguments::AngleBracketed(args) => {
+                        args.args.len() == 1
+                            && matches!(
+                                args.args.first(),
+                                Some(syn::GenericArgument::Type(syn::Type::Path(p)))
+                                if p.path.is_ident("i64")
+                            )
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        }
+        _ => false,
+    };
+    if !is_option_i64 {
+        panic!("`#[primary_key(auto_increment)]` field `{field_name}` must have type `Option<i64>`");
+    }
 }
 
 #[cfg(test)]
@@ -186,8 +218,14 @@ mod tests {
                 }
 
                 impl framework::db::Insert for TestEntity {
-                    async fn __insert(&self, client: &tokio_postgres::Client,) -> ::std::result::Result<u64, tokio_postgres::Error> {
+                    async fn __insert(&self, client: &framework::db::Client,) -> ::std::result::Result<u64, framework::db::PgError> {
                         client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)", &[&self.id, &self.col1,]).await
+                    }
+                    async fn __insert_ignore(&self, client: &framework::db::Client,) -> ::std::result::Result<u64, framework::db::PgError> {
+                        client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING", &[&self.id, &self.col1,]).await
+                    }
+                    async fn __upsert(&self, client: &framework::db::Client,) -> ::std::result::Result<bool, framework::db::PgError> {
+                        client.query_one_scalar("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted", &[&self.id, &self.col1,]).await
                     }
                 }
         }.to_string());
@@ -201,7 +239,7 @@ mod tests {
             struct TestEntity {
                 #[primary_key(auto_increment)]
                 #[column(name = "id")]
-                id: i32,
+                id: Option<i64>,
                 #[column(name = "col1")]
                 col1: Option<String>,
             }
@@ -220,8 +258,8 @@ mod tests {
                 }
 
                 impl framework::db::InsertWithAutoIncrementId for TestEntity {
-                    async fn __insert(&self, client: &tokio_postgres::Client,) -> ::std::result::Result<tokio_postgres::Row, tokio_postgres::Error> {
-                        client.query_one("INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id", &[&self.col1,]).await
+                    async fn __insert(&self, client: &framework::db::Client,) -> ::std::result::Result<i64, framework::db::PgError> {
+                        client.query_one_scalar("INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id", &[&self.col1,]).await
                     }
                 }
         }.to_string());
