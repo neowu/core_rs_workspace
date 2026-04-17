@@ -731,7 +731,6 @@ dependencies = [
 name = "framework_db"
 version = "0.4.0"
 dependencies = [
- "framework",
  "proc-macro2",
  "quote",
  "syn",
@@ -741,7 +740,6 @@ dependencies = [
 name = "framework_validator"
 version = "0.4.0"
 dependencies = [
- "framework",
  "proc-macro2",
  "quote",
  "syn",

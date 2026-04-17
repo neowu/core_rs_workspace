@@ -97,14 +97,14 @@ where
         });
     }
 
-    pub async fn start(self, state: S, shutdown_signel: broadcast::Receiver<()>) -> Result<(), Exception>
+    pub async fn start(self, state: S, shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception>
     where
         S: Clone,
     {
         let mut handles = vec![];
         for schedule in self.schedules {
             let state = state.clone();
-            let mut shutdown_signel = shutdown_signel.resubscribe();
+            let mut shutdown_signal = shutdown_signal.resubscribe();
             handles.push(tokio::spawn(async move {
                 time::sleep(Duration::from_secs(3)).await; // initial delay
                 let mut previous = Utc::now();
@@ -122,7 +122,7 @@ where
                     let waiting_time = (context.scheduled_time - previous).to_std().unwrap();
                     previous = context.scheduled_time;
                     tokio::select! {
-                        _ = shutdown_signel.recv() => {
+                        _ = shutdown_signal.recv() => {
                             return;
                         }
                         _ = time::sleep(waiting_time) => {

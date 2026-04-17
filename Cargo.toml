@@ -9,10 +9,10 @@ framework_db = { path = "lib/framework_db"}
 
 tracing = "*"
 serde = { version = "*", features = ["derive"] }
+chrono = { version = "*", features = ["serde"] }
 
 tokio = { version = "*", features = ["full"] }
 axum = { version = "*", features = ["macros"] }
-chrono = { version = "*", features = ["serde"] }
 
 # [profile.dev]
 # debug = "line-tables-only"
