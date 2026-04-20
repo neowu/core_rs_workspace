@@ -10,3 +10,6 @@ proc-macro2 = "*"
 
 [lib]
 proc-macro = true
+
+[features]
+db = []

@@ -27,7 +27,7 @@ use framework::validation_error;
 use framework::web::body::TextBody;
 use framework::web::client_info::ClientInfo;
 use framework::web::error::HttpResult;
-use framework_validator::Validate;
+use framework_macro::Validate;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
@@ -60,9 +60,9 @@ Disallow: /",
 async fn event_options(headers: HeaderMap) -> HttpResult<HeaderMap> {
     let mut response_headers = HeaderMap::new();
 
-    let origin = headers
-        .get(header::ORIGIN)
-        .ok_or_else(|| exception!(severity = Severity::Warn, code = error_code::FORDIDDEN, message = "access denied"))?;
+    let origin = headers.get(header::ORIGIN).ok_or_else(|| {
+        exception!(severity = Severity::Warn, code = error_code::FORDIDDEN, message = "access denied")
+    })?;
     response_headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone());
 
     response_headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("POST, PUT, OPTIONS"));
@@ -74,7 +74,13 @@ async fn event_options(headers: HeaderMap) -> HttpResult<HeaderMap> {
 
 // event will be sent via ajax or navigator.sendBeacon(), refer to https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
 #[debug_handler]
-async fn event_post(state: State<Arc<AppState>>, Path(app): Path<String>, headers: HeaderMap, Extension(client_info): Extension<Arc<ClientInfo>>, body: TextBody) -> HttpResult<HeaderMap> {
+async fn event_post(
+    state: State<Arc<AppState>>,
+    Path(app): Path<String>,
+    headers: HeaderMap,
+    Extension(client_info): Extension<Arc<ClientInfo>>,
+    body: TextBody,
+) -> HttpResult<HeaderMap> {
     if !body.is_empty() {
         let request: SendEventRequest = json::from_json(&body)?;
         request.validate()?;
@@ -90,7 +96,12 @@ async fn event_post(state: State<Arc<AppState>>, Path(app): Path<String>, header
     Ok(response_headers)
 }
 
-async fn process_events(state: &Arc<AppState>, app: &str, request: SendEventRequest, client_info: Arc<ClientInfo>) -> HttpResult<()> {
+async fn process_events(
+    state: &Arc<AppState>,
+    app: &str,
+    request: SendEventRequest,
+    client_info: Arc<ClientInfo>,
+) -> HttpResult<()> {
     let now = Utc::now();
     for event in request.events {
         if let Err(error) = event.validate() {
@@ -132,7 +143,7 @@ async fn process_events(state: &Arc<AppState>, app: &str, request: SendEventRequ
 
 #[derive(Validate, Deserialize, Debug)]
 struct SendEventRequest {
-    #[validate(length(min = 1))]
+    #[length(min = 1)]
     events: Vec<Event>,
 }
 
@@ -140,12 +151,12 @@ struct SendEventRequest {
 struct Event {
     date: DateTime<Utc>,
     result: EventResult,
-    #[validate(length(max = 200))]
+    #[length(max = 200)]
     action: String,
-    #[validate(length(max = 200))]
+    #[length(max = 200)]
     #[serde(rename = "errorCode")]
     error_code: Option<String>,
-    #[validate(length(max = 1000))]
+    #[length(max = 1000)]
     #[serde(rename = "errorMessage")]
     error_message: Option<String>,
     context: HashMap<String, String>,
@@ -177,7 +188,9 @@ impl Event {
             return Err(validation_error!(message = "action must not be empty if result is OK".to_string()));
         }
 
-        if (matches!(self.result, EventResult::Warn) || matches!(self.result, EventResult::Error)) && self.error_code.as_ref().is_none_or(|s| s.is_empty()) {
+        if (matches!(self.result, EventResult::Warn) || matches!(self.result, EventResult::Error))
+            && self.error_code.as_ref().is_none_or(|s| s.is_empty())
+        {
             return Err(validation_error!(message = "errorCode must not be empty if result is WARN/ERROR".to_string()));
         }
 
@@ -197,7 +210,11 @@ impl Event {
         Ok(())
     }
 
-    fn validate_map(map: &HashMap<String, String>, max_key_length: usize, max_value_length: usize) -> Result<usize, Exception> {
+    fn validate_map(
+        map: &HashMap<String, String>,
+        max_key_length: usize,
+        max_value_length: usize,
+    ) -> Result<usize, Exception> {
         let mut estimated_length = 0;
         for (key, value) in map {
             if key.len() > max_key_length {
@@ -208,7 +225,9 @@ impl Event {
 
             if value.len() > max_value_length {
                 let truncated = value.truncate_to_max(200);
-                return Err(validation_error!(message = format!("value is too long, key={key}, value={truncated}...(truncated)")));
+                return Err(validation_error!(
+                    message = format!("value is too long, key={key}, value={truncated}...(truncated)")
+                ));
             }
             estimated_length += value.len();
         }

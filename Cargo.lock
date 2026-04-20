@@ -588,8 +588,7 @@ dependencies = [
  "bytes",
  "chrono",
  "framework",
- "framework_db",
- "framework_validator",
+ "framework_macro",
  "futures",
  "serde",
  "tokio",
@@ -728,26 +727,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "framework_db"
-version = "0.4.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "framework_macro"
 version = "0.4.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "framework_validator"
-version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1411,7 +1392,7 @@ dependencies = [
  "axum",
  "chrono",
  "framework",
- "framework_validator",
+ "framework_macro",
  "serde",
  "tokio",
  "tracing",

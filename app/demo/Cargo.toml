@@ -5,8 +5,7 @@ edition = "2024"
 
 [dependencies]
 framework.workspace = true
-framework_validator.workspace = true
-framework_db.workspace = true
+framework_macro.workspace = true
 
 tracing.workspace = true
 serde.workspace = true

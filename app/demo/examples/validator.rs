@@ -1,29 +1,30 @@
 use framework::exception::Exception;
 use framework::validate::Validator;
-use framework_validator::Validate;
+use framework_macro::Validate;
 
 #[derive(Validate, Debug)]
 struct Example1 {
-    #[validate(length(max = 30))]
+    #[length(max = 30)]
     name: String,
-    #[validate(range(max = 4, min = 1))]
+    #[range(max = 4, min = 1)]
     age: u32,
-    #[validate(range(max = 10))]
+    #[range(max = 10)]
     age2: Option<i32>,
-    #[validate(length(max = 10))]
+    #[length(max = 10)]
     context: Vec<u32>,
-    #[validate(not_blank, length(max = 5))]
+    #[not_blank]
+    #[length(max = 5)]
     last_name: String,
 
-    #[validate(nested)]
+    #[validate]
     child: Child1,
-    #[validate(nested)]
+    #[validate]
     optional_child: Option<Child1>,
 }
 
 #[derive(Validate, Debug)]
 struct Child1 {
-    #[validate(length(max = 10))]
+    #[length(max = 10)]
     name: String,
 }
 

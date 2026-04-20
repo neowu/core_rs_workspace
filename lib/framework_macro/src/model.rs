@@ -79,6 +79,13 @@ impl AttributeModel {
         }
     }
 
+    pub(crate) fn has_meta_path(&self, name: &str) -> bool {
+        let Ok(nested) = self.attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
+            return false;
+        };
+        nested.iter().any(|meta| matches!(meta, Meta::Path(p) if p.is_ident(name)))
+    }
+
     pub(crate) fn int_meta_value(&self, name: &str) -> Result<i32> {
         let lit = self.meta_value(name)?;
         if let Lit::Int(value) = lit {
