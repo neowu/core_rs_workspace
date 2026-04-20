@@ -1,0 +1,12 @@
+[package]
+name = "framework_macro"
+version = "0.4.2"
+edition = "2024"
+
+[dependencies]
+quote = "*"
+syn = "*"
+proc-macro2 = "*"
+
+[lib]
+proc-macro = true
