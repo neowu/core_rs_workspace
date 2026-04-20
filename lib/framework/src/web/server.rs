@@ -29,10 +29,7 @@ pub struct HttpServerConfig {
 
 impl Default for HttpServerConfig {
     fn default() -> Self {
-        HttpServerConfig {
-            bind_address: "0.0.0.0:8080".to_string(),
-            max_forwarded_ips: 2,
-        }
+        HttpServerConfig { bind_address: "0.0.0.0:8080".to_string(), max_forwarded_ips: 2 }
     }
 }
 
@@ -88,10 +85,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         }
         request.extensions_mut().insert(Arc::new(client_info));
 
-        let matched_path = request
-            .extensions()
-            .get::<MatchedPath>()
-            .map(|matched_path| matched_path.as_str());
+        let matched_path = request.extensions().get::<MatchedPath>().map(|matched_path| matched_path.as_str());
         if let Some(matched_path) = matched_path {
             debug!(matched_path = matched_path, "context");
         }
@@ -117,9 +111,5 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         Ok(())
     })
     .await;
-    if let Some(response) = response {
-        response
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    }
+    if let Some(response) = response { response } else { StatusCode::INTERNAL_SERVER_ERROR.into_response() }
 }

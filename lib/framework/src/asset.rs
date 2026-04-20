@@ -12,11 +12,8 @@ pub fn asset_path(path: &str) -> Result<PathBuf, Exception> {
         Ok(asset_path)
     } else {
         Err(exception!(
-            message = format!(
-                "asset not found, asset={}, exe={}",
-                asset_path.to_string_lossy(),
-                exe_path.to_string_lossy()
-            )
+            message =
+                format!("asset not found, asset={}, exe={}", asset_path.to_string_lossy(), exe_path.to_string_lossy())
         ))
     }
 }
@@ -42,10 +39,7 @@ fn find_asset_path(exe_path: &Path, path: &str) -> PathBuf {
                 asset_path = PathBuf::from(format!("{workspace_path}/{bin_name}/{path}"));
             }
             if asset_path.exists() {
-                tracing::info!(
-                    "load assert from source code folder, asset={}",
-                    asset_path.to_string_lossy()
-                );
+                tracing::info!("load assert from source code folder, asset={}", asset_path.to_string_lossy());
                 return asset_path;
             }
         }

@@ -128,11 +128,7 @@ fn parse_field_info(field: &syn::Field, field_name: &str) -> FieldInfo {
         })
         .unwrap_or_else(|| panic!("#[column(name = \"...\")] is required on field `{field_name}`"));
 
-    FieldInfo {
-        column: col_name,
-        auto_increment_pk,
-        assigned_pk,
-    }
+    FieldInfo { column: col_name, auto_increment_pk, assigned_pk }
 }
 
 fn parse_primary_key(field: &syn::Field) -> (bool, bool) {
@@ -248,22 +244,26 @@ mod tests {
 
         let output = entity_impl(source);
 
-        assert_eq!(output.to_string(), quote! {
-                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
-                    type Error = framework::db::PgError;
-                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
-                        Ok(TestEntity {
-                            id: row.try_get("id")?,
-                            col1: row.try_get("col1")?,
-                        })
+        assert_eq!(
+            output.to_string(),
+            quote! {
+                    impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
+                        type Error = framework::db::PgError;
+                        fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                            Ok(TestEntity {
+                                id: row.try_get("id")?,
+                                col1: row.try_get("col1")?,
+                            })
+                        }
                     }
-                }
 
-                impl framework::db::InsertWithAutoIncrementId for TestEntity {
-                    async fn __insert(&self, client: &framework::db::Client,) -> ::std::result::Result<i64, framework::db::PgError> {
-                        client.query_one_scalar("INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id", &[&self.col1,]).await
+                    impl framework::db::InsertWithAutoIncrementId for TestEntity {
+                        async fn __insert(&self, client: &framework::db::Client,) -> ::std::result::Result<i64, framework::db::PgError> {
+                            client.query_one_scalar("INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id", &[&self.col1,]).await
+                        }
                     }
-                }
-        }.to_string());
+            }
+            .to_string()
+        );
     }
 }

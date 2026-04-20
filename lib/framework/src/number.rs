@@ -1,9 +1,7 @@
 use crate::exception::Exception;
 
 pub fn parse_u32(value: &str) -> Result<u32, Exception> {
-    value
-        .parse::<u32>()
-        .map_err(|err| exception!(message = format!("failed to parse, value={}", value), source = err))
+    value.parse::<u32>().map_err(|err| exception!(message = format!("failed to parse, value={}", value), source = err))
 }
 
 #[cfg(test)]

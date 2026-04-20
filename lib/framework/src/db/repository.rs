@@ -13,15 +13,10 @@ use crate::exception::Exception;
 pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exception> {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let _: u64 = with_timeout(
-            entity
-                .__insert(&connection.client)
-                .map_err(|err| exception!(message = "failed to insert", source = err)),
+            entity.__insert(&connection.client).map_err(|err| exception!(message = "failed to insert", source = err)),
             database.query_timeout,
             &connection.cancel_token,
         )
@@ -38,10 +33,7 @@ pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exc
 pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let updated_rows = with_timeout(
             entity
@@ -63,15 +55,10 @@ pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<
 pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let inserted = with_timeout(
-            entity
-                .__upsert(&connection.client)
-                .map_err(|err| exception!(message = "failed to upsert", source = err)),
+            entity.__upsert(&connection.client).map_err(|err| exception!(message = "failed to upsert", source = err)),
             database.query_timeout,
             &connection.cancel_token,
         )
@@ -91,15 +78,10 @@ pub async fn insert_with_auto_increment_id(
 ) -> Result<i64, Exception> {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let id = with_timeout(
-            entity
-                .__insert(&connection.client)
-                .map_err(|err| exception!(message = "failed to insert", source = err)),
+            entity.__insert(&connection.client).map_err(|err| exception!(message = "failed to insert", source = err)),
             database.query_timeout,
             &connection.cancel_token,
         )

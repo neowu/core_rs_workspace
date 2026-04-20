@@ -58,9 +58,7 @@ fn build_body(fields: Vec<FieldDefinition>) -> Vec<TokenStream> {
 
     for field in fields {
         if let Some(attr) = field.attr("validate") {
-            let nested = attr
-                .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-                .expect("validate attr should be split by comma");
+            let nested = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated).expect("validate attr should be split by comma");
 
             for meta in nested {
                 match meta {
@@ -134,9 +132,7 @@ fn build_length_validator(field: &FieldDefinition, list: &syn::MetaList) -> Vec<
     let field_ident = field.ident;
     let field_name = &field.name;
 
-    let nested = list
-        .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-        .expect("length attr should be split by comma");
+    let nested = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated).expect("length attr should be split by comma");
 
     let mut impls = vec![];
 
@@ -186,9 +182,7 @@ fn build_range_validator(field: &FieldDefinition, list: &syn::MetaList) -> Vec<T
     let field_ident = field.ident;
     let field_name = &field.name;
 
-    let nested = list
-        .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-        .expect("range attr should be split by comma");
+    let nested = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated).expect("range attr should be split by comma");
 
     let mut impls = vec![];
 

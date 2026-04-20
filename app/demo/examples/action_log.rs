@@ -84,11 +84,7 @@ async fn handle_request(success: bool) -> Result<(), Exception> {
         Ok(())
     } else {
         warn!(error_code = "SOMETHING", status = "failure", "Something went wrong,");
-        error!(
-            error_code = "DB",
-            reason = "database_error",
-            "Could not connect to database,"
-        );
+        error!(error_code = "DB", reason = "database_error", "Could not connect to database,");
         Err(exception!(
             severity = Severity::Warn,
             code = "E001",

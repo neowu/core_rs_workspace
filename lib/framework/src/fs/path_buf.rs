@@ -18,7 +18,7 @@ impl PathBufExt for PathBuf {
             current_dir.join(self)
         };
 
-        let cannonical_path = fs::canonicalize(absolute_path)?;
-        Ok(cannonical_path)
+        let canonical_path = fs::canonicalize(absolute_path)?;
+        Ok(canonical_path)
     }
 }

@@ -72,11 +72,7 @@ async fn main() -> Result<(), Exception> {
     let scheduler_state = state.clone();
     task::spawn_task(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
-        scheduler.schedule_daily(
-            "cleanup_old_index_job",
-            cleanup_old_index_job,
-            NaiveTime::from_hms_opt(1, 0, 0).unwrap(),
-        );
+        scheduler.schedule_daily("cleanup_old_index_job", cleanup_old_index_job, NaiveTime::from_hms_opt(1, 0, 0).unwrap());
         scheduler.start(scheduler_state, scheduler_signal).await
     });
 
@@ -95,28 +91,16 @@ async fn main() -> Result<(), Exception> {
 
 async fn put_index_templates(elasticsearch: &Elasticsearch) -> Result<(), Exception> {
     elasticsearch
-        .put_index_template(
-            "action",
-            fs::read_to_string(&asset_path("assets/index/action-index-template.json")?)?,
-        )
+        .put_index_template("action", fs::read_to_string(&asset_path("assets/index/action-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template(
-            "event",
-            fs::read_to_string(&asset_path("assets/index/event-index-template.json")?)?,
-        )
+        .put_index_template("event", fs::read_to_string(&asset_path("assets/index/event-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template(
-            "stat",
-            fs::read_to_string(&asset_path("assets/index/stat-index-template.json")?)?,
-        )
+        .put_index_template("stat", fs::read_to_string(&asset_path("assets/index/stat-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template(
-            "trace",
-            fs::read_to_string(&asset_path("assets/index/trace-index-template.json")?)?,
-        )
+        .put_index_template("trace", fs::read_to_string(&asset_path("assets/index/trace-index-template.json")?)?)
         .await?;
     Ok(())
 }

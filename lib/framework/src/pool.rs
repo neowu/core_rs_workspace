@@ -47,9 +47,7 @@ where
     R: ResourceManager,
 {
     fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-        }
+        Self { inner: Arc::clone(&self.inner) }
     }
 }
 
@@ -94,10 +92,7 @@ where
         };
 
         Ok(ResourceGuard {
-            resource: Some(Resource {
-                item: inner,
-                return_time: Instant::now(),
-            }),
+            resource: Some(Resource { item: inner, return_time: Instant::now() }),
             pool: Arc::clone(&self.inner),
             _permit: permit,
         })
@@ -120,11 +115,7 @@ where
     type Target = R::Target;
 
     fn deref(&self) -> &Self::Target {
-        &self
-            .resource
-            .as_ref()
-            .expect("ResourceGuard always holds a resource")
-            .item
+        &self.resource.as_ref().expect("ResourceGuard always holds a resource").item
     }
 }
 
@@ -133,11 +124,7 @@ where
     R: ResourceManager,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self
-            .resource
-            .as_mut()
-            .expect("ResourceGuard always holds a resource")
-            .item
+        &mut self.resource.as_mut().expect("ResourceGuard always holds a resource").item
     }
 }
 

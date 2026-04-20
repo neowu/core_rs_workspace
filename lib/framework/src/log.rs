@@ -111,18 +111,11 @@ pub(crate) fn log_exception(e: &Exception) {
         Severity::Error => Level::ERROR,
     };
     let message = &e.message;
-    log_event!(
-        level = level,
-        error_code = e.code,
-        backtrace = e.to_string(),
-        "{message}"
-    );
+    log_event!(level = level, error_code = e.code, backtrace = e.to_string(), "{message}");
 }
 
 pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION_ID
-        .try_with(|current_action_id| Some(current_action_id.clone()))
-        .unwrap_or(None)
+    CURRENT_ACTION_ID.try_with(|current_action_id| Some(current_action_id.clone())).unwrap_or(None)
 }
 
 #[derive(Serialize, Debug)]

@@ -35,12 +35,8 @@ fn main() -> Result<(), Exception> {
         context: vec![1, 2, 3, 4],
         age2: Some(4),
         last_name: "   ".to_owned(),
-        child: Child1 {
-            name: "hello".to_owned(),
-        },
-        optional_child: Some(Child1 {
-            name: "12345678901".to_owned(),
-        }),
+        child: Child1 { name: "hello".to_owned() },
+        optional_child: Some(Child1 { name: "12345678901".to_owned() }),
     };
     x.validate()?;
 

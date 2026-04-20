@@ -38,9 +38,7 @@ impl Elasticsearch {
             request.body(template, "application/json");
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(
-                    message = format!("failed to create index template, name={name}")
-                ));
+                return Err(exception!(message = format!("failed to create index template, name={name}")));
             }
             Ok(())
         }

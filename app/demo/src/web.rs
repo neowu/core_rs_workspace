@@ -39,7 +39,5 @@ struct HelloResponse {
 #[debug_handler]
 async fn hello(Json(request): Json<HelloRequest>) -> HttpResult<Json<HelloResponse>> {
     request.validate()?;
-    Ok(Json(HelloResponse {
-        message: request.message,
-    }))
+    Ok(Json(HelloResponse { message: request.message }))
 }

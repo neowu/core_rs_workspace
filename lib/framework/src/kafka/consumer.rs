@@ -66,10 +66,7 @@ pub struct ConsumerConfig {
 
 impl Default for ConsumerConfig {
     fn default() -> Self {
-        Self {
-            poll_max_wait_time: Duration::from_secs(1),
-            poll_max_records: 1000,
-        }
+        Self { poll_max_wait_time: Duration::from_secs(1), poll_max_records: 1000 }
     }
 }
 
@@ -174,10 +171,7 @@ impl<T: DeserializeOwned> From<BorrowedMessage<'_>> for Message<T> {
             for kafka_header in kafka_headers.iter() {
                 headers.insert(
                     kafka_header.key.to_owned(),
-                    kafka_header
-                        .value
-                        .map(|data| String::from_utf8_lossy(data).to_string())
-                        .unwrap_or_default(),
+                    kafka_header.value.map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default(),
                 );
             }
         }
@@ -187,13 +181,7 @@ impl<T: DeserializeOwned> From<BorrowedMessage<'_>> for Message<T> {
             _ => None,
         };
 
-        Message {
-            key,
-            payload: value.unwrap_or_default(),
-            headers,
-            timestamp,
-            _marker: PhantomData,
-        }
+        Message { key, payload: value.unwrap_or_default(), headers, timestamp, _marker: PhantomData }
     }
 }
 
@@ -278,9 +266,7 @@ where
             }
         } else {
             let state = state.clone();
-            handles.push(tokio::spawn(async move {
-                handle_message(topic, message, handler, state).await
-            }));
+            handles.push(tokio::spawn(async move { handle_message(topic, message, handler, state).await }));
         }
     }
 
@@ -309,22 +295,13 @@ where
     log::start_action("message", ref_id, async {
         debug!(topic, "[message]");
         debug!(key = ?message.key, "[message]");
-        debug!(
-            timestamp = message
-                .timestamp
-                .map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)),
-            "[message]"
-        );
+        debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
         for (key, value) in message.headers.iter() {
             debug!("[header] {}={}", key, value);
         }
         debug!(topic, key = message.key, "context");
-        debug!(
-            kafka_read_entries = 1,
-            kafka_read_bytes = message.payload.len(),
-            "stats"
-        );
+        debug!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len(), "stats");
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");

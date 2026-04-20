@@ -8,23 +8,10 @@ pub(crate) fn insert_with_auto_increment_id_impl(
     table_name: &String,
     fields: &Vec<(&syn::Field, FieldInfo)>,
 ) -> proc_macro2::TokenStream {
-    let pk_col = fields
-        .iter()
-        .find(|(_, i)| i.auto_increment_pk)
-        .unwrap()
-        .1
-        .column
-        .as_str();
+    let pk_col = fields.iter().find(|(_, i)| i.auto_increment_pk).unwrap().1.column.as_str();
     let ins_fields: Vec<_> = fields.iter().filter(|(_, i)| !i.auto_increment_pk).collect();
-    let cols = ins_fields
-        .iter()
-        .map(|(_, i)| i.column.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let placeholders = (1..=ins_fields.len())
-        .map(|i| format!("${i}"))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let cols = ins_fields.iter().map(|(_, i)| i.column.as_str()).collect::<Vec<_>>().join(", ");
+    let placeholders = (1..=ins_fields.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
     let sql = format!("INSERT INTO \"{table_name}\" ({cols}) VALUES ({placeholders}) RETURNING {pk_col}");
     let params = ins_fields.iter().map(|(f, _)| {
         let fname = &f.ident;
@@ -47,23 +34,12 @@ pub(crate) fn insert_impl(
     table_name: &str,
     fields: &Vec<(&syn::Field, FieldInfo)>,
 ) -> proc_macro2::TokenStream {
-    let cols = fields
-        .iter()
-        .map(|(_, i)| i.column.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let placeholders = (1..=fields.len())
-        .map(|i| format!("${i}"))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let cols = fields.iter().map(|(_, i)| i.column.as_str()).collect::<Vec<_>>().join(", ");
+    let placeholders = (1..=fields.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
     let sql = format!("INSERT INTO \"{table_name}\" ({cols}) VALUES ({placeholders})");
 
-    let pk_cols = fields
-        .iter()
-        .filter(|(_, i)| i.assigned_pk)
-        .map(|(_, i)| i.column.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let pk_cols =
+        fields.iter().filter(|(_, i)| i.assigned_pk).map(|(_, i)| i.column.as_str()).collect::<Vec<_>>().join(", ");
     let non_pk_fields: Vec<_> = fields.iter().filter(|(_, i)| !i.assigned_pk).collect();
     let update_set = non_pk_fields
         .iter()

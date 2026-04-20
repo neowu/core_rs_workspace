@@ -75,10 +75,7 @@ pub struct TraceDocument {
     content: String,
 }
 
-pub async fn action_log_message_handler(
-    state: Arc<AppState>,
-    messages: Vec<Message<ActionLogMessage>>,
-) -> Result<(), Exception> {
+pub async fn action_log_message_handler(state: Arc<AppState>, messages: Vec<Message<ActionLogMessage>>) -> Result<(), Exception> {
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
     let mut traces: Vec<(String, TraceDocument)> = vec![];
     for message in messages {

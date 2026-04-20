@@ -69,9 +69,6 @@ mod tests {
 
     #[test]
     fn index() {
-        assert_eq!(
-            super::index(NaiveDate::from_ymd_opt(2025, 11, 5).unwrap()),
-            "stat-2025.11.05"
-        )
+        assert_eq!(super::index(NaiveDate::from_ymd_opt(2025, 11, 5).unwrap()), "stat-2025.11.05")
     }
 }

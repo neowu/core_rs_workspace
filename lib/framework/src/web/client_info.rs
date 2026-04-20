@@ -15,10 +15,8 @@ pub struct ClientInfo {
 }
 
 pub(crate) fn client_info(request: &Request, max_forwarded_ips: usize) -> ClientInfo {
-    let user_agent = request
-        .headers()
-        .get(header::USER_AGENT)
-        .map(|value| value.to_str().unwrap_or_default().to_string());
+    let user_agent =
+        request.headers().get(header::USER_AGENT).map(|value| value.to_str().unwrap_or_default().to_string());
 
     let mut client_ip: Option<String> = None;
     if max_forwarded_ips > 0
@@ -33,10 +31,7 @@ pub(crate) fn client_info(request: &Request, max_forwarded_ips: usize) -> Client
         client_ip = Some(connect_info.0.ip().to_string());
     }
 
-    ClientInfo {
-        client_ip: client_ip.unwrap_or("unknown".to_string()),
-        user_agent,
-    }
+    ClientInfo { client_ip: client_ip.unwrap_or("unknown".to_string()), user_agent }
 }
 
 fn extract_client_ip(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<String> {
@@ -129,18 +124,9 @@ mod tests {
 
         assert_eq!(extract_client_ip("108.0.0.1", 2), Some("108.0.0.1".to_string()));
         assert_eq!(extract_client_ip(" 108.0.0.1 ", 2), Some("108.0.0.1".to_string()));
-        assert_eq!(
-            extract_client_ip("108.0.0.1, 10.10.10.10", 2),
-            Some("108.0.0.1".to_string())
-        );
-        assert_eq!(
-            extract_client_ip("108.0.0.2, 108.0.0.1, 10.10.10.10", 2),
-            Some("108.0.0.1".to_string())
-        );
+        assert_eq!(extract_client_ip("108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
+        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
 
-        assert_eq!(
-            extract_client_ip("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2),
-            Some("108.0.0.1".to_string())
-        );
+        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
     }
 }

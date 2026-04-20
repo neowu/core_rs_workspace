@@ -31,10 +31,7 @@ impl Shutdown {
 
             #[cfg(unix)]
             let terminate = async {
-                signal::unix::signal(SignalKind::terminate())
-                    .expect("failed to install signal handler")
-                    .recv()
-                    .await;
+                signal::unix::signal(SignalKind::terminate()).expect("failed to install signal handler").recv().await;
             };
 
             tokio::select! {
@@ -42,7 +39,7 @@ impl Shutdown {
                 _ = terminate => {},
             }
 
-            info!("recieved shutdown signal");
+            info!("received shutdown signal");
             self.signal.send(()).unwrap();
         });
     }

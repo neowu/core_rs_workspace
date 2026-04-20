@@ -38,11 +38,7 @@ pub async fn event_message_handler(
     let now = Utc::now().date_naive();
     let path = local_file_path("event", now, &state)?;
 
-    let file = if path.exists() {
-        OpenOptions::new().append(true).open(path)?
-    } else {
-        File::create(path)?
-    };
+    let file = if path.exists() { OpenOptions::new().append(true).open(path)? } else { File::create(path)? };
     let mut writer = LineWriter::new(file);
 
     for message in messages {

@@ -76,10 +76,7 @@ impl Database {
 pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let updated_rows = with_timeout(
             connection
@@ -105,10 +102,7 @@ where
 {
     let span = debug_span!("db");
     async {
-        let connection = database
-            .pool
-            .get_with_timeout(database.connection_checkout_timeout)
-            .await?;
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
         let row = with_timeout(
             connection
@@ -122,9 +116,7 @@ where
 
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
 
-        row.map(T::try_from)
-            .transpose()
-            .map_err(|err| exception!(message = "failed to map row", source = err))
+        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
     }
     .instrument(span)
     .await

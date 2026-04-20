@@ -35,12 +35,7 @@ pub struct HttpRequest {
 
 impl HttpRequest {
     pub fn new(method: HttpMethod, url: impl Into<String>) -> Self {
-        HttpRequest {
-            method,
-            url: url.into(),
-            headers: HashMap::new(),
-            body: None,
-        }
+        HttpRequest { method, url: url.into(), headers: HashMap::new(), body: None }
     }
 
     pub fn body(&mut self, body: String, content_type: impl Into<String>) {

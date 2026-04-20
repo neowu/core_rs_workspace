@@ -14,8 +14,5 @@ fn test() -> Result<(), Exception> {
 }
 
 fn test2() -> Result<(), Exception> {
-    Err(validation_error!(
-        severity = Severity::Error,
-        message = "some field is wrong"
-    ))
+    Err(validation_error!(severity = Severity::Error, message = "some field is wrong"))
 }

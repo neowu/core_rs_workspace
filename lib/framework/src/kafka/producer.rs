@@ -30,10 +30,7 @@ impl Producer {
             .set("compression.codec", "zstd")
             .create()
             .expect("Producer creation error");
-        Self {
-            producer,
-            client: client.to_owned(),
-        }
+        Self { producer, client: client.to_owned() }
     }
 
     pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> Result<(), Exception>
@@ -73,8 +70,5 @@ impl Producer {
 }
 
 fn insert_header(headers: OwnedHeaders, key: &str, value: &str) -> OwnedHeaders {
-    headers.insert(Header {
-        key,
-        value: Some(value.as_bytes()),
-    })
+    headers.insert(Header { key, value: Some(value.as_bytes()) })
 }

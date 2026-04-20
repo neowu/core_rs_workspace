@@ -31,9 +31,7 @@ pub struct AppState {
 impl AppState {
     fn new(config: &AppConfig) -> Result<Self, Exception> {
         Ok(AppState {
-            topics: Topics {
-                event: Topic::new("event"),
-            },
+            topics: Topics { event: Topic::new("event") },
             producer: Producer::new(&config.kafka_uri, env!("CARGO_BIN_NAME")),
         })
     }

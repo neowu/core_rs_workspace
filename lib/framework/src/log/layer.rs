@@ -92,9 +92,7 @@ thread={:?}"#,
         } else if let Some(action_span) = action_span(context.span_scope(id))
             && let Some(action_log) = action_span.extensions_mut().get_mut::<ActionLog>()
         {
-            extensions.insert(SpanExtension {
-                start_time: Instant::now(),
-            });
+            extensions.insert(SpanExtension { start_time: Instant::now() });
 
             let mut log_string = format!("[span:{}] ", span.name());
             attrs.record(&mut LogVisitor(&mut log_string));
@@ -113,9 +111,7 @@ thread={:?}"#,
             && let Some(span_extension) = span.extensions_mut().remove::<SpanExtension>()
         {
             let elapsed = span_extension.start_time.elapsed();
-            action_log
-                .logs
-                .push(format!("[span:{}] elapsed={:?} <<<", span.name(), elapsed));
+            action_log.logs.push(format!("[span:{}] elapsed={:?} <<<", span.name(), elapsed));
 
             let value = action_log.stats.entry(format!("{}_elapsed", span.name())).or_default();
             *value += elapsed.as_nanos();
@@ -162,20 +158,13 @@ thread={:?}"#,
             write!(log, "{}:{} ", metadata.target(), metadata.line().unwrap_or(0)).unwrap();
 
             if level == &Level::ERROR || level == &Level::WARN {
-                let mut visitor = ErrorVisitor {
-                    message: None,
-                    code: None,
-                };
+                let mut visitor = ErrorVisitor { message: None, code: None };
                 event.record(&mut visitor);
                 if let Some(ref error_code) = visitor.code {
                     write!(log, "[{error_code}] ").unwrap();
                 }
 
-                let result = if level == &Level::ERROR {
-                    ActionResult::Error
-                } else {
-                    ActionResult::Warn
-                };
+                let result = if level == &Level::ERROR { ActionResult::Error } else { ActionResult::Warn };
 
                 if action_log.result.level() < result.level() {
                     action_log.result = result;
@@ -186,15 +175,10 @@ thread={:?}"#,
 
             let mut visitor = LogVisitor(&mut log);
             event.record(&mut visitor);
-            action_log
-                .logs
-                .push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
+            action_log.logs.push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
 
             // handle "context" and "stats" event
-            let mut visitor = ContextVisitor {
-                action_log,
-                context_type: None,
-            };
+            let mut visitor = ContextVisitor { action_log, context_type: None };
             event.record(&mut visitor);
         }
     }
@@ -212,11 +196,7 @@ struct ActionVisitor {
 
 impl ActionVisitor {
     fn new() -> Self {
-        Self {
-            action: None,
-            action_id: None,
-            ref_id: None,
-        }
+        Self { action: None, action_id: None, ref_id: None }
     }
 
     fn action_log(self) -> Option<ActionLog> {
@@ -349,10 +329,9 @@ impl Visit for ContextVisitor<'_> {
     fn record_str(&mut self, field: &Field, value: &str) {
         if let Some(ContextType::Context) = self.context_type {
             let value = value.to_owned();
-            self.action_log.context.insert(
-                field.name(),
-                truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")),
-            );
+            self.action_log
+                .context
+                .insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
         }
     }
 
@@ -417,16 +396,10 @@ mod tests {
         assert_eq!(truncate(value.clone(), 3, None), "123".to_owned());
         assert_eq!(truncate(value.clone(), 4, None), "123".to_owned());
         assert_eq!(truncate(value.clone(), 5, None), "123".to_owned());
-        assert_eq!(
-            truncate(value.clone(), 6, Some("...(truncated)")),
-            "123老...(truncated)".to_owned()
-        );
+        assert_eq!(truncate(value.clone(), 6, Some("...(truncated)")), "123老...(truncated)".to_owned());
         assert_eq!(truncate(value.clone(), 7, None), "123老".to_owned());
         assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
         assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
-        assert_eq!(
-            truncate(value.clone(), 10, Some("...(truncated)")),
-            "123老虎4...(truncated)".to_owned()
-        );
+        assert_eq!(truncate(value.clone(), 10, Some("...(truncated)")), "123老虎4...(truncated)".to_owned());
     }
 }

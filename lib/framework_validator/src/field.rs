@@ -15,11 +15,7 @@ pub struct FieldDefinition<'a> {
 
 impl<'a> FieldDefinition<'a> {
     fn new(field: &'a Field) -> Self {
-        let name = field
-            .ident
-            .as_ref()
-            .map(|i| i.to_string())
-            .expect("only support struct with named fields");
+        let name = field.ident.as_ref().map(|i| i.to_string()).expect("only support struct with named fields");
 
         let ident = &field.ident;
 
@@ -31,12 +27,7 @@ impl<'a> FieldDefinition<'a> {
 
         let attrs = &field.attrs;
 
-        FieldDefinition {
-            name,
-            ident,
-            is_optional,
-            attrs,
-        }
+        FieldDefinition { name, ident, is_optional, attrs }
     }
 
     pub fn attr(&self, ident: &str) -> Option<&Attribute> {

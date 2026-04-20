@@ -57,10 +57,7 @@ where
     S: Send + Sync + 'static,
 {
     pub fn new(timezone: FixedOffset) -> Self {
-        Self {
-            timezone,
-            schedules: Vec::new(),
-        }
+        Self { timezone, schedules: Vec::new() }
     }
 
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: Duration)
@@ -77,10 +74,7 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        let trigger = Box::new(DailyTrigger {
-            time_zone: self.timezone,
-            time,
-        });
+        let trigger = Box::new(DailyTrigger { time_zone: self.timezone, time });
         self.add_job(name, job, trigger);
     }
 
@@ -90,11 +84,7 @@ where
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
         let job = move |state: S, context| process_job(job, state, context);
-        self.schedules.push(Schedule {
-            name,
-            job: Box::new(job),
-            trigger,
-        });
+        self.schedules.push(Schedule { name, job: Box::new(job), trigger });
     }
 
     pub async fn start(self, state: S, shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception>
@@ -110,10 +100,7 @@ where
                 let mut previous = Utc::now();
                 loop {
                     let next = schedule.trigger.next(previous);
-                    let context = JobContext {
-                        name: schedule.name,
-                        scheduled_time: next,
-                    };
+                    let context = JobContext { name: schedule.name, scheduled_time: next };
                     info!(
                         name = context.name,
                         scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),

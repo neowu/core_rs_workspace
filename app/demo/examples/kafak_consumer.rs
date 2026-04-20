@@ -66,10 +66,7 @@ async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Res
     if let Some(ref key) = message.key {
         if key == "1" {
             let value = message.payload()?;
-            state
-                .producer
-                .send(&state.topics.test_single, Some("xxx".to_string()), &value)
-                .await?;
+            state.producer.send(&state.topics.test_single, Some("xxx".to_string()), &value).await?;
         } else {
             state.tx.send(message.payload()?).await?;
         }
@@ -94,10 +91,7 @@ async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) ->
         if let Some(ref key) = message.key {
             if key == "1" {
                 let value = message.payload()?;
-                state
-                    .producer
-                    .send(&state.topics.test_single, Some("xxx".to_string()), &value)
-                    .await?;
+                state.producer.send(&state.topics.test_single, Some("xxx".to_string()), &value).await?;
                 warn!("test");
             } else {
                 println!("Received message: {}", message.payload()?.name);
