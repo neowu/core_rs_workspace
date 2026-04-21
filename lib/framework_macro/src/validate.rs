@@ -8,7 +8,7 @@ use crate::model::AttributeModel;
 use crate::model::FieldModel;
 
 pub(crate) fn validate_impl(tokens: TokenStream) -> Result<TokenStream> {
-    let model = model::parse(tokens)?;
+    let model = model::parse_struct(tokens)?;
     let name = &model.ident;
 
     let mut body = vec![];

@@ -23,6 +23,8 @@ pub(crate) struct StructModel {
     pub(crate) fields: Vec<FieldModel>,
 }
 
+impl StructModel {}
+
 pub(crate) struct FieldModel {
     pub(crate) ident: Ident,
     pub(crate) r#type: String,
@@ -43,7 +45,7 @@ pub(crate) struct AttributesModel {
 impl AttributesModel {
     pub(crate) fn get(&self, name: &'static str) -> Result<&AttributeModel> {
         self.get_optional(name)
-            .ok_or_else(|| Error::new_spanned(&self.parent_ident, format!("can not find attribute, name={name}")))
+            .ok_or_else(|| Error::new_spanned(&self.parent_ident, format!("can not find {name} attribute")))
     }
 
     pub(crate) fn get_optional(&self, name: &'static str) -> Option<&AttributeModel> {
@@ -79,7 +81,7 @@ impl AttributeModel {
         }
     }
 
-    pub(crate) fn has_meta_path(&self, name: &str) -> bool {
+    pub(crate) fn has_meta(&self, name: &str) -> bool {
         let Ok(nested) = self.attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
             return false;
         };
@@ -96,7 +98,7 @@ impl AttributeModel {
     }
 }
 
-pub(crate) fn parse(tokens: TokenStream) -> Result<StructModel> {
+pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
     let ast: DeriveInput = parse2(tokens)?;
     let ident = ast.ident;
     let attrs = ast.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
@@ -105,19 +107,19 @@ pub(crate) fn parse(tokens: TokenStream) -> Result<StructModel> {
         if let Named(FieldsNamed { named, .. }) = data_struct.fields {
             named
         } else {
-            return Err(Error::new_spanned(&ident, "only supports named fields"));
+            return Err(Error::new_spanned(&ident, "derive struct can only have named fields"));
         }
     } else {
-        return Err(Error::new_spanned(&ident, "only supports struct"));
+        return Err(Error::new_spanned(&ident, "derive target must be struct"));
     };
 
     let fields = fields
         .into_iter()
         .map(|field| {
-            let ident = field.ident.unwrap();
+            let ident = field.ident.expect("field should be named");
             let attrs = field.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
             let r#type = field.ty.to_token_stream().to_string().replace(" ", "");
-            FieldModel { ident: ident.clone(), r#type, attrs: AttributesModel { parent_ident: ident.clone(), attrs } }
+            FieldModel { ident: ident.clone(), r#type, attrs: AttributesModel { parent_ident: ident, attrs } }
         })
         .collect();
 
@@ -128,7 +130,7 @@ pub(crate) fn parse(tokens: TokenStream) -> Result<StructModel> {
 mod tests {
     use quote::quote;
 
-    use super::parse;
+    use super::parse_struct;
 
     #[test]
     fn test_parse_with_entity_macro() -> syn::Result<()> {
@@ -146,7 +148,7 @@ mod tests {
             }
         };
 
-        let model = parse(tokens)?;
+        let model = parse_struct(tokens)?;
         assert_eq!(model.ident, "TestEntity");
         assert_eq!(model.attrs.get("table")?.string_meta_value("name")?, "test_entity");
 
@@ -184,7 +186,7 @@ mod tests {
             }
         };
 
-        let model = parse(tokens)?;
+        let model = parse_struct(tokens)?;
         assert_eq!(model.ident, "TestBean");
 
         assert_eq!(model.fields.len(), 4);
