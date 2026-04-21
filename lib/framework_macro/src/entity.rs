@@ -11,44 +11,37 @@ pub(crate) fn entity_impl(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
     let model = parse_entity(model)?;
 
-    let from_row = from_row_impl(&model);
+    let from_row_impl = from_row_impl(&model);
 
-    let insert_auto_increment = if model.primary_key && model.auto_increment {
-        insert_with_auto_increment_primary_key_impl(&model)
-    } else {
-        quote! {}
-    };
-
-    let insert = if model.primary_key && !model.auto_increment {
-        insert_impl(&model)
+    let insert_impl = if model.has_primary_key {
+        if model.has_auto_increment_primary_key { insert_auto_increment_impl(&model) } else { insert_impl(&model) }
     } else {
         quote! {}
     };
 
     Ok(quote! {
-        #from_row
-        #insert_auto_increment
-        #insert
+        #from_row_impl
+        #insert_impl
     })
 }
 
 struct EntityModel {
-    r#struct: Ident,
+    struct_ident: Ident,
     table: String,
     columns: Vec<ColumnModel>,
-    primary_key: bool,
-    auto_increment: bool,
+    has_primary_key: bool,
+    has_auto_increment_primary_key: bool,
 }
 
 struct ColumnModel {
-    field: Ident,
+    field_ident: Ident,
     column: String,
     primary_key: bool,
     auto_increment: bool,
 }
 
 fn parse_entity(model: StructModel) -> Result<EntityModel> {
-    let table = model.attrs.get("table")?.string_meta_value("name")?;
+    let table = model.attr("table")?.string_meta_value("name")?;
 
     let mut columns = vec![];
 
@@ -58,21 +51,21 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
     for field in model.fields {
         let mut primary_key = false;
         let mut auto_increment = false;
-        if let Some(attr) = field.attrs.get_optional("primary_key") {
+        if let Some(attr) = field.optional_attr("primary_key") {
             primary_key = true;
             primary_key_fields += 1;
 
-            if attr.has_meta("auto_increment") {
-                if field.r#type != "Option<i64>" {
+            if attr.has_meta_path("auto_increment") {
+                if field.field_type != "Option<i64>" {
                     return Err(Error::new_spanned(
                         &field.ident,
-                        "auto_increment primary_key field must have type `Option<i64>",
+                        "#[primary_key(auto_increment)] field must have type `Option<i64>",
                     ));
                 }
                 if found_auto_increment {
                     return Err(Error::new_spanned(
                         &field.ident,
-                        "only one auto_increment primary_key field is allowed",
+                        "only one #[primary_key(auto_increment)] field is allowed",
                     ));
                 }
                 auto_increment = true;
@@ -81,33 +74,33 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
         }
 
         if primary_key_fields > 1 && found_auto_increment {
-            return Err(Error::new_spanned(&field.ident, "primary_key fields must not mix auto_increment and not"));
+            return Err(Error::new_spanned(
+                &field.ident,
+                "cannot mix #[primary_key] and #[primary_key(auto_increment)] fields",
+            ));
         }
 
-        columns.push(ColumnModel {
-            field: field.ident,
-            column: field.attrs.get("column")?.string_meta_value("name")?,
-            primary_key,
-            auto_increment,
-        });
+        let column = field.attr("column")?.string_meta_value("name")?;
+
+        columns.push(ColumnModel { field_ident: field.ident, column, primary_key, auto_increment });
     }
 
     Ok(EntityModel {
-        r#struct: model.ident,
+        struct_ident: model.ident,
         table,
         columns,
-        primary_key: primary_key_fields > 0,
-        auto_increment: found_auto_increment,
+        has_primary_key: primary_key_fields > 0,
+        has_auto_increment_primary_key: found_auto_increment,
     })
 }
 
 fn from_row_impl(model: &EntityModel) -> TokenStream {
     let assignments = model.columns.iter().map(|column| {
-        let field = &column.field;
+        let field = &column.field_ident;
         let column = &column.column;
         quote! { #field: row.try_get(#column)?, }
     });
-    let struct_name = &model.r#struct;
+    let struct_name = &model.struct_ident;
     quote! {
         impl ::std::convert::TryFrom<framework::db::Row> for #struct_name {
             type Error = framework::db::PgError;
@@ -120,20 +113,20 @@ fn from_row_impl(model: &EntityModel) -> TokenStream {
     }
 }
 
-fn insert_with_auto_increment_primary_key_impl(model: &EntityModel) -> TokenStream {
-    let struct_name = &model.r#struct;
+fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
+    let struct_name = &model.struct_ident;
     let table = &model.table;
     let primary_key = &model.columns.iter().find(|column| column.auto_increment).unwrap().column;
-    let insert_fields: Vec<_> = model.columns.iter().filter(|column| !column.auto_increment).collect();
+    let insert_fields = model.columns.iter().filter(|column| !column.auto_increment).collect::<Vec<_>>();
     let insert_columns = insert_fields.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
     let placeholders = (1..=insert_fields.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
     let sql = format!("INSERT INTO \"{table}\" ({insert_columns}) VALUES ({placeholders}) RETURNING {primary_key}");
     let params = insert_fields.iter().map(|column| {
-        let field = &column.field;
+        let field = &column.field_ident;
         quote! { &self.#field, }
     });
     quote! {
-        impl framework::db::InsertWithAutoIncrementId for #struct_name {
+        impl framework::db::repository::InsertWithAutoIncrementId for #struct_name {
             async fn __insert(
                 &self,
                 client: &framework::db::Client,
@@ -145,7 +138,7 @@ fn insert_with_auto_increment_primary_key_impl(model: &EntityModel) -> TokenStre
 }
 
 fn insert_impl(model: &EntityModel) -> TokenStream {
-    let struct_name = &model.r#struct;
+    let struct_name = &model.struct_ident;
     let table = &model.table;
     let insert_columns = model.columns.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
     let placeholders = (1..=model.columns.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
@@ -175,13 +168,13 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
         .columns
         .iter()
         .map(|column| {
-            let field = &column.field;
+            let field = &column.field_ident;
             quote! { &self.#field, }
         })
         .collect();
 
     quote! {
-        impl framework::db::Insert for #struct_name {
+        impl framework::db::repository::Insert for #struct_name {
             async fn __insert(&self, client: &framework::db::Client) -> ::std::result::Result<u64, framework::db::PgError> {
                 client.execute(#sql, &[#(#params)*]).await
             }
@@ -230,22 +223,22 @@ mod tests {
                     }
                 }
 
-                impl framework::db::Insert for TestEntity {
+                impl framework::db::repository::Insert for TestEntity {
                     async fn __insert(
                         &self,
-                        client: &framework::db::Client,
+                        client: &framework::db::Client
                     ) -> ::std::result::Result<u64, framework::db::PgError> {
                         client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)", &[&self.id, &self.col1,]).await
                     }
                     async fn __insert_ignore(
                         &self,
-                        client: &framework::db::Client,
+                        client: &framework::db::Client
                     ) -> ::std::result::Result<u64, framework::db::PgError> {
                         client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING", &[&self.id, &self.col1,]).await
                     }
                     async fn __upsert(
                         &self,
-                        client: &framework::db::Client,
+                        client: &framework::db::Client
                     ) -> ::std::result::Result<bool, framework::db::PgError> {
                         client.query_one_scalar("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted", &[&self.id, &self.col1,]).await
                     }
@@ -284,7 +277,7 @@ mod tests {
                     }
                 }
 
-                impl framework::db::InsertWithAutoIncrementId for TestEntity {
+                impl framework::db::repository::InsertWithAutoIncrementId for TestEntity {
                     async fn __insert(
                         &self,
                         client: &framework::db::Client,

@@ -140,17 +140,3 @@ async fn with_timeout<T>(
         }
     }
 }
-
-#[allow(async_fn_in_trait)]
-#[doc(hidden)] // disable auto complete, it's used by framework
-pub trait InsertWithAutoIncrementId {
-    async fn __insert(&self, client: &Client) -> Result<i64, PgError>;
-}
-
-#[allow(async_fn_in_trait)]
-#[doc(hidden)] // disable auto complete, it's used by framework
-pub trait Insert {
-    async fn __insert(&self, client: &Client) -> Result<u64, PgError>;
-    async fn __insert_ignore(&self, client: &Client) -> Result<u64, PgError>;
-    async fn __upsert(&self, client: &Client) -> Result<bool, PgError>;
-}

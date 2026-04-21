@@ -1,14 +1,28 @@
 use futures::TryFutureExt;
+use tokio_postgres::Client;
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
 
 use crate::db::Database;
-use crate::db::Insert;
-use crate::db::InsertWithAutoIncrementId;
+use crate::db::PgError;
 use crate::db::with_timeout;
 use crate::exception;
 use crate::exception::Exception;
+
+#[allow(async_fn_in_trait)]
+#[doc(hidden)] // disable auto complete, it's used by framework
+pub trait InsertWithAutoIncrementId {
+    async fn __insert(&self, client: &Client) -> Result<i64, PgError>;
+}
+
+#[allow(async_fn_in_trait)]
+#[doc(hidden)] // disable auto complete, it's used by framework
+pub trait Insert {
+    async fn __insert(&self, client: &Client) -> Result<u64, PgError>;
+    async fn __insert_ignore(&self, client: &Client) -> Result<u64, PgError>;
+    async fn __upsert(&self, client: &Client) -> Result<bool, PgError>;
+}
 
 pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exception> {
     let span = debug_span!("db");
