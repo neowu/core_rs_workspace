@@ -12,12 +12,12 @@ pub use tokio_postgres::types::ToSql;
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
+use tracing::error;
 
 use crate::exception;
 use crate::exception::Exception;
 use crate::pool::ResourceManager;
 use crate::pool::ResourcePool;
-use crate::task;
 
 pub mod repository;
 
@@ -26,7 +26,7 @@ struct Connection {
     cancel_token: CancelToken,
 }
 
-type QueryParam = dyn ToSql + Sync;
+pub type QueryParam = dyn ToSql + Sync;
 
 impl ResourceManager for ConnectionManager {
     type Target = Connection;
@@ -34,9 +34,11 @@ impl ResourceManager for ConnectionManager {
     async fn create(&self) -> Result<Self::Target, Exception> {
         let (client, connection) = self.config.connect(NoTls).await?;
 
-        task::spawn_task(async move {
-            connection.await?;
-            Ok(())
+        // use native tokio spawn, not wire current span
+        tokio::task::spawn(async {
+            if let Err(e) = connection.await {
+                error!("connection error: {e}");
+            }
         });
 
         let cancel_token = client.cancel_token();
@@ -74,7 +76,6 @@ impl Database {
 }
 
 pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -92,7 +93,7 @@ pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam
 
         Ok(updated_rows)
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
     .await
 }
 
@@ -100,7 +101,6 @@ pub async fn select_one<T>(database: &Database, statement: &str, params: &[&Quer
 where
     T: TryFrom<Row, Error = PgError>,
 {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -118,7 +118,7 @@ where
 
         row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
     .await
 }
 

@@ -6,7 +6,7 @@ members = ["app/*", "lib/*"]
 framework = { path = "lib/framework", features = ["kafka", "db"] }
 framework_macro = { path = "lib/framework_macro", features = ["db"] }
 
-tracing = "*"
+tracing = { version = "*", features = ["max_level_debug"] }
 serde = { version = "*", features = ["derive"] }
 chrono = { version = "*", features = ["serde"] }
 

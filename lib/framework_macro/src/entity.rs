@@ -19,9 +19,16 @@ pub(crate) fn entity_impl(tokens: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
+    let select_impl = if model.has_primary_key {
+        select_impl(&model)
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         #from_row_impl
         #insert_impl
+        #select_impl
     })
 }
 
@@ -127,11 +134,11 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
     });
     quote! {
         impl framework::db::repository::InsertWithAutoIncrementId for #struct_name {
-            async fn __insert(
-                &self,
-                client: &framework::db::Client,
-            ) -> ::std::result::Result<i64, framework::db::PgError> {
-                client.query_one_scalar(#sql, &[#(#params)*]).await
+            async fn __insert(&self, client: &framework::db::Client) -> ::std::result::Result<i64, framework::db::PgError> {
+                let sql = #sql;
+                let params: &[&framework::db::QueryParam] = &[#(#params)*];
+                tracing::debug!("sql={sql}, params={params:?}");
+                client.query_one_scalar(sql, params).await
             }
         }
     }
@@ -176,13 +183,47 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
     quote! {
         impl framework::db::repository::Insert for #struct_name {
             async fn __insert(&self, client: &framework::db::Client) -> ::std::result::Result<u64, framework::db::PgError> {
-                client.execute(#sql, &[#(#params)*]).await
+                let sql = #sql;
+                let params: &[&framework::db::QueryParam] = &[#(#params)*];
+                tracing::debug!("sql={sql}, params={params:?}");
+                client.execute(sql, params).await
             }
             async fn __insert_ignore(&self, client: &framework::db::Client) -> ::std::result::Result<u64, framework::db::PgError> {
-                client.execute(#sql_ignore, &[#(#params)*]).await
+                let sql = #sql_ignore;
+                let params: &[&framework::db::QueryParam] = &[#(#params)*];
+                tracing::debug!("sql={sql}, params={params:?}");
+                client.execute(sql, params).await
             }
             async fn __upsert(&self, client: &framework::db::Client) -> ::std::result::Result<bool, framework::db::PgError> {
-                client.query_one_scalar(#sql_upsert, &[#(#params)*]).await
+                let sql = #sql_upsert;
+                let params: &[&framework::db::QueryParam] = &[#(#params)*];
+                tracing::debug!("sql={sql}, params={params:?}");
+                client.query_one_scalar(sql, params).await
+            }
+        }
+    }
+}
+
+fn select_impl(model: &EntityModel) -> TokenStream {
+    let struct_name = &model.struct_ident;
+    let table = &model.table;
+    let all_columns = model.columns.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
+    let primary_key_columns: Vec<_> = model.columns.iter().filter(|column| column.primary_key).collect();
+    let where_clause = primary_key_columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{} = ${}", c.column, i + 1))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let sql = format!("SELECT {all_columns} FROM \"{table}\" WHERE {where_clause}");
+
+    quote! {
+        impl framework::db::repository::Select<#struct_name> for #struct_name {
+            async fn __get(client: &framework::db::Client, ids: &[&framework::db::QueryParam]) -> ::std::result::Result<::std::option::Option<#struct_name>, framework::db::PgError> {
+                let sql = #sql;
+                tracing::debug!("sql={sql}, params={ids:?}");
+                let row = client.query_opt(sql, ids).await?;
+                row.map(#struct_name::try_from).transpose()
             }
         }
     }
@@ -228,19 +269,40 @@ mod tests {
                         &self,
                         client: &framework::db::Client
                     ) -> ::std::result::Result<u64, framework::db::PgError> {
-                        client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)", &[&self.id, &self.col1,]).await
+                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)";
+                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
+                        tracing::debug!("sql={sql}, params={params:?}");
+                        client.execute(sql, params).await
                     }
                     async fn __insert_ignore(
                         &self,
                         client: &framework::db::Client
                     ) -> ::std::result::Result<u64, framework::db::PgError> {
-                        client.execute("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING", &[&self.id, &self.col1,]).await
+                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
+                        tracing::debug!("sql={sql}, params={params:?}");
+                        client.execute(sql, params).await
                     }
                     async fn __upsert(
                         &self,
                         client: &framework::db::Client
                     ) -> ::std::result::Result<bool, framework::db::PgError> {
-                        client.query_one_scalar("INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted", &[&self.id, &self.col1,]).await
+                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted";
+                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
+                        tracing::debug!("sql={sql}, params={params:?}");
+                        client.query_one_scalar(sql, params).await
+                    }
+                }
+
+                impl framework::db::repository::Select<TestEntity> for TestEntity {
+                    async fn __get(
+                        client: &framework::db::Client,
+                        ids: &[&framework::db::QueryParam]
+                    ) -> ::std::result::Result<::std::option::Option<TestEntity>, framework::db::PgError> {
+                        let sql = "SELECT id, col1 FROM \"test_entity\" WHERE id = $1";
+                        tracing::debug!("sql={sql}, params={ids:?}");
+                        let row = client.query_opt(sql, ids).await?;
+                        row.map(TestEntity::try_from).transpose()
                     }
                 }
             }
@@ -280,9 +342,24 @@ mod tests {
                 impl framework::db::repository::InsertWithAutoIncrementId for TestEntity {
                     async fn __insert(
                         &self,
-                        client: &framework::db::Client,
+                        client: &framework::db::Client
                     ) -> ::std::result::Result<i64, framework::db::PgError> {
-                        client.query_one_scalar("INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id", &[&self.col1,]).await
+                        let sql = "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id";
+                        let params: &[&framework::db::QueryParam] = &[&self.col1,];
+                        tracing::debug!("sql={sql}, params={params:?}");
+                        client.query_one_scalar(sql, params).await
+                    }
+                }
+
+                impl framework::db::repository::Select<TestEntity> for TestEntity {
+                    async fn __get(
+                        client: &framework::db::Client,
+                        ids: &[&framework::db::QueryParam]
+                    ) -> ::std::result::Result<::std::option::Option<TestEntity>, framework::db::PgError> {
+                        let sql = "SELECT id, col1 FROM \"test_entity\" WHERE id = $1";
+                        tracing::debug!("sql={sql}, params={ids:?}");
+                        let row = client.query_opt(sql, ids).await?;
+                        row.map(TestEntity::try_from).transpose()
                     }
                 }
             }

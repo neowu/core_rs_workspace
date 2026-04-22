@@ -1,11 +1,13 @@
 use futures::TryFutureExt;
 use tokio_postgres::Client;
+use tokio_postgres::Row;
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
 
 use crate::db::Database;
 use crate::db::PgError;
+use crate::db::QueryParam;
 use crate::db::with_timeout;
 use crate::exception;
 use crate::exception::Exception;
@@ -24,8 +26,13 @@ pub trait Insert {
     async fn __upsert(&self, client: &Client) -> Result<bool, PgError>;
 }
 
+#[allow(async_fn_in_trait)]
+#[doc(hidden)] // disable auto complete, it's used by framework
+pub trait Select<T> {
+    async fn __get(client: &Client, ids: &[&QueryParam]) -> Result<Option<T>, PgError>;
+}
+
 pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exception> {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -39,13 +46,12 @@ pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exc
         debug!(db_write_rows = 1, "stats");
         Ok(())
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
     .await
 }
 
 // return true if inserted
 pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -61,13 +67,12 @@ pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<
         debug!(db_write_rows = updated_rows, "stats");
         Ok(updated_rows == 1)
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
     .await
 }
 
 // return true if inserted
 pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -82,7 +87,7 @@ pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, E
         debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
         Ok(inserted)
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
     .await
 }
 
@@ -90,7 +95,6 @@ pub async fn insert_with_auto_increment_id(
     database: &Database,
     entity: &impl InsertWithAutoIncrementId,
 ) -> Result<i64, Exception> {
-    let span = debug_span!("db");
     async {
         let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
 
@@ -104,6 +108,28 @@ pub async fn insert_with_auto_increment_id(
         debug!(db_write_rows = 1, "stats");
         Ok(id)
     }
-    .instrument(span)
+    .instrument(debug_span!("db"))
+    .await
+}
+
+pub async fn get<T>(database: &Database, ids: &[&QueryParam]) -> Result<Option<T>, Exception>
+where
+    T: Select<T> + TryFrom<Row, Error = PgError>,
+{
+    async {
+        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let id = with_timeout(
+            T::__get(&connection.client, ids).map_err(|err| exception!(message = "failed to select", source = err)),
+            database.query_timeout,
+            &connection.cancel_token,
+        )
+        .await?;
+
+        let db_get_rows = if id.is_some() { 1 } else { 0 };
+        debug!(db_get_rows, "stats");
+
+        Ok(id)
+    }
+    .instrument(debug_span!("db"))
     .await
 }

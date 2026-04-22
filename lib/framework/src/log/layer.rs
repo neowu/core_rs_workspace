@@ -9,7 +9,6 @@ use chrono::Utc;
 use indexmap::IndexMap;
 use tracing::Event;
 use tracing::Level;
-use tracing::Metadata;
 use tracing::Subscriber;
 use tracing::field::Field;
 use tracing::field::Visit;
@@ -56,11 +55,6 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
     T: ActionLogAppender + 'static,
 {
-    #[inline]
-    fn enabled(&self, metadata: &Metadata<'_>, _context: Context<'_, S>) -> bool {
-        metadata.level() <= &Level::DEBUG
-    }
-
     fn on_new_span(&self, attrs: &Attributes, id: &Id, context: Context<S>) {
         let span = context.span(id).unwrap();
         let mut extensions = span.extensions_mut();
