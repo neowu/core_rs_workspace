@@ -219,11 +219,9 @@ fn select_impl(model: &EntityModel) -> TokenStream {
 
     quote! {
         impl framework::db::repository::Select<#struct_name> for #struct_name {
-            async fn __get(client: &framework::db::Client, ids: &[&framework::db::QueryParam]) -> ::std::result::Result<::std::option::Option<#struct_name>, framework::db::PgError> {
-                let sql = #sql;
-                tracing::debug!("sql={sql}, params={ids:?}");
-                let row = client.query_opt(sql, ids).await?;
-                row.map(#struct_name::try_from).transpose()
+            #[inline]
+            fn __get_sql() -> &'static str {
+                #sql
             }
         }
     }
@@ -295,14 +293,9 @@ mod tests {
                 }
 
                 impl framework::db::repository::Select<TestEntity> for TestEntity {
-                    async fn __get(
-                        client: &framework::db::Client,
-                        ids: &[&framework::db::QueryParam]
-                    ) -> ::std::result::Result<::std::option::Option<TestEntity>, framework::db::PgError> {
-                        let sql = "SELECT id, col1 FROM \"test_entity\" WHERE id = $1";
-                        tracing::debug!("sql={sql}, params={ids:?}");
-                        let row = client.query_opt(sql, ids).await?;
-                        row.map(TestEntity::try_from).transpose()
+                    #[inline]
+                    fn __get_sql() -> &'static str {
+                        "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
                 }
             }
@@ -352,14 +345,9 @@ mod tests {
                 }
 
                 impl framework::db::repository::Select<TestEntity> for TestEntity {
-                    async fn __get(
-                        client: &framework::db::Client,
-                        ids: &[&framework::db::QueryParam]
-                    ) -> ::std::result::Result<::std::option::Option<TestEntity>, framework::db::PgError> {
-                        let sql = "SELECT id, col1 FROM \"test_entity\" WHERE id = $1";
-                        tracing::debug!("sql={sql}, params={ids:?}");
-                        let row = client.query_opt(sql, ids).await?;
-                        row.map(TestEntity::try_from).transpose()
+                    #[inline]
+                    fn __get_sql() -> &'static str {
+                        "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
                 }
             }
