@@ -123,6 +123,7 @@ where
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__get_sql();
+        debug!("get, sql={sql}, params={ids:?}");
         let statement = connection.prepared_statement(sql).await?;
 
         let row = connection

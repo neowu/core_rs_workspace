@@ -88,7 +88,8 @@ thread={:?}"#,
         {
             extensions.insert(SpanExtension { start_time: Instant::now() });
 
-            let mut log_string = format!("[span:{}] ", span.name());
+            let mut log_string =
+                format!("[span:{}] {}:{} ", span.name(), span.metadata().target(), span.metadata().line().unwrap_or(0));
             attrs.record(&mut LogVisitor(&mut log_string));
             log_string.push_str(">>>");
             action_log.logs.push(log_string);
