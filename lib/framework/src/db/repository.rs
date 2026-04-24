@@ -41,7 +41,7 @@ pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Ex
         let params = entity.__insert_params();
         debug!("insert, sql={sql}, params={params:?}");
 
-        let rows = connection
+        let db_write_rows = connection
             .with_timeout(
                 connection
                     .client
@@ -51,7 +51,7 @@ pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Ex
             )
             .await?;
 
-        debug!(db_write_rows = rows, "stats");
+        debug!(db_write_rows, "stats");
         Ok(())
     }
     .instrument(debug_span!("db"))
@@ -66,7 +66,7 @@ pub async fn insert_ignore<T: Insert>(database: &Database, entity: &T) -> Result
         let params = entity.__insert_params();
         debug!("insert_ignore, sql={sql}, params={params:?}");
 
-        let updated_rows = connection
+        let db_write_rows = connection
             .with_timeout(
                 connection
                     .client
@@ -76,8 +76,8 @@ pub async fn insert_ignore<T: Insert>(database: &Database, entity: &T) -> Result
             )
             .await?;
 
-        debug!(db_write_rows = updated_rows, "stats");
-        Ok(updated_rows == 1)
+        debug!(db_write_rows, "stats");
+        Ok(db_write_rows != 0)
     }
     .instrument(debug_span!("db"))
     .await
@@ -101,7 +101,8 @@ pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, 
             )
             .await?;
 
-        let inserted: bool = row.try_get(0).map_err(|err| exception!(message = "failed to upsert", source = err))?;
+        let inserted: bool =
+            row.try_get(0).map_err(|err| exception!(message = "failed to get result", source = err))?;
         debug!("inserted={inserted}");
         debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
         Ok(inserted)
@@ -110,10 +111,10 @@ pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, 
     .await
 }
 
-pub async fn insert_with_auto_increment_id<T>(database: &Database, entity: &T) -> Result<i64, Exception>
-where
-    T: InsertWithAutoIncrementId,
-{
+pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
+    database: &Database,
+    entity: &T,
+) -> Result<i64, Exception> {
     async {
         let connection = database.pool.get_with_timeout().await?;
         let sql = T::__insert_sql();
@@ -130,7 +131,7 @@ where
             )
             .await?;
 
-        let id: i64 = row.try_get(0).map_err(|err| exception!(message = "failed to insert", source = err))?;
+        let id: i64 = row.try_get(0).map_err(|err| exception!(message = "failed to get result", source = err))?;
         debug!(db_write_rows = 1, "stats");
         Ok(id)
     }
@@ -158,19 +159,15 @@ where
             )
             .await?;
 
-        let db_get_rows = if row.is_some() { 1 } else { 0 };
-        debug!(db_get_rows, "stats");
-
-        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to select", source = err))
+        let db_read_rows = if row.is_some() { 1 } else { 0 };
+        debug!(db_read_rows, "stats");
+        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await
 }
 
-pub async fn delete<T>(database: &Database, ids: &[&QueryParam]) -> Result<bool, Exception>
-where
-    T: Delete + TryFrom<Row, Error = PgError>,
-{
+pub async fn delete<T: Delete>(database: &Database, ids: &[&QueryParam]) -> Result<bool, Exception> {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__delete_sql();
@@ -188,7 +185,6 @@ where
             .await?;
 
         debug!(db_write_rows, "stats");
-
         Ok(db_write_rows != 0)
     }
     .instrument(debug_span!("db"))

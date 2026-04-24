@@ -25,10 +25,17 @@ pub(crate) fn entity_impl(tokens: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
+    let delete_impl = if model.has_primary_key {
+        delete_impl(&model)
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         #from_row_impl
         #insert_impl
         #select_impl
+        #delete_impl
     })
 }
 
@@ -208,7 +215,7 @@ fn select_impl(model: &EntityModel) -> TokenStream {
     let where_clause = primary_key_columns
         .iter()
         .enumerate()
-        .map(|(i, c)| format!("{} = ${}", c.column, i + 1))
+        .map(|(index, column)| format!("{} = ${}", column.column, index + 1))
         .collect::<Vec<_>>()
         .join(" AND ");
     let sql = format!("SELECT {all_columns} FROM \"{table}\" WHERE {where_clause}");
@@ -217,6 +224,28 @@ fn select_impl(model: &EntityModel) -> TokenStream {
         impl framework::db::repository::Select for #struct_name {
             #[inline]
             fn __get_sql() -> &'static str {
+                #sql
+            }
+        }
+    }
+}
+
+fn delete_impl(model: &EntityModel) -> TokenStream {
+    let struct_name = &model.struct_ident;
+    let table = &model.table;
+    let primary_key_columns: Vec<_> = model.columns.iter().filter(|column| column.primary_key).collect();
+    let where_clause = primary_key_columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| format!("{} = ${}", column.column, index + 1))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let sql = format!("DELETE FROM \"{table}\" WHERE {where_clause}");
+
+    quote! {
+        impl framework::db::repository::Delete for #struct_name {
+            #[inline]
+            fn __delete_sql() -> &'static str {
                 #sql
             }
         }
@@ -279,6 +308,13 @@ mod tests {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
                 }
+
+                impl framework::db::repository::Delete for TestEntity {
+                    #[inline]
+                    fn __delete_sql() -> &'static str {
+                        "DELETE FROM \"test_entity\" WHERE id = $1"
+                    }
+                }
             }
             .to_string()
         );
@@ -328,6 +364,13 @@ mod tests {
                     #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
+                    }
+                }
+
+                impl framework::db::repository::Delete for TestEntity {
+                    #[inline]
+                    fn __delete_sql() -> &'static str {
+                        "DELETE FROM \"test_entity\" WHERE id = $1"
                     }
                 }
             }
