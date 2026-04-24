@@ -34,7 +34,7 @@ pub trait Select<T> {
 
 pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exception> {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let _: u64 = with_timeout(
             entity.__insert(&connection.client).map_err(|err| exception!(message = "failed to insert", source = err)),
@@ -53,7 +53,7 @@ pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exc
 // return true if inserted
 pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let updated_rows = with_timeout(
             entity
@@ -74,7 +74,7 @@ pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<
 // return true if inserted
 pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let inserted = with_timeout(
             entity.__upsert(&connection.client).map_err(|err| exception!(message = "failed to upsert", source = err)),
@@ -96,7 +96,7 @@ pub async fn insert_with_auto_increment_id(
     entity: &impl InsertWithAutoIncrementId,
 ) -> Result<i64, Exception> {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let id = with_timeout(
             entity.__insert(&connection.client).map_err(|err| exception!(message = "failed to insert", source = err)),
@@ -117,7 +117,7 @@ where
     T: Select<T> + TryFrom<Row, Error = PgError>,
 {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
         let id = with_timeout(
             T::__get(&connection.client, ids).map_err(|err| exception!(message = "failed to select", source = err)),
             database.query_timeout,

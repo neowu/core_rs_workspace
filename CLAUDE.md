@@ -1,3 +1,5 @@
-## Overview
+# Overview
 
-Rust framework for server-side applications. Library crates under (`lib/`) and application crates under (`app/`).
+Rust framework for server-side applications. 
+Library crates under (`lib/`)
+Application crates under (`app/`)

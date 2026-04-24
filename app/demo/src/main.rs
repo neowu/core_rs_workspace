@@ -41,13 +41,19 @@ async fn main() -> Result<(), Exception> {
         scheduler.start(state, scheduler_signal).await
     });
 
-    let app = Router::new();
-    let app = app.merge(web::routes());
-    let app = app.merge(job::routes());
-    let app = app
-        .route_service("/", ServeFile::new(asset_path("assets/web/index.html")?))
-        .route_service("/static/{*path}", ServeDir::new(asset_path("assets/web/")?))
-        .fallback_service(ServeFile::new(asset_path("assets/web/index.html")?));
-    let app = app.with_state(state);
-    start_http_server(app, signal, HttpServerConfig::default()).await
+    task::spawn_task(async move {
+        let app = Router::new();
+        let app = app.merge(web::routes());
+        let app = app.merge(job::routes());
+        let app = app
+            .route_service("/", ServeFile::new(asset_path("assets/web/index.html")?))
+            .route_service("/static/{*path}", ServeDir::new(asset_path("assets/web/")?))
+            .fallback_service(ServeFile::new(asset_path("assets/web/index.html")?));
+        let app = app.with_state(state);
+        start_http_server(app, signal, HttpServerConfig::default()).await
+    });
+
+    task::shutdown().await;
+
+    Ok(())
 }

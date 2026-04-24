@@ -9,6 +9,7 @@ use std::time::Instant;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 use tokio::time;
+use tracing::warn;
 
 use crate::exception::Exception;
 
@@ -22,6 +23,7 @@ pub(crate) trait ResourceManager {
 
 struct Resource<T> {
     item: T,
+    created_time: Instant,
     return_time: Instant,
 }
 
@@ -29,86 +31,84 @@ pub(crate) struct ResourcePool<R>
 where
     R: ResourceManager,
 {
-    inner: Arc<PoolInner<R>>,
-}
-
-struct PoolInner<R>
-where
-    R: ResourceManager,
-{
     storage: Mutex<VecDeque<Resource<R::Target>>>,
     semaphore: Arc<Semaphore>,
     manager: R,
-    max_alive_time: Duration,
-}
-
-impl<R> Clone for ResourcePool<R>
-where
-    R: ResourceManager,
-{
-    fn clone(&self) -> Self {
-        Self { inner: Arc::clone(&self.inner) }
-    }
+    max_valid_window: Duration,
+    max_life_time: Duration,
+    checkout_timeout: Duration,
 }
 
 impl<R> ResourcePool<R>
 where
     R: ResourceManager,
 {
-    pub fn new(manager: R, capacity: usize, max_alive_time: Duration) -> Self {
+    pub(crate) fn new(
+        manager: R,
+        capacity: usize,
+        max_valid_window: Duration,
+        max_life_time: Duration,
+        checkout_timeout: Duration,
+    ) -> Self {
         Self {
-            inner: Arc::new(PoolInner {
-                storage: Mutex::new(VecDeque::with_capacity(capacity)),
-                semaphore: Arc::new(Semaphore::new(capacity)),
-                manager,
-                max_alive_time,
-            }),
+            storage: Mutex::new(VecDeque::with_capacity(capacity)),
+            semaphore: Arc::new(Semaphore::new(capacity)),
+            manager,
+            max_valid_window,
+            max_life_time,
+            checkout_timeout,
         }
     }
 
-    pub async fn get_with_timeout(&self, timeout: Duration) -> Result<ResourceGuard<R>, Exception> {
-        let permit = match time::timeout(timeout, self.inner.semaphore.clone().acquire_owned()).await {
+    pub(crate) async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
+        let permit = match time::timeout(self.checkout_timeout, self.semaphore.clone().acquire_owned()).await {
             Ok(Ok(permit)) => permit,
             Ok(Err(_)) => return Err(exception!(message = "pool is closed")),
             Err(_) => return Err(exception!(message = "timeout")),
         };
 
-        let inner = loop {
+        let item = loop {
             let candidate = {
-                let mut storage = self.inner.storage.lock().unwrap();
+                let mut storage = self.storage.lock().unwrap();
                 storage.pop_front()
             };
 
             match candidate {
-                None => break self.inner.manager.create().await?,
+                None => break self.manager.create().await?,
                 Some(res) => {
-                    let exceeded_max_alive_time = res.return_time.elapsed() > self.inner.max_alive_time;
-
-                    if !exceeded_max_alive_time || R::is_valid(&res.item).await {
+                    if res.return_time.elapsed() < self.max_valid_window {
                         break res.item;
+                    }
+
+                    let is_valid = R::is_valid(&res.item).await;
+                    if is_valid {
+                        break res.item;
+                    } else {
+                        warn!("resource is not valid, try next");
                     }
                 }
             }
         };
 
+        let now = Instant::now();
         Ok(ResourceGuard {
-            resource: Some(Resource { item: inner, return_time: Instant::now() }),
-            pool: Arc::clone(&self.inner),
+            resource: Some(Resource { item, created_time: now, return_time: now }),
+            pool: self,
             _permit: permit,
         })
     }
 }
 
-pub(crate) struct ResourceGuard<R>
+pub(crate) struct ResourceGuard<'a, R>
 where
     R: ResourceManager,
 {
     resource: Option<Resource<R::Target>>,
-    pool: Arc<PoolInner<R>>,
+    pool: &'a ResourcePool<R>,
     _permit: OwnedSemaphorePermit,
 }
 
-impl<R> Deref for ResourceGuard<R>
+impl<R> Deref for ResourceGuard<'_, R>
 where
     R: ResourceManager,
 {
@@ -119,7 +119,7 @@ where
     }
 }
 
-impl<R> DerefMut for ResourceGuard<R>
+impl<R> DerefMut for ResourceGuard<'_, R>
 where
     R: ResourceManager,
 {
@@ -128,13 +128,14 @@ where
     }
 }
 
-impl<R> Drop for ResourceGuard<R>
+impl<R> Drop for ResourceGuard<'_, R>
 where
     R: ResourceManager,
 {
     fn drop(&mut self) {
         if let Some(mut resource) = self.resource.take()
             && !R::is_closed(&resource.item)
+            && resource.created_time.elapsed() < self.pool.max_life_time
         {
             resource.return_time = Instant::now();
             let mut storage = self.pool.storage.lock().unwrap();

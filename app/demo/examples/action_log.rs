@@ -59,6 +59,8 @@ async fn handle_request(success: bool) -> Result<(), Exception> {
         info!(request_id = 123, "Processing request,");
 
         Span::current().record("test_value", "yes");
+
+        info!("after span record");
     }
     .instrument(span)
     .await;

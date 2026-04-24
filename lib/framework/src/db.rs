@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::TryFutureExt;
@@ -60,24 +61,27 @@ struct ConnectionManager {
 }
 
 pub struct Database {
-    pool: ResourcePool<ConnectionManager>,
-    connection_checkout_timeout: Duration,
+    pool: Arc<ResourcePool<ConnectionManager>>,
     query_timeout: Duration,
 }
 
 impl Database {
     pub fn new(config: Config) -> Self {
-        Database {
-            pool: ResourcePool::new(ConnectionManager { config }, 50, Duration::from_secs(30)),
-            connection_checkout_timeout: Duration::from_secs(5),
-            query_timeout: Duration::from_secs(5),
-        }
+        let pool = Arc::new(ResourcePool::new(
+            ConnectionManager { config },
+            50,
+            Duration::from_secs(30),
+            Duration::from_hours(1),
+            Duration::from_secs(5),
+        ));
+
+        Database { pool, query_timeout: Duration::from_secs(5) }
     }
 }
 
 pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let updated_rows = with_timeout(
             connection
@@ -102,7 +106,7 @@ where
     T: TryFrom<Row, Error = PgError>,
 {
     async {
-        let connection = database.pool.get_with_timeout(database.connection_checkout_timeout).await?;
+        let connection = database.pool.get_with_timeout().await?;
 
         let row = with_timeout(
             connection

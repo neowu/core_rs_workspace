@@ -125,13 +125,13 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, mut shutdown_signel: broadcast::Receiver<()>) -> Result<(), Exception> {
+    pub async fn start(self, state: S, mut shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception> {
         let handlers = self.handlers;
         let consumer: BaseConsumer = self.config.create()?;
         let topics: Vec<&str> = handlers.keys().cloned().collect();
         consumer.subscribe(&topics)?;
 
-        info!("kakfa consumer started, topics={:?}", topics);
+        info!("kafka consumer started, topics={:?}", topics);
 
         loop {
             match poll_message_groups(&consumer, self.poll_max_wait_time, self.poll_max_records) {
@@ -153,8 +153,8 @@ where
                 }
             }
 
-            if shutdown_signel.try_recv().is_ok() {
-                info!("kakfa consumer stopped, topics={:?}", topics);
+            if shutdown_signal.try_recv().is_ok() {
+                info!("kafka consumer stopped, topics={:?}", topics);
                 return Ok(());
             }
         }

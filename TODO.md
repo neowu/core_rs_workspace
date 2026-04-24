@@ -1,3 +1,6 @@
+* write claude.md better? show how to do things, e.g. integration steps
+* refactor shutdown with CancellationToken
+
 * axum https?
 * action log records message_handler, job_handler, task_handler? only by macro with file!()/line!()/column!()?
 * make state with Box::leak()
