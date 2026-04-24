@@ -1,5 +1,4 @@
 use futures::TryFutureExt;
-use tokio_postgres::Client;
 use tokio_postgres::Row;
 use tracing::Instrument;
 use tracing::debug;
@@ -11,39 +10,48 @@ use crate::db::QueryParam;
 use crate::exception;
 use crate::exception::Exception;
 
-#[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait InsertWithAutoIncrementId {
-    async fn __insert(&self, client: &Client) -> Result<i64, PgError>;
+    fn __insert_sql() -> &'static str;
+    fn __insert_params(&self) -> Vec<&QueryParam>;
 }
 
-#[allow(async_fn_in_trait)]
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Insert {
-    async fn __insert(&self, client: &Client) -> Result<u64, PgError>;
-    async fn __insert_ignore(&self, client: &Client) -> Result<u64, PgError>;
-    async fn __upsert(&self, client: &Client) -> Result<bool, PgError>;
+    fn __insert_sql() -> &'static str;
+    fn __insert_ignore_sql() -> &'static str;
+    fn __upsert_sql() -> &'static str;
+    fn __insert_params(&self) -> Vec<&QueryParam>;
 }
 
 #[doc(hidden)] // disable auto complete, it's used by framework
-pub trait Select<T> {
+pub trait Select {
     fn __get_sql() -> &'static str;
 }
 
-pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exception> {
+#[doc(hidden)] // disable auto complete, it's used by framework
+pub trait Delete {
+    fn __delete_sql() -> &'static str;
+}
+
+pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Exception> {
     async {
         let connection = database.pool.get_with_timeout().await?;
+        let sql = T::__insert_sql();
+        let params = entity.__insert_params();
+        debug!("insert, sql={sql}, params={params:?}");
 
-        let _: u64 = connection
+        let rows = connection
             .with_timeout(
-                entity
-                    .__insert(&connection.client)
+                connection
+                    .client
+                    .execute(sql, &params)
                     .map_err(|err| exception!(message = "failed to insert", source = err)),
                 database.query_timeout,
             )
             .await?;
 
-        debug!(db_write_rows = 1, "stats");
+        debug!(db_write_rows = rows, "stats");
         Ok(())
     }
     .instrument(debug_span!("db"))
@@ -51,14 +59,18 @@ pub async fn insert(database: &Database, entity: &impl Insert) -> Result<(), Exc
 }
 
 // return true if inserted
-pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
+pub async fn insert_ignore<T: Insert>(database: &Database, entity: &T) -> Result<bool, Exception> {
     async {
         let connection = database.pool.get_with_timeout().await?;
+        let sql = T::__insert_ignore_sql();
+        let params = entity.__insert_params();
+        debug!("insert_ignore, sql={sql}, params={params:?}");
 
         let updated_rows = connection
             .with_timeout(
-                entity
-                    .__insert_ignore(&connection.client)
+                connection
+                    .client
+                    .execute(sql, &params)
                     .map_err(|err| exception!(message = "failed to insert_ignore", source = err)),
                 database.query_timeout,
             )
@@ -72,19 +84,24 @@ pub async fn insert_ignore(database: &Database, entity: &impl Insert) -> Result<
 }
 
 // return true if inserted
-pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, Exception> {
+pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, Exception> {
     async {
         let connection = database.pool.get_with_timeout().await?;
+        let sql = T::__upsert_sql();
+        let params = entity.__insert_params();
+        debug!("upsert, sql={sql}, params={params:?}");
 
-        let inserted = connection
+        let row = connection
             .with_timeout(
-                entity
-                    .__upsert(&connection.client)
+                connection
+                    .client
+                    .query_one(sql, &params)
                     .map_err(|err| exception!(message = "failed to upsert", source = err)),
                 database.query_timeout,
             )
             .await?;
 
+        let inserted: bool = row.try_get(0).map_err(|err| exception!(message = "failed to upsert", source = err))?;
         debug!("inserted={inserted}");
         debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
         Ok(inserted)
@@ -93,22 +110,27 @@ pub async fn upsert(database: &Database, entity: &impl Insert) -> Result<bool, E
     .await
 }
 
-pub async fn insert_with_auto_increment_id(
-    database: &Database,
-    entity: &impl InsertWithAutoIncrementId,
-) -> Result<i64, Exception> {
+pub async fn insert_with_auto_increment_id<T>(database: &Database, entity: &T) -> Result<i64, Exception>
+where
+    T: InsertWithAutoIncrementId,
+{
     async {
         let connection = database.pool.get_with_timeout().await?;
+        let sql = T::__insert_sql();
+        let params = entity.__insert_params();
+        debug!("insert, sql={sql}, params={params:?}");
 
-        let id = connection
+        let row = connection
             .with_timeout(
-                entity
-                    .__insert(&connection.client)
+                connection
+                    .client
+                    .query_one(sql, &params)
                     .map_err(|err| exception!(message = "failed to insert", source = err)),
                 database.query_timeout,
             )
             .await?;
 
+        let id: i64 = row.try_get(0).map_err(|err| exception!(message = "failed to insert", source = err))?;
         debug!(db_write_rows = 1, "stats");
         Ok(id)
     }
@@ -118,7 +140,7 @@ pub async fn insert_with_auto_increment_id(
 
 pub async fn get<T>(database: &Database, ids: &[&QueryParam]) -> Result<Option<T>, Exception>
 where
-    T: Select<T> + TryFrom<Row, Error = PgError>,
+    T: Select + TryFrom<Row, Error = PgError>,
 {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
@@ -140,6 +162,34 @@ where
         debug!(db_get_rows, "stats");
 
         row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to select", source = err))
+    }
+    .instrument(debug_span!("db"))
+    .await
+}
+
+pub async fn delete<T>(database: &Database, ids: &[&QueryParam]) -> Result<bool, Exception>
+where
+    T: Delete + TryFrom<Row, Error = PgError>,
+{
+    async {
+        let mut connection = database.pool.get_with_timeout().await?;
+        let sql = T::__delete_sql();
+        debug!("delete, sql={sql}, params={ids:?}");
+        let statement = connection.prepared_statement(sql).await?;
+
+        let db_write_rows = connection
+            .with_timeout(
+                connection
+                    .client
+                    .execute(&statement, ids)
+                    .map_err(|err| exception!(message = "failed to delete", source = err)),
+                database.query_timeout,
+            )
+            .await?;
+
+        debug!(db_write_rows, "stats");
+
+        Ok(db_write_rows != 0)
     }
     .instrument(debug_span!("db"))
     .await

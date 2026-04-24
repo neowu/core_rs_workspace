@@ -130,15 +130,17 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
     let sql = format!("INSERT INTO \"{table}\" ({insert_columns}) VALUES ({placeholders}) RETURNING {primary_key}");
     let params = insert_fields.iter().map(|column| {
         let field = &column.field_ident;
-        quote! { &self.#field, }
+        quote! { &self.#field as &framework::db::QueryParam, }
     });
     quote! {
         impl framework::db::repository::InsertWithAutoIncrementId for #struct_name {
-            async fn __insert(&self, client: &framework::db::Client) -> ::std::result::Result<i64, framework::db::PgError> {
-                let sql = #sql;
-                let params: &[&framework::db::QueryParam] = &[#(#params)*];
-                tracing::debug!("sql={sql}, params={params:?}");
-                client.query_one_scalar(sql, params).await
+            #[inline]
+            fn __insert_sql() -> &'static str {
+                #sql
+            }
+            #[inline]
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                vec![#(#params)*]
             }
         }
     }
@@ -176,29 +178,23 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
         .iter()
         .map(|column| {
             let field = &column.field_ident;
-            quote! { &self.#field, }
+            quote! { &self.#field as &framework::db::QueryParam, }
         })
         .collect();
 
     quote! {
         impl framework::db::repository::Insert for #struct_name {
-            async fn __insert(&self, client: &framework::db::Client) -> ::std::result::Result<u64, framework::db::PgError> {
-                let sql = #sql;
-                let params: &[&framework::db::QueryParam] = &[#(#params)*];
-                tracing::debug!("sql={sql}, params={params:?}");
-                client.execute(sql, params).await
+            fn __insert_sql() -> &'static str {
+                #sql
             }
-            async fn __insert_ignore(&self, client: &framework::db::Client) -> ::std::result::Result<u64, framework::db::PgError> {
-                let sql = #sql_ignore;
-                let params: &[&framework::db::QueryParam] = &[#(#params)*];
-                tracing::debug!("sql={sql}, params={params:?}");
-                client.execute(sql, params).await
+            fn __insert_ignore_sql() -> &'static str {
+                #sql_ignore
             }
-            async fn __upsert(&self, client: &framework::db::Client) -> ::std::result::Result<bool, framework::db::PgError> {
-                let sql = #sql_upsert;
-                let params: &[&framework::db::QueryParam] = &[#(#params)*];
-                tracing::debug!("sql={sql}, params={params:?}");
-                client.query_one_scalar(sql, params).await
+            fn __upsert_sql() -> &'static str {
+                #sql_upsert
+            }
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                vec![#(#params)*]
             }
         }
     }
@@ -218,7 +214,7 @@ fn select_impl(model: &EntityModel) -> TokenStream {
     let sql = format!("SELECT {all_columns} FROM \"{table}\" WHERE {where_clause}");
 
     quote! {
-        impl framework::db::repository::Select<#struct_name> for #struct_name {
+        impl framework::db::repository::Select for #struct_name {
             #[inline]
             fn __get_sql() -> &'static str {
                 #sql
@@ -263,36 +259,21 @@ mod tests {
                 }
 
                 impl framework::db::repository::Insert for TestEntity {
-                    async fn __insert(
-                        &self,
-                        client: &framework::db::Client
-                    ) -> ::std::result::Result<u64, framework::db::PgError> {
-                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)";
-                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
-                        tracing::debug!("sql={sql}, params={params:?}");
-                        client.execute(sql, params).await
+                    fn __insert_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)"
                     }
-                    async fn __insert_ignore(
-                        &self,
-                        client: &framework::db::Client
-                    ) -> ::std::result::Result<u64, framework::db::PgError> {
-                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING";
-                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
-                        tracing::debug!("sql={sql}, params={params:?}");
-                        client.execute(sql, params).await
+                    fn __insert_ignore_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT DO NOTHING"
                     }
-                    async fn __upsert(
-                        &self,
-                        client: &framework::db::Client
-                    ) -> ::std::result::Result<bool, framework::db::PgError> {
-                        let sql = "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted";
-                        let params: &[&framework::db::QueryParam] = &[&self.id, &self.col1,];
-                        tracing::debug!("sql={sql}, params={params:?}");
-                        client.query_one_scalar(sql, params).await
+                    fn __upsert_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
+                    }
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![&self.id as &framework::db::QueryParam, &self.col1 as &framework::db::QueryParam,]
                     }
                 }
 
-                impl framework::db::repository::Select<TestEntity> for TestEntity {
+                impl framework::db::repository::Select for TestEntity {
                     #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
@@ -333,18 +314,17 @@ mod tests {
                 }
 
                 impl framework::db::repository::InsertWithAutoIncrementId for TestEntity {
-                    async fn __insert(
-                        &self,
-                        client: &framework::db::Client
-                    ) -> ::std::result::Result<i64, framework::db::PgError> {
-                        let sql = "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id";
-                        let params: &[&framework::db::QueryParam] = &[&self.col1,];
-                        tracing::debug!("sql={sql}, params={params:?}");
-                        client.query_one_scalar(sql, params).await
+                    #[inline]
+                    fn __insert_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id"
+                    }
+                    #[inline]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![&self.col1 as &framework::db::QueryParam,]
                     }
                 }
 
-                impl framework::db::repository::Select<TestEntity> for TestEntity {
+                impl framework::db::repository::Select for TestEntity {
                     #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"

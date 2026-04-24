@@ -122,6 +122,8 @@ pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam
     async {
         let connection = database.pool.get_with_timeout().await?;
 
+        debug!("execute, sql={statement}, params={params:?}");
+
         let updated_rows = connection
             .with_timeout(
                 connection
@@ -146,6 +148,8 @@ where
 {
     async {
         let connection = database.pool.get_with_timeout().await?;
+
+        debug!("select_one, sql={statement}, params={params:?}");
 
         let row = connection
             .with_timeout(
