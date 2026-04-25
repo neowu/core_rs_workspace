@@ -26,12 +26,17 @@ pub trait Insert {
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Select {
+    type Ids;
     fn __get_sql() -> &'static str;
+    fn __ids_params(ids: &Self::Ids) -> Vec<&QueryParam>;
+    // fn __select_sql() -> &'static str;
 }
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Delete {
+    type Ids;
     fn __delete_sql() -> &'static str;
+    fn __ids_params(ids: &Self::Ids) -> Vec<&QueryParam>;
 }
 
 pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Exception> {
@@ -139,21 +144,22 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
     .await
 }
 
-pub async fn get<T>(database: &Database, ids: &[&QueryParam]) -> Result<Option<T>, Exception>
+pub async fn get<T>(database: &Database, ids: T::Ids) -> Result<Option<T>, Exception>
 where
     T: Select + TryFrom<Row, Error = PgError>,
 {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__get_sql();
-        debug!("get, sql={sql}, params={ids:?}");
+        let params = T::__ids_params(&ids);
+        debug!("get, sql={sql}, params={params:?}");
         let statement = connection.prepared_statement(sql).await?;
 
         let row = connection
             .with_timeout(
                 connection
                     .client
-                    .query_opt(&statement, ids)
+                    .query_opt(&statement, &params)
                     .map_err(|err| exception!(message = "failed to select", source = err)),
                 database.query_timeout,
             )
@@ -167,18 +173,19 @@ where
     .await
 }
 
-pub async fn delete<T: Delete>(database: &Database, ids: &[&QueryParam]) -> Result<bool, Exception> {
+pub async fn delete<T: Delete>(database: &Database, ids: T::Ids) -> Result<bool, Exception> {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__delete_sql();
-        debug!("delete, sql={sql}, params={ids:?}");
+        let params = T::__ids_params(&ids);
+        debug!("delete, sql={sql}, params={params:?}");
         let statement = connection.prepared_statement(sql).await?;
 
         let db_write_rows = connection
             .with_timeout(
                 connection
                     .client
-                    .execute(&statement, ids)
+                    .execute(&statement, &params)
                     .map_err(|err| exception!(message = "failed to delete", source = err)),
                 database.query_timeout,
             )
