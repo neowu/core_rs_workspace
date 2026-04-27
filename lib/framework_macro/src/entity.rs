@@ -227,24 +227,32 @@ fn select_impl(model: &EntityModel) -> TokenStream {
         .join(" AND ");
     let sql = format!("SELECT {all_columns} FROM \"{table}\" WHERE {where_clause}");
 
-    let id_types = primary_key_columns.iter().map(|column| {
-        // auto_increment fields are Option<i64> in the struct but we use i64 as the id type
-        let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
-        field_type.parse::<proc_macro2::TokenStream>().unwrap()
-    });
+    let id_types: Vec<proc_macro2::TokenStream> = primary_key_columns
+        .iter()
+        .map(|column| {
+            let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
+            field_type.parse().unwrap()
+        })
+        .collect();
 
-    let id_indices = (0..primary_key_columns.len()).map(syn::Index::from);
+    let (id_type, ids_params) = if primary_key_columns.len() == 1 {
+        let id_type = &id_types[0];
+        (quote! { #id_type }, quote! { vec![ids as &framework::db::QueryParam] })
+    } else {
+        let id_indices = (0..primary_key_columns.len()).map(syn::Index::from);
+        (quote! { (#(#id_types,)*) }, quote! { vec![#(&ids.#id_indices as &framework::db::QueryParam,)*] })
+    };
 
     quote! {
         impl framework::db::repository::Select for #struct_name {
-            type Ids = (#(#id_types,)*);
+            type Id = #id_type;
             #[inline]
             fn __get_sql() -> &'static str {
                 #sql
             }
             #[inline]
-            fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                vec![#(&ids.#id_indices as &framework::db::QueryParam,)*]
+            fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                #ids_params
             }
         }
     }
@@ -262,24 +270,32 @@ fn delete_impl(model: &EntityModel) -> TokenStream {
         .join(" AND ");
     let sql = format!("DELETE FROM \"{table}\" WHERE {where_clause}");
 
-    let id_types = primary_key_columns.iter().map(|column| {
-        // auto_increment fields are Option<i64> in the struct but we use i64 as the id type
-        let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
-        field_type.parse::<proc_macro2::TokenStream>().unwrap()
-    });
+    let id_types: Vec<proc_macro2::TokenStream> = primary_key_columns
+        .iter()
+        .map(|column| {
+            let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
+            field_type.parse().unwrap()
+        })
+        .collect();
 
-    let id_indices = (0..primary_key_columns.len()).map(syn::Index::from);
+    let (id_type, id_params) = if primary_key_columns.len() == 1 {
+        let id_type = &id_types[0];
+        (quote! { #id_type }, quote! { vec![ids as &framework::db::QueryParam] })
+    } else {
+        let id_indices = (0..primary_key_columns.len()).map(syn::Index::from);
+        (quote! { (#(#id_types,)*) }, quote! { vec![#(&ids.#id_indices as &framework::db::QueryParam,)*] })
+    };
 
     quote! {
         impl framework::db::repository::Delete for #struct_name {
-            type Ids = (#(#id_types,)*);
+            type Id = #id_type;
             #[inline]
             fn __delete_sql() -> &'static str {
                 #sql
             }
             #[inline]
-            fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                vec![#(&ids.#id_indices as &framework::db::QueryParam,)*]
+            fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                #id_params
             }
         }
     }
@@ -336,26 +352,102 @@ mod tests {
                 }
 
                 impl framework::db::repository::Select for TestEntity {
-                    type Ids = (i32,);
+                    type Id = i32;
                     #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
                     #[inline]
-                    fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&ids.0 as &framework::db::QueryParam,]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![ids as &framework::db::QueryParam]
                     }
                 }
 
                 impl framework::db::repository::Delete for TestEntity {
-                    type Ids = (i32,);
+                    type Id = i32;
                     #[inline]
                     fn __delete_sql() -> &'static str {
                         "DELETE FROM \"test_entity\" WHERE id = $1"
                     }
                     #[inline]
-                    fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&ids.0 as &framework::db::QueryParam,]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![ids as &framework::db::QueryParam]
+                    }
+                }
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn test_entity_with_composite_id() {
+        let source = quote! {
+            #[derive(Entity)]
+            #[table(name = "test_entity")]
+            struct TestEntity {
+                #[primary_key]
+                #[column(name = "id1")]
+                id1: i32,
+                #[primary_key]
+                #[column(name = "id2")]
+                id2: String,
+                #[column(name = "col1")]
+                col1: String,
+            }
+        };
+
+        let output = entity_impl(source).unwrap();
+
+        assert_eq!(
+            output.to_string(),
+            quote! {
+                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
+                    type Error = framework::db::PgError;
+                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                        Ok(TestEntity {
+                            id1: row.try_get("id1")?,
+                            id2: row.try_get("id2")?,
+                            col1: row.try_get("col1")?,
+                        })
+                    }
+                }
+
+                impl framework::db::repository::Insert for TestEntity {
+                    fn __insert_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3)"
+                    }
+                    fn __insert_ignore_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
+                    }
+                    fn __upsert_sql() -> &'static str {
+                        "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3) ON CONFLICT (id1, id2) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
+                    }
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![&self.id1 as &framework::db::QueryParam, &self.id2 as &framework::db::QueryParam, &self.col1 as &framework::db::QueryParam,]
+                    }
+                }
+
+                impl framework::db::repository::Select for TestEntity {
+                    type Id = (i32, String,);
+                    #[inline]
+                    fn __get_sql() -> &'static str {
+                        "SELECT id1, id2, col1 FROM \"test_entity\" WHERE id1 = $1 AND id2 = $2"
+                    }
+                    #[inline]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![&ids.0 as &framework::db::QueryParam, &ids.1 as &framework::db::QueryParam, ]
+                    }
+                }
+
+                impl framework::db::repository::Delete for TestEntity {
+                    type Id = (i32, String,);
+                    #[inline]
+                    fn __delete_sql() -> &'static str {
+                        "DELETE FROM \"test_entity\" WHERE id1 = $1 AND id2 = $2"
+                    }
+                    #[inline]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![&ids.0 as &framework::db::QueryParam, &ids.1 as &framework::db::QueryParam, ]
                     }
                 }
             }
@@ -404,26 +496,26 @@ mod tests {
                 }
 
                 impl framework::db::repository::Select for TestEntity {
-                    type Ids = (i64,);
+                    type Id = i64;
                     #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
                     #[inline]
-                    fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&ids.0 as &framework::db::QueryParam,]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![ids as &framework::db::QueryParam]
                     }
                 }
 
                 impl framework::db::repository::Delete for TestEntity {
-                    type Ids = (i64,);
+                    type Id = i64;
                     #[inline]
                     fn __delete_sql() -> &'static str {
                         "DELETE FROM \"test_entity\" WHERE id = $1"
                     }
                     #[inline]
-                    fn __ids_params(ids: &Self::Ids) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&ids.0 as &framework::db::QueryParam,]
+                    fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
+                        vec![ids as &framework::db::QueryParam]
                     }
                 }
             }

@@ -26,17 +26,17 @@ pub trait Insert {
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Select {
-    type Ids;
+    type Id;
     fn __get_sql() -> &'static str;
-    fn __ids_params(ids: &Self::Ids) -> Vec<&QueryParam>;
+    fn __id_params(ids: &Self::Id) -> Vec<&QueryParam>;
     // fn __select_sql() -> &'static str;
 }
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Delete {
-    type Ids;
+    type Id;
     fn __delete_sql() -> &'static str;
-    fn __ids_params(ids: &Self::Ids) -> Vec<&QueryParam>;
+    fn __id_params(ids: &Self::Id) -> Vec<&QueryParam>;
 }
 
 pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Exception> {
@@ -144,14 +144,14 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
     .await
 }
 
-pub async fn get<T>(database: &Database, ids: T::Ids) -> Result<Option<T>, Exception>
+pub async fn get<T>(database: &Database, ids: &T::Id) -> Result<Option<T>, Exception>
 where
     T: Select + TryFrom<Row, Error = PgError>,
 {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__get_sql();
-        let params = T::__ids_params(&ids);
+        let params = T::__id_params(ids);
         debug!("get, sql={sql}, params={params:?}");
         let statement = connection.prepared_statement(sql).await?;
 
@@ -173,11 +173,11 @@ where
     .await
 }
 
-pub async fn delete<T: Delete>(database: &Database, ids: T::Ids) -> Result<bool, Exception> {
+pub async fn delete<T: Delete>(database: &Database, ids: &T::Id) -> Result<bool, Exception> {
     async {
         let mut connection = database.pool.get_with_timeout().await?;
         let sql = T::__delete_sql();
-        let params = T::__ids_params(&ids);
+        let params = T::__id_params(ids);
         debug!("delete, sql={sql}, params={params:?}");
         let statement = connection.prepared_statement(sql).await?;
 
