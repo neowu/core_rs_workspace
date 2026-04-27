@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::TryFutureExt;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 pub use tokio_postgres::Client;
@@ -27,11 +26,11 @@ pub mod repository;
 struct Connection {
     client: Client,
     cancel_token: CancelToken,
-    statement_cache: HashMap<&'static str, Statement>,
+    statement_cache: HashMap<String, Statement>,
 }
 
 impl Connection {
-    async fn prepared_statement(&mut self, sql: &'static str) -> Result<Statement, Exception> {
+    async fn prepared_statement(&mut self, sql: &'_ str) -> Result<Statement, Exception> {
         match self.statement_cache.get(sql) {
             Some(statement) => Ok(statement.clone()),
             None => {
@@ -40,7 +39,7 @@ impl Connection {
                     .prepare(sql)
                     .await
                     .map_err(|err| exception!(message = "failed to prepare statement", source = err))?;
-                self.statement_cache.insert(sql, statement.clone());
+                self.statement_cache.insert(sql.to_owned(), statement.clone());
                 Ok(statement)
             }
         }
@@ -48,12 +47,12 @@ impl Connection {
 
     async fn with_timeout<T>(
         &self,
-        operation: impl Future<Output = Result<T, Exception>>,
+        operation: impl Future<Output = Result<T, PgError>>,
         query_timeout: Duration,
     ) -> Result<T, Exception> {
         let result = timeout(query_timeout, operation).await;
         match result {
-            Ok(result) => result,
+            Ok(result) => result.map_err(|err| exception!(message = "failed to call db", source = err)),
             Err(_elapsed) => {
                 debug!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
@@ -113,30 +112,17 @@ impl Database {
             Duration::from_hours(1),
             Duration::from_secs(5),
         ));
-
         Database { pool, query_timeout: Duration::from_secs(5) }
     }
 }
 
 pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
     async {
-        let connection = database.pool.get_with_timeout().await?;
-
+        let conn = database.pool.get_with_timeout().await?;
         debug!("execute, sql={statement}, params={params:?}");
-
-        let updated_rows = connection
-            .with_timeout(
-                connection
-                    .client
-                    .execute(statement, params)
-                    .map_err(|err| exception!(message = "failed to execute", source = err)),
-                database.query_timeout,
-            )
-            .await?;
-
-        debug!(db_write_rows = updated_rows, "stats");
-
-        Ok(updated_rows)
+        let db_write_rows = conn.with_timeout(conn.client.execute(statement, params), database.query_timeout).await?;
+        debug!(db_write_rows, "stats");
+        Ok(db_write_rows)
     }
     .instrument(debug_span!("db"))
     .await
@@ -147,23 +133,29 @@ where
     T: TryFrom<Row, Error = PgError>,
 {
     async {
-        let connection = database.pool.get_with_timeout().await?;
-
+        let conn = database.pool.get_with_timeout().await?;
         debug!("select_one, sql={statement}, params={params:?}");
-
-        let row = connection
-            .with_timeout(
-                connection
-                    .client
-                    .query_opt(statement, params)
-                    .map_err(|err| exception!(message = "failed to select_one", source = err)),
-                database.query_timeout,
-            )
-            .await?;
-
+        let row = conn.with_timeout(conn.client.query_opt(statement, params), database.query_timeout).await?;
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
-
         row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
+    }
+    .instrument(debug_span!("db"))
+    .await
+}
+
+pub async fn select<T>(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<Vec<T>, Exception>
+where
+    T: TryFrom<Row, Error = PgError>,
+{
+    async {
+        let conn = database.pool.get_with_timeout().await?;
+        debug!("select, sql={statement}, params={params:?}");
+        let rows = conn.with_timeout(conn.client.query(statement, params), database.query_timeout).await?;
+        debug!(db_read_rows = rows.len(), "stats");
+        rows.into_iter()
+            .map(T::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| exception!(message = "failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await

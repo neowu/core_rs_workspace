@@ -6,7 +6,7 @@ use crate::model;
 use crate::model::AttributeModel;
 use crate::model::FieldModel;
 
-pub(crate) fn validate_impl(tokens: TokenStream) -> Result<TokenStream> {
+pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
     let struct_name = &model.ident;
 
@@ -174,7 +174,7 @@ mod tests {
     use quote::quote;
     use syn::Result;
 
-    use super::validate_impl;
+    use super::build;
 
     #[test]
     fn test_validate_impl() -> Result<()> {
@@ -194,7 +194,7 @@ mod tests {
             }
         };
 
-        let output = validate_impl(source)?;
+        let output = build(source)?;
 
         assert_eq!(output.to_string(), quote! {
             impl framework::validate::Validator for TestBean {
