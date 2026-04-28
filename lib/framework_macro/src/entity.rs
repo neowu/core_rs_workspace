@@ -116,8 +116,7 @@ fn from_row_impl(model: &EntityModel) -> TokenStream {
     });
     let struct_name = &model.struct_ident;
     quote! {
-        impl ::std::convert::TryFrom<framework::db::Row> for #struct_name {
-            type Error = framework::db::PgError;
+        impl framework::db::FromRow for #struct_name {
             fn try_from(row: framework::db::Row) -> ::std::result::Result<#struct_name, framework::db::PgError> {
                 Ok(#struct_name {
                     #(#assignments)*
@@ -289,8 +288,7 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
-                    type Error = framework::db::PgError;
+                impl framework::db::FromRow for TestEntity {
                     fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,
@@ -360,8 +358,7 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
-                    type Error = framework::db::PgError;
+                impl framework::db::FromRow for TestEntity {
                     fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
                         Ok(TestEntity {
                             id1: row.try_get("id1")?,
@@ -429,8 +426,7 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl ::std::convert::TryFrom<framework::db::Row> for TestEntity {
-                    type Error = framework::db::PgError;
+                impl framework::db::FromRow for TestEntity {
                     fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,

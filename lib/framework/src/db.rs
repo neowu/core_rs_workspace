@@ -10,6 +10,7 @@ pub use tokio_postgres::Error as PgError;
 use tokio_postgres::NoTls;
 pub use tokio_postgres::Row;
 use tokio_postgres::Statement;
+use tokio_postgres::types::FromSqlOwned;
 pub use tokio_postgres::types::ToSql;
 use tracing::Instrument;
 use tracing::debug;
@@ -130,7 +131,7 @@ pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam
 
 pub async fn select_one<T>(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<Option<T>, Exception>
 where
-    T: TryFrom<Row, Error = PgError>,
+    T: FromRow,
 {
     async {
         let conn = database.pool.get_with_timeout().await?;
@@ -145,7 +146,7 @@ where
 
 pub async fn select<T>(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<Vec<T>, Exception>
 where
-    T: TryFrom<Row, Error = PgError>,
+    T: FromRow,
 {
     async {
         let conn = database.pool.get_with_timeout().await?;
@@ -159,4 +160,17 @@ where
     }
     .instrument(debug_span!("db"))
     .await
+}
+
+pub trait FromRow: Sized {
+    fn try_from(row: Row) -> Result<Self, PgError>;
+}
+
+impl<T> FromRow for T
+where
+    T: FromSqlOwned,
+{
+    fn try_from(row: Row) -> Result<Self, PgError> {
+        row.try_get(0)
+    }
 }

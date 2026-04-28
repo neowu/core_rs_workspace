@@ -1,10 +1,9 @@
-use tokio_postgres::Row;
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
 
 use crate::db::Database;
-use crate::db::PgError;
+use crate::db::FromRow;
 use crate::db::QueryParam;
 use crate::exception;
 use crate::exception::Exception;
@@ -99,7 +98,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
 
 pub async fn get<T>(database: &Database, ids: &T::Id) -> Result<Option<T>, Exception>
 where
-    T: Entity + TryFrom<Row, Error = PgError>,
+    T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
@@ -118,7 +117,7 @@ where
 // e.g. clause = "WHERE col = $1"
 pub async fn select_one<T>(database: &Database, clause: &str, params: &[&QueryParam]) -> Result<Option<T>, Exception>
 where
-    T: Entity + TryFrom<Row, Error = PgError>,
+    T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
@@ -133,9 +132,10 @@ where
     .await
 }
 
+// e.g. clause = "WHERE col = $1"
 pub async fn select<T>(database: &Database, clause: &str, params: &[&QueryParam]) -> Result<Vec<T>, Exception>
 where
-    T: Entity + TryFrom<Row, Error = PgError>,
+    T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
