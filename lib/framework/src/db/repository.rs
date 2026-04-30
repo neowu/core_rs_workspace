@@ -11,32 +11,32 @@ use crate::db::ToSql;
 use crate::exception;
 use crate::exception::Exception;
 
-pub struct Update<E> {
+pub struct Update<'a, E> {
     column: &'static str,
-    value: Box<QueryParam>,
+    value: &'a QueryParam,
     _entity: PhantomData<E>,
 }
 
-impl<E> Update<E> {
-    fn build_query(self, sql: &mut String, index: &mut i32, params: &mut Vec<Box<QueryParam>>) {
+impl<'a, E> Update<'a, E> {
+    fn build_query(&self, sql: &mut String, index: &mut i32, params: &mut Vec<&'a QueryParam>) {
         sql.push_str(&format!("{} = ${}", self.column, index));
         *index += 1;
         params.push(self.value);
     }
 }
 
-pub enum Cond<E> {
-    Eq { column: &'static str, value: Box<QueryParam>, _entity: PhantomData<E> },
-    In { column: &'static str, values: Vec<Box<QueryParam>>, _entity: PhantomData<E> },
+pub enum Cond<'a, E> {
+    Eq { column: &'static str, value: &'a QueryParam, _entity: PhantomData<E> },
+    In { column: &'static str, values: Vec<&'a QueryParam>, _entity: PhantomData<E> },
 }
 
-impl<E> Cond<E> {
-    fn build_query(self, sql: &mut String, index: &mut i32, params: &mut Vec<Box<QueryParam>>) {
+impl<'a, E> Cond<'a, E> {
+    fn build_query(&self, sql: &mut String, index: &mut i32, params: &mut Vec<&'a QueryParam>) {
         match self {
             Cond::Eq { column, value, .. } => {
                 sql.push_str(&format!("{column} = ${index}"));
                 *index += 1;
-                params.push(value);
+                params.push(*value);
             }
             Cond::In { column, values, .. } => {
                 sql.push_str(column);
@@ -63,18 +63,18 @@ pub trait Field {
     type Value: ToSql + Sync + 'static;
     type Entity;
 
-    fn update(value: Self::Value) -> Update<Self::Entity> {
-        Update { column: Self::COLUMN, value: Box::new(value), _entity: PhantomData }
+    fn update(value: &Self::Value) -> Update<'_, Self::Entity> {
+        Update { column: Self::COLUMN, value, _entity: PhantomData }
     }
 
-    fn eq(value: Self::Value) -> Cond<Self::Entity> {
-        Cond::Eq { column: Self::COLUMN, value: Box::new(value), _entity: PhantomData }
+    fn eq(value: &Self::Value) -> Cond<'_, Self::Entity> {
+        Cond::Eq { column: Self::COLUMN, value, _entity: PhantomData }
     }
 
-    fn is_in(values: Vec<Self::Value>) -> Cond<Self::Entity> {
+    fn is_in(values: Vec<&Self::Value>) -> Cond<'_, Self::Entity> {
         Cond::In {
             column: Self::COLUMN,
-            values: values.into_iter().map(|value| Box::new(value) as Box<QueryParam>).collect(),
+            values: values.into_iter().map(|value| value as &QueryParam).collect(),
             _entity: PhantomData,
         }
     }
@@ -97,7 +97,9 @@ pub trait Insert {
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Entity {
     type Id;
+    type EntityType;
     fn __id_params(ids: &Self::Id) -> Vec<&QueryParam>;
+    fn __id_conditions(ids: &Self::Id) -> Vec<Cond<'_, Self::EntityType>>;
     fn __table_name() -> &'static str;
     fn __get_sql() -> &'static str;
     fn __select_sql() -> &'static str;
@@ -169,14 +171,14 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
     .await
 }
 
-pub async fn get<T>(database: &Database, ids: &T::Id) -> Result<Option<T>, Exception>
+pub async fn get<T>(database: &Database, id: &T::Id) -> Result<Option<T>, Exception>
 where
     T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
         let sql = T::__get_sql();
-        let params = T::__id_params(ids);
+        let params = T::__id_params(id);
         debug!("get, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(sql).await?;
         let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
@@ -187,27 +189,18 @@ where
     .await
 }
 
-pub async fn select_one<T>(database: &Database, conditions: Vec<Cond<T>>) -> Result<Option<T>, Exception>
+pub async fn select_one<T>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<Option<T>, Exception>
 where
     T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
         let mut sql = T::__select_sql().to_string();
-        let mut params: Vec<Box<QueryParam>> = vec![];
-        let mut param_index = 1;
-        for (index, cond) in conditions.into_iter().enumerate() {
-            if index == 0 {
-                sql.push_str(" WHERE ");
-            } else {
-                sql.push_str(" AND ");
-            }
-            cond.build_query(&mut sql, &mut param_index, &mut params);
-        }
+        let mut params: Vec<&QueryParam> = vec![];
+        build_query_conditions(conditions, &mut sql, &mut params, 1);
         debug!("select_one, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let param_refs: Vec<&QueryParam> = params.iter().map(|p| p.as_ref()).collect();
-        let row = conn.with_timeout(conn.client.query_opt(&statement, &param_refs), database.query_timeout).await?;
+        let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
         row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
     }
@@ -215,27 +208,18 @@ where
     .await
 }
 
-pub async fn select_all<T>(database: &Database, conditions: Vec<Cond<T>>) -> Result<Vec<T>, Exception>
+pub async fn select_all<T>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<Vec<T>, Exception>
 where
     T: Entity + FromRow,
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
         let mut sql = T::__select_sql().to_string();
-        let mut params: Vec<Box<QueryParam>> = vec![];
-        let mut param_index = 1;
-        for (index, cond) in conditions.into_iter().enumerate() {
-            if index == 0 {
-                sql.push_str(" WHERE ");
-            } else {
-                sql.push_str(" AND ");
-            }
-            cond.build_query(&mut sql, &mut param_index, &mut params);
-        }
+        let mut params: Vec<&QueryParam> = vec![];
+        build_query_conditions(conditions, &mut sql, &mut params, 1);
         debug!("select, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let param_refs: Vec<&QueryParam> = params.iter().map(|p| p.as_ref()).collect();
-        let rows = conn.with_timeout(conn.client.query(&statement, &param_refs), database.query_timeout).await?;
+        let rows = conn.with_timeout(conn.client.query(&statement, &params), database.query_timeout).await?;
         debug!(db_read_rows = rows.len(), "stats");
         rows.into_iter()
             .map(T::try_from)
@@ -246,35 +230,57 @@ where
     .await
 }
 
+// pub async fn update_with_condition<T: Entity>(
+//     database: &Database,
+//     id: &T::Id,
+//     updates: Vec<Update<T>>,
+//     conditions: Vec<Cond<T>>,
+// ) -> Result<bool, Exception> {
+//     async {
+//         let mut conn = database.pool.get_with_timeout().await?;
+//         let mut sql = format!("UPDATE \"{}\" SET ", T::__table_name());
+//         let mut params: Vec<Box<QueryParam>> = vec![];
+//         let mut param_index = 1;
+//         for (index, update) in updates.into_iter().enumerate() {
+//             if index > 0 {
+//                 sql.push_str(", ");
+//             }
+//             update.build_query(&mut sql, &mut param_index, &mut params);
+//         }
+//         sql.push_str(" WHERE ");
+//         build_query_conditions(conditions, &mut sql, &mut params, param_index);
+//         debug!("update, sql={sql}, params={params:?}");
+//         let param_refs: Vec<&QueryParam> = params.iter().map(|p| p.as_ref()).collect();
+//         let statement = conn.prepared_statement(&sql).await?;
+//         let db_write_rows =
+//             conn.with_timeout(conn.client.execute(&statement, &param_refs), database.query_timeout).await?;
+//         debug!(db_write_rows, "stats");
+//         Ok(db_write_rows == 1)
+//     }
+//     .instrument(debug_span!("db"))
+//     .await
+// }
+
 pub async fn update_all<T: Entity>(
     database: &Database,
-    updates: Vec<Update<T>>,
-    conditions: Vec<Cond<T>>,
+    updates: Vec<Update<'_, T>>,
+    conditions: Vec<Cond<'_, T>>,
 ) -> Result<u64, Exception> {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
         let mut sql = format!("UPDATE \"{}\" SET ", T::__table_name());
-        let mut params: Vec<Box<QueryParam>> = vec![];
+        let mut params: Vec<&QueryParam> = vec![];
         let mut param_index = 1;
-        for (index, u) in updates.into_iter().enumerate() {
+        for (index, update) in updates.into_iter().enumerate() {
             if index > 0 {
                 sql.push_str(", ");
             }
-            u.build_query(&mut sql, &mut param_index, &mut params);
+            update.build_query(&mut sql, &mut param_index, &mut params);
         }
-        for (index, c) in conditions.into_iter().enumerate() {
-            if index == 0 {
-                sql.push_str(" WHERE ");
-            } else {
-                sql.push_str(" AND ");
-            }
-            c.build_query(&mut sql, &mut param_index, &mut params);
-        }
+        build_query_conditions(conditions, &mut sql, &mut params, param_index);
         debug!("update_all, sql={sql}, params={params:?}");
-        let param_refs: Vec<&QueryParam> = params.iter().map(|p| p.as_ref()).collect();
         let statement = conn.prepared_statement(&sql).await?;
-        let db_write_rows =
-            conn.with_timeout(conn.client.execute(&statement, &param_refs), database.query_timeout).await?;
+        let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
         debug!(db_write_rows, "stats");
         Ok(db_write_rows)
     }
@@ -295,4 +301,20 @@ pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, 
     }
     .instrument(debug_span!("db"))
     .await
+}
+
+fn build_query_conditions<'a, T>(
+    conditions: Vec<Cond<'a, T>>,
+    sql: &mut String,
+    params: &mut Vec<&'a QueryParam>,
+    mut param_index: i32,
+) {
+    for (index, cond) in conditions.into_iter().enumerate() {
+        if index == 0 {
+            sql.push_str(" WHERE ");
+        } else {
+            sql.push_str(" AND ");
+        }
+        cond.build_query(sql, &mut param_index, params);
+    }
 }

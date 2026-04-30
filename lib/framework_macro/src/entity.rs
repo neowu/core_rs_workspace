@@ -6,6 +6,8 @@ use syn::Result;
 
 use crate::model;
 use crate::model::StructModel;
+use crate::util::to_pascal_case;
+use crate::util::to_snake_case;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
@@ -250,9 +252,14 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     quote! {
         impl framework::db::repository::Entity for #struct_name {
             type Id = #id_type;
+            type EntityType = #struct_name
             #[inline]
             fn __id_params(ids: &Self::Id) -> ::std::vec::Vec<&framework::db::QueryParam> {
                 #ids_params
+            }
+            #[inline]
+            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework::db::repository::Cond<'_, Self::EntityType>> {
+
             }
             #[inline]
             fn __table_name() -> &'static str {
@@ -272,29 +279,6 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
             }
         }
     }
-}
-
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.char_indices() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.extend(c.to_lowercase());
-    }
-    result
-}
-
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        })
-        .collect()
 }
 
 fn fields_impl(model: &EntityModel) -> TokenStream {

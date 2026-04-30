@@ -1,6 +1,7 @@
 #[cfg(feature = "db")]
 mod entity;
 mod model;
+mod util;
 mod validate;
 
 /// `#[derive(Validate)]` supports following field validations:
