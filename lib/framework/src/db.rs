@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use query::Cond;
+pub use query::Update;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 pub use tokio_postgres::Client;
@@ -22,6 +24,7 @@ use crate::exception::Exception;
 use crate::pool::ResourceManager;
 use crate::pool::ResourcePool;
 
+pub mod query;
 pub mod repository;
 
 struct Connection {
