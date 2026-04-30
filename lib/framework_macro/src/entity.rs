@@ -25,10 +25,17 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
+    let fields_impl = if model.has_primary_key {
+        fields_impl(&model)
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         #from_row_impl
         #insert_impl
         #entity_impl
+        #fields_impl
     })
 }
 
@@ -248,6 +255,10 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
                 #ids_params
             }
             #[inline]
+            fn __table_name() -> &'static str {
+                #table
+            }
+            #[inline]
             fn __get_sql() -> &'static str {
                 #get_sql
             }
@@ -259,6 +270,55 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
             fn __delete_sql() -> &'static str {
                 #delete_sql
             }
+        }
+    }
+}
+
+fn to_snake_case(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.char_indices() {
+        if c.is_uppercase() && i > 0 {
+            result.push('_');
+        }
+        result.extend(c.to_lowercase());
+    }
+    result
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect()
+}
+
+fn fields_impl(model: &EntityModel) -> TokenStream {
+    let entity = &model.struct_ident;
+    let mod_name = proc_macro2::Ident::new(&format!("{}_fields", to_snake_case(&entity.to_string())), entity.span());
+
+    let field_structs = model.columns.iter().filter(|c| !c.primary_key).map(|c| {
+        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
+        let column = &c.column;
+        let value_type: TokenStream = c.field_type.parse().unwrap();
+        quote! {
+            pub(crate) struct #struct_name;
+            impl framework::db::repository::Field for #struct_name {
+                const COLUMN: &'static str = #column;
+                type Value = #value_type;
+                type Entity = super::#entity;
+            }
+        }
+    });
+
+    quote! {
+        mod #mod_name {
+            use super::*;
+            #(#field_structs)*
         }
     }
 }
@@ -319,6 +379,10 @@ mod tests {
                         vec![ids as &framework::db::QueryParam]
                     }
                     #[inline]
+                    fn __table_name() -> &'static str {
+                        "test_entity"
+                    }
+                    #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
@@ -329,6 +393,16 @@ mod tests {
                     #[inline]
                     fn __delete_sql() -> &'static str {
                         "DELETE FROM \"test_entity\" WHERE id = $1"
+                    }
+                }
+
+                mod test_entity_fields {
+                    use super::*;
+                    pub(crate) struct Col1;
+                    impl framework::db::repository::Field for Col1 {
+                        const COLUMN: &'static str = "col1";
+                        type Value = String;
+                        type Entity = super::TestEntity;
                     }
                 }
             }
@@ -390,6 +464,10 @@ mod tests {
                         vec![&ids.0 as &framework::db::QueryParam, &ids.1 as &framework::db::QueryParam, ]
                     }
                     #[inline]
+                    fn __table_name() -> &'static str {
+                        "test_entity"
+                    }
+                    #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id1, id2, col1 FROM \"test_entity\" WHERE id1 = $1 AND id2 = $2"
                     }
@@ -400,6 +478,16 @@ mod tests {
                     #[inline]
                     fn __delete_sql() -> &'static str {
                         "DELETE FROM \"test_entity\" WHERE id1 = $1 AND id2 = $2"
+                    }
+                }
+
+                mod test_entity_fields {
+                    use super::*;
+                    pub(crate) struct Col1;
+                    impl framework::db::repository::Field for Col1 {
+                        const COLUMN: &'static str = "col1";
+                        type Value = String;
+                        type Entity = super::TestEntity;
                     }
                 }
             }
@@ -453,6 +541,10 @@ mod tests {
                         vec![ids as &framework::db::QueryParam]
                     }
                     #[inline]
+                    fn __table_name() -> &'static str {
+                        "test_entity"
+                    }
+                    #[inline]
                     fn __get_sql() -> &'static str {
                         "SELECT id, col1 FROM \"test_entity\" WHERE id = $1"
                     }
@@ -463,6 +555,16 @@ mod tests {
                     #[inline]
                     fn __delete_sql() -> &'static str {
                         "DELETE FROM \"test_entity\" WHERE id = $1"
+                    }
+                }
+
+                mod test_entity_fields {
+                    use super::*;
+                    pub(crate) struct Col1;
+                    impl framework::db::repository::Field for Col1 {
+                        const COLUMN: &'static str = "col1";
+                        type Value = Option<String>;
+                        type Entity = super::TestEntity;
                     }
                 }
             }

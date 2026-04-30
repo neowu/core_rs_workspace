@@ -17,3 +17,4 @@ bytes = "*"
 tokio-util = "*"
 tokio-stream = "*"
 futures = "*"
+uuid = { version = "*", features = ["v7"] }
