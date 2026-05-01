@@ -34,7 +34,7 @@ struct Connection {
 }
 
 impl Connection {
-    async fn prepared_statement(&mut self, sql: &'_ str) -> Result<Statement, Exception> {
+    async fn prepared_statement(&mut self, sql: &str) -> Result<Statement, Exception> {
         match self.statement_cache.get(sql) {
             Some(statement) => Ok(statement.clone()),
             None => {

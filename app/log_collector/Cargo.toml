@@ -1,11 +1,11 @@
 [package]
 name = "log_collector"
-version = "0.5.1"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
 framework = { workspace = true, features = ["kafka"] }
-framework_macro = { workspace = true, features = [] }
+framework_macro.workspace = true
 
 tracing.workspace = true
 serde.workspace = true

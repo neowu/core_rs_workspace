@@ -1,6 +1,6 @@
 [package]
 name = "log_exporter"
-version = "0.5.1"
+version.workspace = true
 edition = "2024"
 
 [dependencies]

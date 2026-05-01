@@ -71,8 +71,7 @@ pub(super) fn build_conditions<'a, T>(
                 params.push(value);
             }
             Cond::In { column, values, .. } => {
-                sql.push_str(column);
-                sql.push_str(" IN (");
+                sql.push_str(&format!("{column} IN ("));
                 for (i, _) in values.iter().enumerate() {
                     if i > 0 {
                         sql.push_str(", ");
@@ -84,8 +83,7 @@ pub(super) fn build_conditions<'a, T>(
                 params.extend(values);
             }
             Cond::NotNull { column, .. } => {
-                sql.push_str(column);
-                sql.push_str(" IS NOT NULL");
+                sql.push_str(&format!("{column} IS NOT NULL"));
             }
         }
     }

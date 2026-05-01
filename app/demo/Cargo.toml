@@ -1,11 +1,11 @@
 [package]
 name = "demo"
-version = "1.0.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework.workspace = true
-framework_macro.workspace = true
+framework = { workspace = true, features = ["db"] }
+framework_macro = { workspace = true, features = ["db"] }
 
 tracing.workspace = true
 serde.workspace = true

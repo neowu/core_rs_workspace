@@ -1,10 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["app/*", "lib/*"]
+members = ["app/*", "lib/*", "test/*"]
+
+[workspace.package]
+version = "0.5.3"
 
 [workspace.dependencies]
-framework = { path = "lib/framework", features = ["kafka", "db"] }
-framework_macro = { path = "lib/framework_macro", features = ["db"] }
+framework = { path = "lib/framework", features = ["kafka"] }
+framework_macro = { path = "lib/framework_macro" }
 
 tracing = { version = "*", features = ["max_level_debug"] }
 serde = { version = "*", features = ["derive"] }
