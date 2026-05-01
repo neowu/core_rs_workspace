@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
@@ -25,19 +23,15 @@ pub trait Field {
     }
 
     fn eq(value: &Self::Value) -> Cond<'_, Self::Entity> {
-        Cond::Eq { column: Self::COLUMN, value, _entity: PhantomData }
+        Cond::eq(Self::COLUMN, value)
     }
 
     fn is_in(values: Vec<&Self::Value>) -> Cond<'_, Self::Entity> {
-        Cond::In {
-            column: Self::COLUMN,
-            values: values.into_iter().map(|value| value as &QueryParam).collect(),
-            _entity: PhantomData,
-        }
+        Cond::is_in(Self::COLUMN, values.into_iter().map(|value| value as &QueryParam).collect())
     }
 
     fn not_null() -> Cond<'static, Self::Entity> {
-        Cond::NotNull { column: Self::COLUMN, _entity: PhantomData }
+        Cond::not_null(Self::COLUMN)
     }
 }
 
@@ -133,20 +127,7 @@ pub async fn get<T>(database: &Database, id: &T::Id) -> Result<Option<T>, Except
 where
     T: Entity<Type = T> + FromRow,
 {
-    async {
-        let mut conn = database.pool.get_with_timeout().await?;
-        let mut sql = T::__select_sql().to_string();
-        let mut params: Vec<&QueryParam> = vec![];
-        let conditions = T::__id_conditions(id);
-        build_conditions(conditions, &mut sql, &mut params, 1);
-        debug!("get, sql={sql}, params={params:?}");
-        let statement = conn.prepared_statement(&sql).await?;
-        let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
-        debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
-        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
-    }
-    .instrument(debug_span!("db"))
-    .await
+    select_one(database, T::__id_conditions(id)).await
 }
 
 pub async fn select_one<T>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<Option<T>, Exception>
@@ -157,7 +138,7 @@ where
         let mut conn = database.pool.get_with_timeout().await?;
         let mut sql = T::__select_sql().to_string();
         let mut params: Vec<&QueryParam> = vec![];
-        build_conditions(conditions, &mut sql, &mut params, 1);
+        build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("select_one, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
@@ -176,7 +157,7 @@ where
         let mut conn = database.pool.get_with_timeout().await?;
         let mut sql = T::__select_sql().to_string();
         let mut params: Vec<&QueryParam> = vec![];
-        build_conditions(conditions, &mut sql, &mut params, 1);
+        build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("select, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let rows = conn.with_timeout(conn.client.query(&statement, &params), database.query_timeout).await?;
@@ -203,7 +184,7 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
         let mut param_index = 1;
         build_update(updates, &mut sql, &mut params, &mut param_index);
         conditions.extend(T::__id_conditions(id));
-        build_conditions(conditions, &mut sql, &mut params, param_index);
+        build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
@@ -233,7 +214,7 @@ pub async fn update_all<T: Entity>(
         let mut params: Vec<&QueryParam> = vec![];
         let mut param_index = 1;
         build_update(updates, &mut sql, &mut params, &mut param_index);
-        build_conditions(conditions, &mut sql, &mut params, param_index);
+        build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
@@ -247,10 +228,9 @@ pub async fn update_all<T: Entity>(
 pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, Exception> {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
-        let mut sql = format!("DELETE \"{}\"", T::__table_name());
+        let mut sql = format!("DELETE FROM \"{}\"", T::__table_name());
         let mut params: Vec<&QueryParam> = vec![];
-        let conditions = T::__id_conditions(id);
-        build_conditions(conditions, &mut sql, &mut params, 1);
+        build_conditions(T::__id_conditions(id), &mut sql, &mut params, &mut 1);
         debug!("delete, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
@@ -261,18 +241,12 @@ pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, 
     .await
 }
 
-pub async fn delete_all<T: Entity>(
-    database: &Database,
-    updates: Vec<Update<'_, T>>,
-    conditions: Vec<Cond<'_, T>>,
-) -> Result<u64, Exception> {
+pub async fn delete_all<T: Entity>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<u64, Exception> {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
-        let mut sql = format!("DELETE \"{}\"", T::__table_name());
+        let mut sql = format!("DELETE FROM \"{}\"", T::__table_name());
         let mut params: Vec<&QueryParam> = vec![];
-        let mut param_index = 1;
-        build_update(updates, &mut sql, &mut params, &mut param_index);
-        build_conditions(conditions, &mut sql, &mut params, param_index);
+        build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("delete_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
