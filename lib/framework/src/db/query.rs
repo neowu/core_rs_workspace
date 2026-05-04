@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::db::QueryParam;
+use crate::write_str;
 
 pub struct Update<'a, E> {
     column: &'static str,
@@ -26,7 +27,7 @@ pub(super) fn build_update<'a, T>(
         } else {
             sql.push_str(" SET ");
         }
-        sql.push_str(&format!("{} = ${param_index}", update.column));
+        write_str!(sql, "{} = ${param_index}", update.column);
         *param_index += 1;
         params.push(update.value);
     }
@@ -66,24 +67,24 @@ pub(super) fn build_conditions<'a, T>(
         }
         match cond {
             Cond::Eq { column, value, .. } => {
-                sql.push_str(&format!("{column} = ${param_index}"));
+                write_str!(sql, "{column} = ${param_index}");
                 *param_index += 1;
                 params.push(value);
             }
             Cond::In { column, values, .. } => {
-                sql.push_str(&format!("{column} IN ("));
+                write_str!(sql, "{column} IN (");
                 for (i, _) in values.iter().enumerate() {
                     if i > 0 {
                         sql.push_str(", ");
                     }
-                    sql.push_str(&format!("${param_index}"));
+                    write_str!(sql, "${param_index}");
                     *param_index += 1;
                 }
                 sql.push(')');
                 params.extend(values);
             }
             Cond::NotNull { column, .. } => {
-                sql.push_str(&format!("{column} IS NOT NULL"));
+                write_str!(sql, "{column} IS NOT NULL");
             }
         }
     }
@@ -96,7 +97,7 @@ mod tests {
     struct E;
 
     #[test]
-    fn test_build_update_single() {
+    fn build_update_single() {
         let updates = vec![Update::new("col1", &42 as &QueryParam)];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
@@ -108,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_update_multiple() {
+    fn build_update_multiple() {
         let updates = vec![Update::new("col1", &1), Update::new("col2", &&"value")];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
@@ -120,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_conditions_empty() {
+    fn build_conditions_empty() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
         build_conditions::<E>(vec![], &mut sql, &mut params, &mut 1);
@@ -129,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_conditions_in() {
+    fn build_conditions_in() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
         build_conditions(vec![Cond::<E>::is_in("id", vec![&1 as &QueryParam, &2, &3])], &mut sql, &mut params, &mut 1);
@@ -138,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_conditions() {
+    fn build_conditions_multiple() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
         build_conditions(
@@ -152,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_update_and_conditions() {
+    fn build_update_and_conditions() {
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;

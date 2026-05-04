@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::ToTokens;
+use quote::ToTokens as _;
 use syn::Attribute;
 use syn::Data::Struct;
 use syn::DeriveInput;
@@ -84,9 +84,10 @@ impl AttributeModel {
         let lit = self
             .optional_meta_value(meta_name)?
             .ok_or_else(|| Error::new_spanned(&self.attr, format!("can not find meta {meta_name}")))?;
-        match lit {
-            Lit::Str(value) => Ok(value.value()),
-            _ => Err(Error::new_spanned(&self.attr, format!("meta {meta_name} value is not string"))),
+        if let Lit::Str(value) = lit {
+            Ok(value.value())
+        } else {
+            Err(Error::new_spanned(&self.attr, format!("meta {meta_name} value is not string")))
         }
     }
 
@@ -94,9 +95,10 @@ impl AttributeModel {
         let Some(lit) = self.optional_meta_value(meta_name)? else {
             return Ok(None);
         };
-        match lit {
-            Lit::Int(value) => Ok(Some(value)),
-            _ => Err(Error::new_spanned(&self.attr, format!("meta {meta_name} is not int"))),
+        if let Lit::Int(value) = lit {
+            Ok(Some(value))
+        } else {
+            Err(Error::new_spanned(&self.attr, format!("meta {meta_name} is not int")))
         }
     }
 }
@@ -119,10 +121,10 @@ pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
     let fields = fields
         .into_iter()
         .map(|field| {
-            let ident = field.ident.unwrap(); // field must be named
-            let attrs = field.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
-            let field_type = field.ty.to_token_stream().to_string().replace(" ", "");
-            FieldModel { ident, field_type, attrs }
+            let field_ident = field.ident.expect("field must be named");
+            let field_attrs = field.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
+            let field_type = field.ty.to_token_stream().to_string().replace(' ', "");
+            FieldModel { ident: field_ident, field_type, attrs: field_attrs }
         })
         .collect();
 
@@ -136,7 +138,7 @@ mod tests {
     use super::parse_struct;
 
     #[test]
-    fn test_parse_struct_with_entity_macro() -> syn::Result<()> {
+    fn parse_struct_with_entity_macro() -> syn::Result<()> {
         let tokens = quote! {
             #[derive(Entity)]
             #[table(name = "test_entity")]
@@ -174,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_struct_with_validate_macro() -> syn::Result<()> {
+    fn parse_struct_with_validate_macro() -> syn::Result<()> {
         let tokens = quote! {
             #[derive(Validate)]
             struct TestBean {

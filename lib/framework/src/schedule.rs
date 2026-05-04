@@ -106,13 +106,13 @@ where
                         scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
                         "run scheduled job"
                     );
-                    let waiting_time = (context.scheduled_time - previous).to_std().unwrap();
+                    let waiting_time = (context.scheduled_time - previous).to_std().unwrap_or(Duration::ZERO);
                     previous = context.scheduled_time;
                     tokio::select! {
                         _ = shutdown_signal.recv() => {
                             return;
                         }
-                        _ = time::sleep(waiting_time) => {
+                        () = time::sleep(waiting_time) => {
                             let state = state.clone();
                             tokio::spawn(schedule.job.execute(state, context));
                         }
@@ -122,7 +122,7 @@ where
         }
         info!("scheduler started");
         for handle in handles {
-            handle.await.unwrap();
+            handle.await.expect("handle cannot panic");
         }
         info!("scheduler stopped");
         Ok(())
@@ -142,5 +142,5 @@ where
         debug!(job = name, scheduled_time, "context");
         job(state, context).await
     })
-    .await
+    .await;
 }

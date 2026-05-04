@@ -177,7 +177,7 @@ mod tests {
     use super::build;
 
     #[test]
-    fn test_validate_impl() -> Result<()> {
+    fn validate_impl() -> Result<()> {
         let source = quote! {
             #[derive(Validate)]
             struct TestBean {

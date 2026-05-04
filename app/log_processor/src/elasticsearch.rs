@@ -10,9 +10,10 @@ use framework::http::HttpMethod::POST;
 use framework::http::HttpMethod::PUT;
 use framework::http::HttpRequest;
 use framework::json;
+use framework::write_str;
 use serde::Deserialize;
 use serde::Serialize;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
@@ -23,10 +24,7 @@ pub struct Elasticsearch {
 
 impl Elasticsearch {
     pub fn new(uri: &str) -> Self {
-        Self {
-            uri: uri.to_owned(),
-            client: HttpClient::default(),
-        }
+        Self { uri: uri.to_owned(), client: HttpClient::default() }
     }
 
     pub async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {
@@ -57,10 +55,10 @@ impl Elasticsearch {
             let mut request = HttpRequest::new(POST, format!("{uri}/_bulk"));
 
             let mut body = String::new();
-            for (id, doc) in documents.iter() {
-                body.push_str(&format!(r#"{{"index":{{"_index":"{index}","_id":"{id}"}}}}"#));
+            for (id, doc) in &documents {
+                write_str!(body, r#"{{"index":{{"_index":"{index}","_id":"{id}"}}}}"#);
                 body.push('\n');
-                body.push_str(&json::to_json(doc)?);
+                body.push_str(&json::to_json(&doc)?);
                 body.push('\n');
             }
             debug!(es_write_entries = documents.len(), es_write_bytes = body.len(), "stats");

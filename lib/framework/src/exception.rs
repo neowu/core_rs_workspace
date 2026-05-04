@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -25,8 +26,9 @@ pub enum Severity {
 }
 
 impl Display for Severity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self {
             Severity::Warn => write!(f, "WARN"),
             Severity::Error => write!(f, "ERROR"),
         }
@@ -34,13 +36,15 @@ impl Display for Severity {
 }
 
 impl Debug for Exception {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self, f)
     }
 }
 
 impl Display for Exception {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut index = 0;
         let mut current_source = Some(self);
         while let Some(source) = current_source {
@@ -56,7 +60,7 @@ impl Display for Exception {
                 write!(f, " at {location}")?;
             }
             index += 1;
-            current_source = source.source.as_ref().map(|s| s.as_ref());
+            current_source = source.source.as_ref().map(Box::as_ref);
         }
         Ok(())
     }
@@ -127,6 +131,7 @@ impl<T> From<T> for Exception
 where
     T: Error + 'static,
 {
+    #[inline]
     fn from(error: T) -> Self {
         Exception {
             severity: Severity::Error,

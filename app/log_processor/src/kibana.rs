@@ -9,13 +9,13 @@ use tracing::info;
 pub async fn import(kibana_uri: &str, objects: String) -> Result<(), Exception> {
     let http_client = HttpClient::default();
     let mut request = HttpRequest::new(POST, format!("{kibana_uri}/api/saved_objects/_bulk_create?overwrite=true"));
-    request.headers.insert(HeaderName::from_static("kbn-xsrf"), "true".to_string());
+    request.headers.insert(HeaderName::from_static("kbn-xsrf"), "true".to_owned());
     // request.headers.insert(HeaderName::from_static("osd-xsrf"), "true".to_string());
-    request.body(objects, "application/json".to_string());
+    request.body(objects, "application/json".to_owned());
 
     let response = http_client.execute(request).await?;
     if response.status == 200 {
-        info!("kibana objects are imported")
+        info!("kibana objects are imported");
     } else {
         return Err(exception!(message = format!("failed to import kibana objects, status={}", response.status)));
     }

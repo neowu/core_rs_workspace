@@ -12,3 +12,6 @@ serde.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 axum.workspace = true
+
+[lints]
+workspace = true

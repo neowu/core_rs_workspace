@@ -13,3 +13,6 @@ proc-macro = true
 
 [features]
 db = []
+
+[lints]
+workspace = true

@@ -1,25 +1,26 @@
 use std::env;
 use std::fmt::Debug;
 
-pub use appender::ConsoleAppender;
 use chrono::DateTime;
 use chrono::Utc;
 use indexmap::IndexMap;
 use layer::ActionLogLayer;
 use serde::Serialize;
 use tokio::task_local;
-use tracing::Instrument;
-use tracing::Level;
+use tracing::Instrument as _;
+use tracing::error;
 use tracing::info_span;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::Layer;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
+use tracing::warn;
+use tracing_subscriber::Layer as _;
+use tracing_subscriber::fmt;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
 
-mod appender;
+pub mod appender;
 pub mod id_generator;
 mod layer;
 
@@ -31,10 +32,11 @@ task_local! {
     static CURRENT_ACTION_ID: String
 }
 
+#[inline]
 pub fn init() {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::fmt::layer()
+            fmt::layer()
                 .compact()
                 .with_ansi(false) // generally cloud log console doesn't support color
                 .with_line_number(true)
@@ -44,15 +46,20 @@ pub fn init() {
         .init();
 }
 
+#[inline]
 pub fn init_with_action<T>(appender: T)
 where
     T: ActionLogAppender + Send + Sync + 'static,
 {
-    unsafe { env::set_var("RUST_BACKTRACE", "1") };
+    // SAFETY:
+    // init only be called once on startup, no threading issue
+    unsafe {
+        env::set_var("RUST_BACKTRACE", "1");
+    }
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::fmt::layer()
+            fmt::layer()
                 .compact()
                 .with_ansi(false) // generally cloud log console doesn't support color
                 .with_line_number(true)
@@ -63,28 +70,7 @@ where
         .init();
 }
 
-macro_rules! log_event {
-    (level = $level:ident, error_code = $error_code:expr, $($arg:tt)+) => {
-        match $level {
-            ::tracing::Level::TRACE => {},
-            ::tracing::Level::DEBUG => {},
-            ::tracing::Level::INFO => {},
-            ::tracing::Level::WARN => {
-                match $error_code {
-                    Some(ref error_code) => ::tracing::warn!(error_code, $($arg)+),
-                    None => ::tracing::warn!($($arg)+),
-                }
-            },
-            ::tracing::Level::ERROR => {
-                match $error_code {
-                    Some(ref error_code) => ::tracing::error!(error_code, $($arg)+),
-                    None => ::tracing::error!($($arg)+),
-                }
-            }
-        }
-    };
-}
-
+#[inline]
 pub async fn start_action<T>(action: &str, ref_id: Option<String>, task: T)
 where
     T: Future<Output = Result<(), Exception>>,
@@ -106,14 +92,17 @@ where
 }
 
 pub(crate) fn log_exception(e: &Exception) {
-    let level = match e.severity {
-        Severity::Warn => Level::WARN,
-        Severity::Error => Level::ERROR,
-    };
+    let backtrace = e.to_string();
     let message = &e.message;
-    log_event!(level = level, error_code = e.code, backtrace = e.to_string(), "{message}");
+    match (&e.severity, e.code.as_ref()) {
+        (&Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
+        (&Severity::Warn, None) => warn!(backtrace, "{message}"),
+        (&Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
+        (&Severity::Error, None) => error!(backtrace, "{message}"),
+    }
 }
 
+#[inline]
 pub fn current_action_id() -> Option<String> {
     CURRENT_ACTION_ID.try_with(|current_action_id| Some(current_action_id.clone())).unwrap_or(None)
 }
@@ -144,7 +133,7 @@ pub enum ActionResult {
 
 impl ActionResult {
     fn level(&self) -> u32 {
-        match self {
+        match *self {
             ActionResult::Ok => 0,
             ActionResult::Warn => 1,
             ActionResult::Error => 2,

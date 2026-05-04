@@ -13,3 +13,6 @@ tokio.workspace = true
 axum.workspace = true
 
 regex = "*"
+
+[lints]
+workspace = true

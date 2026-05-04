@@ -61,7 +61,7 @@ where
     }
 
     pub(crate) async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
-        let permit = match time::timeout(self.checkout_timeout, self.semaphore.clone().acquire_owned()).await {
+        let permit = match time::timeout(self.checkout_timeout, Arc::clone(&self.semaphore).acquire_owned()).await {
             Ok(Ok(permit)) => permit,
             Ok(Err(_)) => return Err(exception!(message = "pool is closed")),
             Err(_) => return Err(exception!(message = "timeout")),
@@ -69,7 +69,7 @@ where
 
         let item = loop {
             let candidate = {
-                let mut storage = self.storage.lock().unwrap();
+                let mut storage = self.storage.lock().expect("only if lock if poisoned");
                 storage.pop_front()
             };
 
@@ -83,9 +83,8 @@ where
                     let is_valid = R::is_valid(&res.item).await;
                     if is_valid {
                         break res.item;
-                    } else {
-                        warn!("resource is not valid, try next");
                     }
+                    warn!("resource is not valid, try next");
                 }
             }
         };
@@ -138,7 +137,7 @@ where
             && resource.created_time.elapsed() < self.pool.max_life_time
         {
             resource.return_time = Instant::now();
-            let mut storage = self.pool.storage.lock().unwrap();
+            let mut storage = self.pool.storage.lock().expect("only if lock if poisoned");
             storage.push_back(resource);
         }
     }

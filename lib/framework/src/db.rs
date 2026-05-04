@@ -4,6 +4,7 @@ use std::time::Duration;
 
 pub use query::Cond;
 pub use query::Update;
+use tokio::task;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 pub use tokio_postgres::Client;
@@ -14,7 +15,7 @@ pub use tokio_postgres::Row;
 use tokio_postgres::Statement;
 use tokio_postgres::types::FromSqlOwned;
 pub use tokio_postgres::types::ToSql;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 use tracing::error;
@@ -35,17 +36,16 @@ struct Connection {
 
 impl Connection {
     async fn prepared_statement(&mut self, sql: &str) -> Result<Statement, Exception> {
-        match self.statement_cache.get(sql) {
-            Some(statement) => Ok(statement.clone()),
-            None => {
-                let statement = self
-                    .client
-                    .prepare(sql)
-                    .await
-                    .map_err(|err| exception!(message = "failed to prepare statement", source = err))?;
-                self.statement_cache.insert(sql.to_owned(), statement.clone());
-                Ok(statement)
-            }
+        if let Some(statement) = self.statement_cache.get(sql) {
+            Ok(statement.clone())
+        } else {
+            let statement = self
+                .client
+                .prepare(sql)
+                .await
+                .map_err(|err| exception!(message = "failed to prepare statement", source = err))?;
+            self.statement_cache.insert(sql.to_owned(), statement.clone());
+            Ok(statement)
         }
     }
 
@@ -61,7 +61,7 @@ impl Connection {
                 debug!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
-                    Ok(_) => Err(exception!(message = "query timed out")),
+                    Ok(()) => Err(exception!(message = "query timed out")),
                     Err(err) => Err(exception!(message = "query timed out, failed to cancel", source = err)),
                 }
             }
@@ -78,7 +78,7 @@ impl ResourceManager for ConnectionManager {
         let (client, connection) = self.config.connect(NoTls).await?;
 
         // use native tokio spawn, not wire current span
-        tokio::task::spawn(async {
+        task::spawn(async {
             if let Err(e) = connection.await {
                 error!("connection error: {e}");
             }

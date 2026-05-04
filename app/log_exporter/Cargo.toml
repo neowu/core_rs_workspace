@@ -15,3 +15,6 @@ axum.workspace = true
 hostname = "*"
 sha2 = "*"
 hex = "*"
+
+[lints]
+workspace = true

@@ -5,7 +5,7 @@ use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;

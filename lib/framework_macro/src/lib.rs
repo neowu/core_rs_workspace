@@ -1,3 +1,5 @@
+use syn::Error;
+
 #[cfg(feature = "db")]
 mod entity;
 mod model;
@@ -13,7 +15,7 @@ mod validate;
 /// ```
 #[proc_macro_derive(Validate, attributes(range, length, validate, not_blank))]
 pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    validate::build(stream.into()).unwrap_or_else(|e| e.into_compile_error()).into()
+    validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// Derive `framework::db::Entity<T>` for a struct.
@@ -30,5 +32,5 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[cfg(feature = "db")]
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    entity::build(stream.into()).unwrap_or_else(|e| e.into_compile_error()).into()
+    entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }

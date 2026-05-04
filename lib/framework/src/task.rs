@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use tokio::task::JoinHandle;
 use tokio_util::task::TaskTracker;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::Span;
 use tracing::debug;
 use tracing::info;
@@ -24,7 +24,7 @@ where
             debug!(task = name, "context");
             task.await
         })
-        .await
+        .await;
     });
 }
 

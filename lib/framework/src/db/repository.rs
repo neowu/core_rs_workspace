@@ -1,4 +1,4 @@
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
@@ -15,21 +15,25 @@ use crate::exception::Exception;
 
 pub trait Field {
     const COLUMN: &'static str;
-    type Value: ToSql + Sync + 'static;
     type Entity;
+    type Value: ToSql + Sync + 'static;
 
+    #[inline]
     fn update(value: &Self::Value) -> Update<'_, Self::Entity> {
         Update::new(Self::COLUMN, value)
     }
 
+    #[inline]
     fn eq(value: &Self::Value) -> Cond<'_, Self::Entity> {
         Cond::eq(Self::COLUMN, value)
     }
 
+    #[inline]
     fn is_in(values: Vec<&Self::Value>) -> Cond<'_, Self::Entity> {
         Cond::is_in(Self::COLUMN, values.into_iter().map(|value| value as &QueryParam).collect())
     }
 
+    #[inline]
     fn not_null() -> Cond<'static, Self::Entity> {
         Cond::not_null(Self::COLUMN)
     }
@@ -136,7 +140,7 @@ where
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
-        let mut sql = T::__select_sql().to_string();
+        let mut sql = T::__select_sql().to_owned();
         let mut params: Vec<&QueryParam> = vec![];
         build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("select_one, sql={sql}, params={params:?}");
@@ -155,7 +159,7 @@ where
 {
     async {
         let mut conn = database.pool.get_with_timeout().await?;
-        let mut sql = T::__select_sql().to_string();
+        let mut sql = T::__select_sql().to_owned();
         let mut params: Vec<&QueryParam> = vec![];
         build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("select, sql={sql}, params={params:?}");

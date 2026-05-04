@@ -138,7 +138,8 @@ fn from_row_impl(model: &EntityModel) -> TokenStream {
 fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
     let struct_name = &model.struct_ident;
     let table = &model.table;
-    let primary_key = &model.columns.iter().find(|column| column.auto_increment).unwrap().column;
+    let primary_key =
+        &model.columns.iter().find(|column| column.auto_increment).expect("must have auto increment column").column;
     let insert_fields = model.columns.iter().filter(|column| !column.auto_increment).collect::<Vec<_>>();
     let insert_columns = insert_fields.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
     let placeholders = (1..=insert_fields.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
@@ -226,13 +227,13 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
         .iter()
         .map(|column| {
             let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
-            field_type.parse().unwrap()
+            field_type.parse().expect("parse cannot fail")
         })
         .collect();
 
     let (id_type, id_conditions) = if primary_key_columns.len() == 1 {
-        let id_type = &id_types[0];
-        let col = primary_key_columns[0].column.as_str();
+        let id_type = id_types.first();
+        let col = primary_key_columns.first().expect("cannot be empty").column.as_str();
         (
             quote! { #id_type },
             quote! { vec![framework::db::Cond::Eq { column: #col, value: ids as &framework::db::QueryParam, _entity: ::std::marker::PhantomData }] },
@@ -273,7 +274,7 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
     let field_structs = model.columns.iter().filter(|c| !c.primary_key).map(|c| {
         let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
         let column = &c.column;
-        let value_type: TokenStream = c.field_type.parse().unwrap();
+        let value_type: TokenStream = c.field_type.parse().expect("parse cannot fail");
         quote! {
             pub(crate) struct #struct_name;
             impl framework::db::repository::Field for #struct_name {
@@ -299,7 +300,7 @@ mod tests {
     use super::build;
 
     #[test]
-    fn test_entity_with_assigned_id() {
+    fn build_entity_with_assigned_id() {
         let source = quote! {
             #[derive(Entity)]
             #[table(name = "test_entity")]
@@ -373,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_entity_with_composite_id() {
+    fn build_entity_with_composite_id() {
         let source = quote! {
             #[derive(Entity)]
             #[table(name = "test_entity")]
@@ -454,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn test_entity_with_auto_increment_id() {
+    fn build_entity_with_auto_increment_id() {
         let source = quote! {
             #[derive(Entity)]
             #[table(name = "test_entity")]

@@ -7,7 +7,7 @@ use framework::kafka::consumer::MessageConsumer;
 use framework::kafka::producer::Producer;
 use framework::kafka::topic::Topic;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use framework::shutdown::Shutdown;
 use serde::Deserialize;
 use serde::Serialize;
@@ -37,10 +37,7 @@ pub async fn main() -> Result<(), Exception> {
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
-        topics: Topics {
-            test_single: Topic::new("test_single"),
-            test_bulk: Topic::new("test"),
-        },
+        topics: Topics { test_single: Topic::new("test_single"), test_bulk: Topic::new("test") },
         producer: Producer::new("dev.internal:9092", env!("CARGO_BIN_NAME")),
         tx,
     });
@@ -51,7 +48,7 @@ pub async fn main() -> Result<(), Exception> {
 
     let handle = tokio::spawn(process_message(rx));
 
-    let mut consumer = MessageConsumer::new("dev.internal:9092", env!("CARGO_BIN_NAME"), ConsumerConfig::default());
+    let mut consumer = MessageConsumer::new("dev.internal:9092", env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
@@ -91,7 +88,7 @@ async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) ->
         if let Some(ref key) = message.key {
             if key == "1" {
                 let value = message.payload()?;
-                state.producer.send(&state.topics.test_single, Some("xxx".to_string()), &value).await?;
+                state.producer.send(&state.topics.test_single, Some("xxx".to_owned()), &value).await?;
                 warn!("test");
             } else {
                 println!("Received message: {}", message.payload()?.name);

@@ -3,6 +3,7 @@ use std::time::Duration;
 use chrono::DateTime;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
+use chrono::TimeDelta;
 use chrono::Utc;
 
 use super::Trigger;
@@ -13,7 +14,7 @@ pub(crate) struct FixedRateTrigger {
 
 impl Trigger for FixedRateTrigger {
     fn next(&self, previous: DateTime<Utc>) -> DateTime<Utc> {
-        previous + chrono::Duration::from_std(self.interval).unwrap()
+        previous + chrono::Duration::from_std(self.interval).expect("input cannot be out of range")
     }
 }
 
@@ -28,7 +29,7 @@ impl Trigger for DailyTrigger {
         if next_time > previous {
             next_time.to_utc()
         } else {
-            (next_time + chrono::Duration::days(1)).to_utc()
+            next_time.checked_add_signed(TimeDelta::days(1)).expect("result cannot be out of range").to_utc()
         }
     }
 }

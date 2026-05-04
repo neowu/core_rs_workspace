@@ -41,3 +41,6 @@ indexmap = { version = "*", features = ["serde"] }
 [features]
 db = ["dep:tokio-postgres"]
 kafka = ["dep:rdkafka"]
+
+[lints]
+workspace = true

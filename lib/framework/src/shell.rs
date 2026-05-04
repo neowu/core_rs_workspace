@@ -1,5 +1,5 @@
 use tokio::process::Command;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 

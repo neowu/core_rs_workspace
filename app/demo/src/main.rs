@@ -5,7 +5,7 @@ use chrono::FixedOffset;
 use framework::asset::asset_path;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
 use framework::task;

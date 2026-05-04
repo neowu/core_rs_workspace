@@ -10,7 +10,7 @@ use framework::kafka::consumer::ConsumerConfig;
 use framework::kafka::consumer::MessageConsumer;
 use framework::kafka::topic::Topic;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
 use framework::task;
@@ -40,10 +40,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new(config: &AppConfig) -> Result<Self, Exception> {
-        Ok(AppState {
-            elasticsearch: Elasticsearch::new(&config.elasticsearch_uri),
-        })
+    fn new(config: &AppConfig) -> Self {
+        AppState { elasticsearch: Elasticsearch::new(&config.elasticsearch_uri) }
     }
 }
 
@@ -67,18 +65,22 @@ async fn main() -> Result<(), Exception> {
         Ok(())
     });
 
-    let state = Arc::new(AppState::new(&config)?);
+    let state = Arc::new(AppState::new(&config));
 
-    let scheduler_state = state.clone();
+    let scheduler_state = Arc::clone(&state);
     task::spawn_task(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
-        scheduler.schedule_daily("cleanup_old_index_job", cleanup_old_index_job, NaiveTime::from_hms_opt(1, 0, 0).unwrap());
+        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+        scheduler.schedule_daily(
+            "cleanup_old_index_job",
+            cleanup_old_index_job,
+            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+        );
         scheduler.start(scheduler_state, scheduler_signal).await
     });
 
     put_index_templates(&state.elasticsearch).await?;
 
-    let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), ConsumerConfig::default());
+    let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);

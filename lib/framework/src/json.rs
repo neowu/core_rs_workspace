@@ -42,6 +42,6 @@ where
     if let Ok(value) = serde_json::to_string(enum_value) {
         value[1..value.len() - 1].to_string()
     } else {
-        Default::default()
+        String::default()
     }
 }

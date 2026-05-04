@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Datelike;
+use chrono::Datelike as _;
 use chrono::NaiveDate;
 use framework::exception::Exception;
 use framework::shell;
@@ -67,15 +67,15 @@ async fn convert_parquet_and_upload(
     info!("convert to parquet, path={local_path}");
     let parquet_path_buf = local_path_buf.with_extension("parquet");
     let parquet_path = parquet_path_buf.to_string_lossy();
-    let command = format!(
-        r#"SET memory_limit='{}KB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT parquet, COMPRESSION zstd);"#,
+    let duckdb_query = format!(
+        "SET memory_limit='{}KB';SET temp_directory='/tmp/duckdb';COPY (SELECT * FROM read_ndjson(['{local_path}'], columns = {columns})) TO '{parquet_path}' (FORMAT parquet, COMPRESSION zstd);",
         duckdb_memory_limit / 1000
     );
-    shell::run(&format!("duckdb -c \"{command}\"")).await?;
+    shell::run(&format!("duckdb -c \"{duckdb_query}\"")).await?;
 
     info!("upload archive, path={parquet_path}");
-    let command = format!("gcloud storage cp --quiet {parquet_path} {remote_path}");
-    shell::run(&command).await?;
+    let upload_command = format!("gcloud storage cp --quiet {parquet_path} {remote_path}");
+    shell::run(&upload_command).await?;
     fs::remove_file(parquet_path_buf)?;
     Ok(())
 }

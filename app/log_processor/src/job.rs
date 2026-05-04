@@ -26,7 +26,8 @@ pub async fn cleanup_old_index_job(state: Arc<AppState>, context: JobContext) ->
 }
 
 fn created_date(index: &str) -> Option<NaiveDate> {
-    static INDEX_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\w[\w.\-]+-(\d{4}\.\d{2}\.\d{2})$"#).unwrap());
+    static INDEX_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\w[\w.\-]+-(\d{4}\.\d{2}\.\d{2})$").expect("value must be valid"));
 
     if let Some(captures) = INDEX_REGEX.captures(index) {
         let date = captures[1].to_string();

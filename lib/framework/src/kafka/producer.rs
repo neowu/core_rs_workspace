@@ -8,7 +8,7 @@ use rdkafka::producer::FutureProducer;
 use rdkafka::producer::FutureRecord;
 use rdkafka::util::Timeout;
 use serde::Serialize;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 

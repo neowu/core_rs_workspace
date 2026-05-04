@@ -15,13 +15,14 @@ use rdkafka::Timestamp;
 use rdkafka::config::RDKafkaLogLevel;
 use rdkafka::consumer::BaseConsumer;
 use rdkafka::consumer::CommitMode;
-use rdkafka::consumer::Consumer;
+use rdkafka::consumer::Consumer as _;
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
-use rdkafka::message::Headers;
+use rdkafka::message::Headers as _;
 use rdkafka::util::Timeout;
 use serde::de::DeserializeOwned;
 use tokio::sync::broadcast;
+use tokio::time;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -81,7 +82,7 @@ impl<S> MessageConsumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new(bootstrap_servers: &str, group_id: &str, config: ConsumerConfig) -> Self {
+    pub fn new(bootstrap_servers: &str, group_id: &str, config: &ConsumerConfig) -> Self {
         Self {
             config: ClientConfig::new()
                 .set("group.id", group_id)
@@ -128,7 +129,7 @@ where
     pub async fn start(self, state: S, mut shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception> {
         let handlers = self.handlers;
         let consumer: BaseConsumer = self.config.create()?;
-        let topics: Vec<&str> = handlers.keys().cloned().collect();
+        let topics: Vec<&str> = handlers.keys().copied().collect();
         consumer.subscribe(&topics)?;
 
         info!("kafka consumer started, topics={:?}", topics);
@@ -149,7 +150,7 @@ where
                 }
                 Err(e) => {
                     error!(error = ?e, "failed to poll messages");
-                    tokio::time::sleep(Duration::from_secs(5)).await
+                    time::sleep(Duration::from_secs(5)).await;
                 }
             }
 
@@ -178,7 +179,7 @@ impl<T: DeserializeOwned> From<BorrowedMessage<'_>> for Message<T> {
 
         let timestamp = match message.timestamp() {
             Timestamp::CreateTime(time) => DateTime::from_timestamp_millis(time),
-            _ => None,
+            Timestamp::NotAvailable | Timestamp::LogAppendTime(_) => None,
         };
 
         Message { key, payload: value.unwrap_or_default(), headers, timestamp, _marker: PhantomData }
@@ -221,7 +222,7 @@ where
 {
     log::start_action("message", None, async {
         let mut kafka_read_bytes = 0;
-        for message in messages.iter() {
+        for message in &messages {
             debug!(key = message.key, payload = message.payload, "[message]");
             kafka_read_bytes += message.payload.len();
         }
@@ -291,13 +292,13 @@ where
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
-    let ref_id = message.headers.get("ref_id").map(|value| value.to_owned());
+    let ref_id = message.headers.get("ref_id").map(String::to_owned);
     log::start_action("message", ref_id, async {
         debug!(topic, "[message]");
         debug!(key = ?message.key, "[message]");
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
-        for (key, value) in message.headers.iter() {
+        for (key, value) in &message.headers {
             debug!("[header] {}={}", key, value);
         }
         debug!(topic, key = message.key, "context");

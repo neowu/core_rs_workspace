@@ -21,8 +21,8 @@ use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::json;
 use framework::log;
-use framework::string::StringExt;
-use framework::validate::Validator;
+use framework::string::StringExt as _;
+use framework::validate::Validator as _;
 use framework::validation_error;
 use framework::web::body::TextBody;
 use framework::web::client_info::ClientInfo;
@@ -117,7 +117,7 @@ async fn process_events(
         let mut message = EventMessage {
             id: log::id_generator::random_id(),
             date: event.date,
-            app: app.to_string(),
+            app: app.to_owned(),
             received_time: now,
             result: json::to_json_value(&event.result),
             action: event.action,
@@ -130,10 +130,10 @@ async fn process_events(
         };
 
         if let Some(ref user_agent) = client_info.user_agent {
-            message.context.insert("user_agent".to_string(), user_agent.to_string());
+            message.context.insert("user_agent".to_owned(), user_agent.to_owned());
         }
 
-        message.context.insert("client_ip".to_string(), client_info.client_ip.to_string());
+        message.context.insert("client_ip".to_owned(), client_info.client_ip.clone());
 
         state.producer.send(&state.topics.event, None, &message).await?;
     }
@@ -185,13 +185,13 @@ impl Event {
     fn custom_validate(&self) -> Result<(), Exception> {
         // Validate action for OK result
         if matches!(self.result, EventResult::Ok) && self.action.is_empty() {
-            return Err(validation_error!(message = "action must not be empty if result is OK".to_string()));
+            return Err(validation_error!(message = "action must not be empty if result is OK".to_owned()));
         }
 
         if (matches!(self.result, EventResult::Warn) || matches!(self.result, EventResult::Error))
-            && self.error_code.as_ref().is_none_or(|s| s.is_empty())
+            && self.error_code.as_ref().is_none_or(String::is_empty)
         {
-            return Err(validation_error!(message = "errorCode must not be empty if result is WARN/ERROR".to_string()));
+            return Err(validation_error!(message = "errorCode must not be empty if result is WARN/ERROR".to_owned()));
         }
 
         // Validate maps and estimate size

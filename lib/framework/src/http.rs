@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::mem;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -8,14 +9,14 @@ use std::time::Instant;
 
 use bytes::Bytes;
 use futures::Stream;
-use futures::TryStreamExt;
+use futures::TryStreamExt as _;
 pub use http::HeaderName;
 pub use http::header;
 use reqwest::Body;
 use reqwest::Method;
 use reqwest::Request;
 use reqwest::Url;
-use tracing::Instrument;
+use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
@@ -98,7 +99,7 @@ impl HttpClient {
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
         let span = debug_span!("http", url = request.url, method = ?request.method);
         async {
-            request.headers.insert(header::ACCEPT, "text/event-stream".to_string());
+            request.headers.insert(header::ACCEPT, "text/event-stream".to_owned());
             let http_request = create_request(request)?;
 
             let response = self.client.execute(http_request).await?;
@@ -112,7 +113,7 @@ impl HttpClient {
                 && content_type.starts_with("text/event-stream")
             {
                 let stream = response.bytes_stream();
-                Ok(EventSource::new(Box::pin(stream.map_err(|e| e.into()))))
+                Ok(EventSource::new(Box::pin(stream.map_err(reqwest::Error::into))))
             } else {
                 let body = response.text().await?;
                 debug!("[response] body={body}");
@@ -132,7 +133,7 @@ fn parse_headers(response: &reqwest::Response) -> Result<HashMap<HeaderName, Str
     for (key, value) in response.headers() {
         let value = value.to_str()?;
         debug!("[header] {key}={value}");
-        headers.insert(key.to_owned(), value.to_string());
+        headers.insert(key.to_owned(), value.to_owned());
     }
     Ok(headers)
 }
@@ -160,10 +161,10 @@ impl Default for HttpClient {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .danger_accept_invalid_certs(true)
-                .pool_idle_timeout(Duration::from_secs(300))
+                .pool_idle_timeout(Duration::from_mins(5))
                 .connection_verbose(false)
                 .build()
-                .unwrap(),
+                .expect("build cannot fail"),
         }
     }
 }
@@ -227,14 +228,14 @@ impl Stream for EventSource {
                 Poll::Ready(Some(Ok(bytes))) => {
                     for byte in bytes {
                         if byte == b'\n' {
-                            let current_bytes = std::mem::take(&mut self.buffer);
+                            let current_bytes = mem::take(&mut self.buffer);
                             let line = String::from_utf8_lossy(&current_bytes);
                             debug!("[sse] {line}");
                             self.read_bytes += line.len();
 
-                            if line.is_empty() {
-                                continue;
-                            } else if let Some(index) = line.find(": ") {
+                            if !line.is_empty()
+                                && let Some(index) = line.find(": ")
+                            {
                                 let field = &line[0..index];
                                 match field {
                                     "id" => self.last_id = Some(line[index + 2..].to_string()),
@@ -260,7 +261,7 @@ impl Stream for EventSource {
                 Poll::Ready(Some(Err(err))) => return Poll::Ready(Some(Err(err))),
                 Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => return Poll::Pending,
-            };
+            }
         }
     }
 }

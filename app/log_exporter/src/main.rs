@@ -12,7 +12,7 @@ use framework::kafka::consumer::ConsumerConfig;
 use framework::kafka::consumer::MessageConsumer;
 use framework::kafka::topic::Topic;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use framework::number::parse_u32;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
@@ -25,7 +25,7 @@ use kafka::action_log_handler::action_log_message_handler;
 use kafka::event_handler::EventMessage;
 use kafka::event_handler::event_message_handler;
 use serde::Deserialize;
-use sha2::Digest;
+use sha2::Digest as _;
 use sha2::Sha256;
 use tracing::info;
 
@@ -100,17 +100,21 @@ async fn main() -> Result<(), Exception> {
     shutdown.listen();
 
     let state = Arc::new(AppState::new(&config)?);
-    let scheduler_state = state.clone();
-    let consumer_state = state.clone();
+    let scheduler_state = Arc::clone(&state);
+    let consumer_state = Arc::clone(&state);
 
     task::spawn_task(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
-        scheduler.schedule_daily("process_log_job", process_log_job, NaiveTime::from_hms_opt(1, 0, 0).unwrap());
+        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+        scheduler.schedule_daily(
+            "process_log_job",
+            process_log_job,
+            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+        );
         scheduler.start(scheduler_state, scheduler_signal).await
     });
 
     task::spawn_task(async move {
-        let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), ConsumerConfig::default());
+        let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
         consumer.start(consumer_state, consumer_signal).await
@@ -131,7 +135,7 @@ mod tests {
     use crate::hash;
 
     #[test]
-    fn test_hash() {
+    fn hash_with_host() {
         let hash = hash("host");
         assert_eq!(hash, "4740ae");
     }

@@ -8,7 +8,7 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::middleware;
 use axum::middleware::Next;
-use axum::response::IntoResponse;
+use axum::response::IntoResponse as _;
 use axum::response::Response;
 use axum_extra::extract::CookieJar;
 use tokio::net::TcpListener;
@@ -29,7 +29,7 @@ pub struct HttpServerConfig {
 
 impl Default for HttpServerConfig {
     fn default() -> Self {
-        HttpServerConfig { bind_address: "0.0.0.0:8080".to_string(), max_forwarded_ips: 2 }
+        HttpServerConfig { bind_address: "0.0.0.0:8080".to_owned(), max_forwarded_ips: 2 }
     }
 }
 
@@ -46,7 +46,7 @@ pub async fn start_http_server(
     info!("http server stated, bind={}", config.bind_address);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            shutdown_signal.recv().await.unwrap();
+            shutdown_signal.recv().await.expect("shutdown signal cannot fail");
         })
         .await?;
     info!("http server stopped");
@@ -66,7 +66,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         let uri = request.uri();
         debug!(method = ?method, "[request]");
         debug!(uri = ?uri, "[request]");
-        for (name, value) in request.headers().iter() {
+        for (name, value) in request.headers() {
             if name != header::COOKIE {
                 debug!("[header] {name}={value:?}");
             }
@@ -85,7 +85,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         }
         request.extensions_mut().insert(Arc::new(client_info));
 
-        let matched_path = request.extensions().get::<MatchedPath>().map(|matched_path| matched_path.as_str());
+        let matched_path = request.extensions().get::<MatchedPath>().map(MatchedPath::as_str);
         if let Some(matched_path) = matched_path {
             debug!(matched_path = matched_path, "context");
         }
@@ -104,7 +104,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         let status = http_response.status().as_u16();
         debug!(status, "[response]");
         debug!(response_status = status, "context");
-        for (name, value) in http_response.headers().iter() {
+        for (name, value) in http_response.headers() {
             debug!("[header] {name}={value:?}");
         }
         response = Some(http_response);

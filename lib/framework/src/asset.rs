@@ -33,14 +33,14 @@ fn find_asset_path(exe_path: &Path, path: &str) -> PathBuf {
         if exe_path.ends_with(&postfix) {
             let workspace_path = &exe_path[..exe_path.len() - postfix.len()];
 
-            let mut asset_path = PathBuf::from(format!("{workspace_path}/app/{bin_name}/{path}"));
+            let mut dev_asset_path = PathBuf::from(format!("{workspace_path}/app/{bin_name}/{path}"));
 
-            if !asset_path.exists() {
-                asset_path = PathBuf::from(format!("{workspace_path}/{bin_name}/{path}"));
+            if !dev_asset_path.exists() {
+                dev_asset_path = PathBuf::from(format!("{workspace_path}/{bin_name}/{path}"));
             }
-            if asset_path.exists() {
-                tracing::info!("load assert from source code folder, asset={}", asset_path.to_string_lossy());
-                return asset_path;
+            if dev_asset_path.exists() {
+                tracing::info!("load assert from source code folder, asset={}", dev_asset_path.to_string_lossy());
+                return dev_asset_path;
             }
         }
     }

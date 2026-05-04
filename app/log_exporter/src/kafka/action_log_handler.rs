@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::LineWriter;
-use std::io::Write;
+use std::io::Write as _;
 use std::sync::Arc;
 
 use chrono::DateTime;
@@ -62,7 +62,7 @@ pub async fn action_log_message_handler(
         writer.write_all(json::to_json(&log)?.as_bytes())?;
         writer.write_all(b"\n")?;
     }
-    writer.flush().unwrap();
+    writer.flush()?;
 
     Ok(())
 }

@@ -35,12 +35,12 @@ impl Shutdown {
             };
 
             tokio::select! {
-                _ = ctrl_c => {},
-                _ = terminate => {},
+                () = ctrl_c => {},
+                () = terminate => {},
             }
 
             info!("received shutdown signal");
-            self.signal.send(()).unwrap();
+            self.signal.send(()).expect("send signal cannot fail");
         });
     }
 }

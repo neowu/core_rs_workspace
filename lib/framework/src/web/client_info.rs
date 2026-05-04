@@ -16,7 +16,7 @@ pub struct ClientInfo {
 
 pub(crate) fn client_info(request: &Request, max_forwarded_ips: usize) -> ClientInfo {
     let user_agent =
-        request.headers().get(header::USER_AGENT).map(|value| value.to_str().unwrap_or_default().to_string());
+        request.headers().get(header::USER_AGENT).map(|value| value.to_str().unwrap_or_default().to_owned());
 
     let mut client_ip: Option<String> = None;
     if max_forwarded_ips > 0
@@ -31,7 +31,7 @@ pub(crate) fn client_info(request: &Request, max_forwarded_ips: usize) -> Client
         client_ip = Some(connect_info.0.ip().to_string());
     }
 
-    ClientInfo { client_ip: client_ip.unwrap_or("unknown".to_string()), user_agent }
+    ClientInfo { client_ip: client_ip.unwrap_or("unknown".to_owned()), user_agent }
 }
 
 fn extract_client_ip(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<String> {
@@ -49,9 +49,8 @@ fn extract_client_ip(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<
             if found_forwarded_ips > max_forwarded_ips {
                 start = i + 1;
                 break;
-            } else {
-                end = i;
             }
+            end = i;
         }
     }
 
@@ -90,12 +89,12 @@ fn extract_ip(node: &str) -> Option<String> {
     }
 
     if dots == 0 {
-        return Some(node.to_string()); // Should be ipv6 format
+        return Some(node.to_owned()); // Should be ipv6 format
     }
 
     if dots == 3 && colons == 0 {
         // Should be ipv4 format
-        return Some(node.to_string());
+        return Some(node.to_owned());
     }
 
     if dots == 3
@@ -109,7 +108,7 @@ fn extract_ip(node: &str) -> Option<String> {
         return Some(node[0..last_colon_index].to_string());
     }
 
-    warn!("Invalid client IP address: {}", node);
+    warn!("Invalid client IP address: {node}");
     None
 }
 
@@ -118,15 +117,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_client_ip() {
+    fn extract_client_ip_with_empty() {
         assert_eq!(extract_client_ip("", 2), None);
         assert_eq!(extract_client_ip("   ", 2), None);
+    }
 
-        assert_eq!(extract_client_ip("108.0.0.1", 2), Some("108.0.0.1".to_string()));
-        assert_eq!(extract_client_ip(" 108.0.0.1 ", 2), Some("108.0.0.1".to_string()));
-        assert_eq!(extract_client_ip("108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
-        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
+    #[test]
+    fn extract_client_ip_within_limits() {
+        assert_eq!(extract_client_ip("108.0.0.1", 2), Some("108.0.0.1".to_owned()));
+        assert_eq!(extract_client_ip(" 108.0.0.1 ", 2), Some("108.0.0.1".to_owned()));
+        assert_eq!(extract_client_ip("108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
+    }
 
-        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2), Some("108.0.0.1".to_string()));
+    #[test]
+    fn extract_client_ip_with_more_than_limits() {
+        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
+        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
     }
 }

@@ -21,6 +21,7 @@ pub struct TextBody(pub String);
 
 impl Deref for TextBody {
     type Target = String;
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -105,7 +106,10 @@ where
                 (
                     [
                         (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-                        (header::CONTENT_LENGTH, HeaderValue::from_str(&format!("{}", length)).unwrap()),
+                        (
+                            header::CONTENT_LENGTH,
+                            HeaderValue::from_str(&format!("{length}")).expect("value cannot be invalid"),
+                        ),
                     ],
                     body,
                 )

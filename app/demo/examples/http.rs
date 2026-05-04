@@ -5,7 +5,7 @@ use framework::http::HttpMethod::POST;
 use framework::http::HttpRequest;
 use framework::http::header;
 use framework::log;
-use framework::log::ConsoleAppender;
+use framework::log::appender::ConsoleAppender;
 use tokio_stream::StreamExt;
 use tracing::debug;
 use tracing::warn;

@@ -75,7 +75,10 @@ pub struct TraceDocument {
     content: String,
 }
 
-pub async fn action_log_message_handler(state: Arc<AppState>, messages: Vec<Message<ActionLogMessage>>) -> Result<(), Exception> {
+pub async fn action_log_message_handler(
+    state: Arc<AppState>,
+    messages: Vec<Message<ActionLogMessage>>,
+) -> Result<(), Exception> {
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
     let mut traces: Vec<(String, TraceDocument)> = vec![];
     for message in messages {
@@ -99,7 +102,7 @@ pub async fn action_log_message_handler(state: Arc<AppState>, messages: Vec<Mess
         documents.push((payload.id.clone(), doc));
 
         if let Some(content) = payload.trace_log {
-            let doc = TraceDocument {
+            let trace_doc = TraceDocument {
                 timestamp: payload.date,
                 app: payload.app,
                 result: payload.result,
@@ -107,7 +110,7 @@ pub async fn action_log_message_handler(state: Arc<AppState>, messages: Vec<Mess
                 error_code: payload.error_code,
                 content,
             };
-            traces.push((payload.id, doc));
+            traces.push((payload.id, trace_doc));
         }
     }
     let now = Utc::now().date_naive();
