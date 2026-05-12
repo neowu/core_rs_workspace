@@ -1,21 +1,16 @@
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
-use syn::AngleBracketedGenericArguments;
-use syn::AssocType;
 use syn::Error;
 use syn::FnArg;
-use syn::GenericArgument;
 use syn::Ident;
 use syn::ItemTrait;
 use syn::LitStr;
-use syn::PathArguments;
 use syn::Result;
 use syn::ReturnType;
 use syn::TraitItem;
 use syn::TraitItemFn;
 use syn::Type;
-use syn::TypeParamBound;
 use syn::parse_quote;
 use syn::parse2;
 use syn::token::RArrow;
@@ -28,7 +23,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let trait_vis = trait_def.vis.clone();
     let mod_ident = format_ident!("{}", util::to_snake_case(&trait_ident.to_string()));
 
-    let mut route_stmts = vec![];
+    let mut route_statements = vec![];
     let mut client_methods = vec![];
 
     for item in &mut trait_def.items {
@@ -40,12 +35,11 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             let path = attr.path();
             !path.is_ident("get") && !path.is_ident("post") && !path.is_ident("put") && !path.is_ident("path")
         });
-        if method.sig.asyncness.take().is_some() {
-            let response_type = &info.response_type;
-            let new_return: Type = parse_quote!(impl ::core::future::Future<Output = #response_type> + Send);
-            method.sig.output = ReturnType::Type(RArrow::default(), Box::new(new_return));
-        }
-        route_stmts.push(build_route_stmt(&info));
+        method.sig.asyncness = None;
+        let response_type = &info.response_type;
+        let new_return: Type = parse_quote!(impl ::core::future::Future<Output = #response_type> + Send);
+        method.sig.output = ReturnType::Type(RArrow::default(), Box::new(new_return));
+        route_statements.push(build_route_stmt(&info));
         client_methods.push(build_client_method(&info));
     }
 
@@ -72,7 +66,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
                 T: #trait_ident + Send + Sync + 'static,
             {
                 let router = Router::new();
-                #(#route_stmts)*
+                #(#route_statements)*
                 router
             }
 
@@ -131,6 +125,10 @@ impl HttpMethod {
 fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
     let method_ident = method.sig.ident.clone();
 
+    if method.sig.asyncness.is_none() {
+        return Err(Error::new_spanned(method, "method must be `async fn`"));
+    }
+
     let mut http_method = None;
     let mut path = None;
 
@@ -171,44 +169,9 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
     let ReturnType::Type(_, return_type) = &method.sig.output else {
         return Err(Error::new_spanned(method, "method must return `Result<..., Exception>`"));
     };
-    let response_type =
-        if method.sig.asyncness.is_some() { (**return_type).clone() } else { extract_future_output(return_type)? };
+    let response_type = (**return_type).clone();
 
     Ok(MethodInfo { method_ident, http_method, path, request_type, response_type })
-}
-
-fn extract_future_output(future_type: &Type) -> Result<Type> {
-    let Type::ImplTrait(impl_trait) = future_type else {
-        return Err(Error::new_spanned(
-            future_type,
-            "method return type must be `impl Future<Output = Result<..., Exception>> + Send`",
-        ));
-    };
-    for bound in &impl_trait.bounds {
-        let TypeParamBound::Trait(trait_bound) = bound else {
-            continue;
-        };
-        let Some(last) = trait_bound.path.segments.last() else {
-            continue;
-        };
-        if last.ident != "Future" {
-            continue;
-        }
-        let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = &last.arguments else {
-            continue;
-        };
-        for arg in args {
-            if let GenericArgument::AssocType(AssocType { ident, ty, .. }) = arg
-                && ident == "Output"
-            {
-                return Ok(ty.clone());
-            }
-        }
-    }
-    Err(Error::new_spanned(
-        future_type,
-        "method return type must be `impl Future<Output = Result<..., Exception>> + Send`",
-    ))
 }
 
 fn build_route_stmt(info: &MethodInfo) -> TokenStream {

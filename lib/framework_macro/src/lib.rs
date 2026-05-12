@@ -37,7 +37,7 @@ pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /// `#[webservice]` derives an axum route builder and an HTTP client from a trait.
-/// Each method must async and be annotated with one of `#[get]`, `#[post]`, `#[put]`, plus `#[path("/...")]`,
+/// Each method must be `async fn`, annotated with one of `#[get]`, `#[post]`, `#[put]` plus `#[path("/...")]`,
 /// take `&self` and a single request parameter, and return `Result<..., Exception>`.
 /// Generates a sibling module (snake_case of the trait name) exposing `route(service)` and `client(http_client, api_url)`.
 #[proc_macro_attribute]
