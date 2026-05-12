@@ -1,10 +1,12 @@
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::debug_handler;
 use axum::routing::get;
 use framework::exception::Exception;
+use framework::http::HttpClient;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::shutdown::Shutdown;
@@ -15,6 +17,7 @@ use framework::web::body::Query;
 use framework::web::error::HttpResult;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
+use framework_macro::webservice;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
@@ -30,62 +33,32 @@ pub struct CreateUserResponse {
     name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SearchUserRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SearchUserResponse {
+    id: i64,
+    name: String,
+}
+
 pub struct AppState {}
 
 #[webservice]
 pub trait UserService {
-    #[post]
+    #[post] // only support get / put and post
     #[path("/user/create")]
-    fn create(&self, request: CreateUserRequest) -> impl Future<Output = Result<CreateUserResponse, Exception>> + Send;
-}
+    async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception>;
 
-mod user_service {
-    use std::sync::Arc;
-
-    use axum::Router;
-    use axum::routing::MethodFilter;
-    use axum::routing::on;
-    use framework::exception::Exception;
-    use framework::http::HttpClient;
-    use framework::web::api::__into_response;
-    use framework::web::api::ApiClient;
-    use framework::web::body::Json;
-
-    use crate::CreateUserRequest;
-    use crate::CreateUserResponse;
-    use crate::UserService;
-
-    pub fn route<T>(service: Arc<T>) -> Router
-    where
-        T: UserService + Send + Sync + 'static,
-    {
-        let router = Router::new();
-        let svc = Arc::clone(&service);
-        let router = router.route(
-            "/user/create",
-            on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                let result = svc.create(req).await;
-                __into_response(result)
-            }),
-        );
-        router
-    }
-
-    pub fn client(http_client: HttpClient, api_url: &'static str) -> impl UserService {
-        struct Client {
-            client: ApiClient,
-        }
-        impl UserService for Client {
-            async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
-                self.client.post("/user/create", request).await
-            }
-        }
-        Client { client: ApiClient::new(http_client, api_url) }
-    }
+    #[get]
+    #[path("/user/search")]
+    async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception>;
 }
 
 pub struct UserServiceImpl {
-    state: Arc<AppState>,
+    _state: Arc<AppState>,
 }
 
 impl UserService for UserServiceImpl {
@@ -95,6 +68,10 @@ impl UserService for UserServiceImpl {
         }
         // use self.state if needed
         Ok(CreateUserResponse { id: 1, name: request.name })
+    }
+
+    async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception> {
+        Ok(SearchUserResponse { id: 1, name: request.name })
     }
 }
 
@@ -106,7 +83,7 @@ impl UserService for UserServiceImpl {
 
 impl UserServiceImpl {
     fn new() -> Self {
-        UserServiceImpl { state: Arc::new(AppState {}) }
+        UserServiceImpl { _state: Arc::new(AppState {}) }
     }
 }
 
@@ -131,18 +108,16 @@ async fn main() -> Result<(), Exception> {
     let app = app.merge(user_service::route(service));
     let app = app.route("/test", get(test));
 
-    let handle = task::spawn_task(async move {
+    task::spawn_task(async move {
         start_http_server(app, signal, HttpServerConfig::default()).await?;
         Ok(())
     });
 
-    handle.await??;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // tokio::time::sleep(Duration::from_secs(5)).await;
-
-    // let client = client(HttpClient::default(), "http://localhost:8080");
-    // let resp = client.create(CreateUserRequest { name: "yes".to_owned() }).await?;
-    // println!("{resp:?}");
+    let client = user_service::client(HttpClient::default(), "http://localhost:8080");
+    let resp = client.create(CreateUserRequest { name: "yes".to_owned() }).await?;
+    println!("{resp:?}");
 
     Ok(())
 }

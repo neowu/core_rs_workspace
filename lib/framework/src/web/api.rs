@@ -42,7 +42,7 @@ impl ApiClient {
         Req: Serialize + Debug,
         Res: DeserializeOwned,
     {
-        let mut http_request = HttpRequest::new(HttpMethod::POST, format!("{}{path}", self.api_url));
+        let mut http_request = HttpRequest::new(HttpMethod::Post, format!("{}{path}", self.api_url));
         http_request.body(json::to_json(&request)?, "application/json".to_owned());
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
@@ -55,7 +55,7 @@ impl ApiClient {
         Res: DeserializeOwned,
     {
         let query_string = serde_html_form::to_string(&request)?;
-        let http_request = HttpRequest::new(HttpMethod::GET, format!("{}{path}?{query_string}", self.api_url));
+        let http_request = HttpRequest::new(HttpMethod::Get, format!("{}{path}?{query_string}", self.api_url));
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
@@ -66,7 +66,7 @@ impl ApiClient {
         Req: Serialize + Debug,
         Res: DeserializeOwned,
     {
-        let mut http_request = HttpRequest::new(HttpMethod::PUT, format!("{}{path}", self.api_url));
+        let mut http_request = HttpRequest::new(HttpMethod::Put, format!("{}{path}", self.api_url));
         http_request.body(json::to_json(&request)?, "application/json".to_owned());
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)

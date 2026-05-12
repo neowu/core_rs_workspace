@@ -1,7 +1,7 @@
 use framework::exception::Exception;
 use framework::http::HttpClient;
-use framework::http::HttpMethod::GET;
-use framework::http::HttpMethod::POST;
+use framework::http::HttpMethod::Get;
+use framework::http::HttpMethod::Post;
 use framework::http::HttpRequest;
 use framework::http::header;
 use framework::log;
@@ -24,7 +24,7 @@ async fn main() {
 #[allow(unused)]
 async fn test_http() -> Result<(), Exception> {
     let http_client = HttpClient::default();
-    let mut request = HttpRequest::new(POST, "https://localhost:8443");
+    let mut request = HttpRequest::new(Post, "https://localhost:8443");
     request.body("{some json}".to_owned(), "application/json".to_owned());
     request.headers.insert(header::USER_AGENT, "Rust".to_string());
 
@@ -43,7 +43,7 @@ async fn test_http() -> Result<(), Exception> {
 #[allow(unused)]
 async fn test_sse() -> Result<(), Exception> {
     let http_client = HttpClient::default();
-    let request = HttpRequest::new(GET, "https://localhost:8443/sse");
+    let request = HttpRequest::new(Get, "https://localhost:8443/sse");
     let mut source = http_client.sse(request).await?;
     while let Some(result) = source.next().await {
         let event = result?;

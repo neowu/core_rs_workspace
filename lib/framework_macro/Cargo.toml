@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 quote = "*"
-syn = "*"
+syn = { version = "*", features = ["full"] }
 proc-macro2 = "*"
 
 [lib]

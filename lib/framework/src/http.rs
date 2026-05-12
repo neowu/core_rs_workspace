@@ -47,19 +47,19 @@ impl HttpRequest {
 
 #[derive(Debug)]
 pub enum HttpMethod {
-    GET,
-    POST,
-    PUT,
-    DELETE,
+    Get,
+    Post,
+    Put,
+    Delete,
 }
 
 impl From<HttpMethod> for Method {
     fn from(method: HttpMethod) -> Self {
         match method {
-            HttpMethod::GET => Method::GET,
-            HttpMethod::POST => Method::POST,
-            HttpMethod::PUT => Method::PUT,
-            HttpMethod::DELETE => Method::DELETE,
+            HttpMethod::Get => Method::GET,
+            HttpMethod::Post => Method::POST,
+            HttpMethod::Put => Method::PUT,
+            HttpMethod::Delete => Method::DELETE,
         }
     }
 }
