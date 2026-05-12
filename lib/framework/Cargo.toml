@@ -17,7 +17,6 @@ tokio-util = { version = "*", features = ["rt"] }
 http = "*"
 axum.workspace = true
 axum-extra = { version = "*", features = ["cookie"] }
-axum-server = { version = "*", features = ["tls-rustls"] }
 tower-http = {version ="*", features = ["fs"]}
 
 reqwest = { version = "0", features = ["stream"] }
@@ -35,7 +34,6 @@ uuid = { version = "*", features = ["v7"] }
 
 futures = "*"
 bytes = "*"
-base64 = "*"
 bs58 = "*"
 indexmap = { version = "*", features = ["serde"] }
 

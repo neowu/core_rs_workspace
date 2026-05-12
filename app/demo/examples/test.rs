@@ -3,8 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::debug_handler;
-use axum::routing::get;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::log;
@@ -12,9 +10,6 @@ use framework::log::appender::ConsoleAppender;
 use framework::shutdown::Shutdown;
 use framework::task;
 use framework::validation_error;
-use framework::web::body::Json;
-use framework::web::body::Query;
-use framework::web::error::HttpResult;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
 use framework_macro::webservice;
@@ -66,6 +61,7 @@ impl UserService for UserServiceImpl {
         if request.name.is_empty() {
             return Err(validation_error!(message = "name must not be empty"));
         }
+        warn!("test");
         // use self.state if needed
         Ok(CreateUserResponse { id: 1, name: request.name })
     }
@@ -75,22 +71,10 @@ impl UserService for UserServiceImpl {
     }
 }
 
-// pub struct UserServiceClient;
-
-// impl UserService for UserServiceClient {
-//     async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception>;
-// }
-
 impl UserServiceImpl {
     fn new() -> Self {
         UserServiceImpl { _state: Arc::new(AppState {}) }
     }
-}
-
-#[debug_handler]
-async fn test(Query(param): Query<CreateUserRequest>) -> HttpResult<Json<CreateUserResponse>> {
-    warn!("trigger");
-    Ok(Json(CreateUserResponse { id: 1, name: param.name }))
 }
 
 #[tokio::main]
@@ -106,7 +90,6 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(user_service::route(service));
-    let app = app.route("/test", get(test));
 
     task::spawn_task(async move {
         start_http_server(app, signal, HttpServerConfig::default()).await?;
@@ -116,8 +99,15 @@ async fn main() -> Result<(), Exception> {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let client = user_service::client(HttpClient::default(), "http://localhost:8080");
-    let resp = client.create(CreateUserRequest { name: "yes".to_owned() }).await?;
-    println!("{resp:?}");
+
+    task::spawn_action("client", async move {
+        let resp = client.create(CreateUserRequest { name: "yes".to_owned() }).await?;
+        warn!("client");
+        println!("{resp:?}");
+        Ok(())
+    });
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
     Ok(())
 }

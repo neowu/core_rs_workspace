@@ -162,6 +162,7 @@ impl Default for HttpClient {
                 .timeout(Duration::from_secs(30))
                 .danger_accept_invalid_certs(true)
                 .pool_idle_timeout(Duration::from_mins(5))
+                .http2_prior_knowledge()
                 .connection_verbose(false)
                 .build()
                 .expect("build cannot fail"),

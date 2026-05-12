@@ -14,7 +14,7 @@ serde = { version = "*", features = ["derive"] }
 chrono = { version = "*", features = ["serde"] }
 
 tokio = { version = "*", features = ["full"] }
-axum = { version = "*", features = ["macros"] }
+axum = { version = "*", features = ["macros", "http2"] }
 
 # [profile.dev]
 # debug = "line-tables-only"
@@ -29,6 +29,9 @@ axum = { version = "*", features = ["macros"] }
 [profile.release]
 debug = "line-tables-only"
 opt-level = 3
+
+[workspace.lints.rust]
+unused_crate_dependencies = "warn"
 
 [workspace.lints.clippy]
 # pedantic

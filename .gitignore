@@ -1,4 +1,5 @@
 .DS_Store
 /target
 .env
+.claude/settings.local.json
 .zed
