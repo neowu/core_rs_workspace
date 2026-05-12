@@ -44,12 +44,12 @@ impl ActionLogAppender for ConsoleAppender {
             }
         }
 
-        io::stdout().write_all(log.as_bytes()).expect("write to stdout cannot fail");
+        writeln!(io::stdout(), "{log}").expect("write to stdout cannot fail");
 
         if action_log.result != ActionResult::Ok
             && let Some(trace) = action_log.trace
         {
-            io::stderr().write_all(trace.as_bytes()).expect("write to stderr cannot fail");
+            writeln!(io::stderr(), "{trace}").expect("write to stderr cannot fail");
         }
     }
 }

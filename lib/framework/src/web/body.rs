@@ -1,12 +1,15 @@
 use std::fmt::Debug;
 use std::ops::Deref;
 
+use axum::extract;
 use axum::extract::FromRequest;
+use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::response::Response;
+use http::request::Parts;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tracing::debug;
@@ -116,6 +119,31 @@ where
                     .into_response()
             }
             Err(exception) => HttpError::from(exception).into_response(),
+        }
+    }
+}
+
+pub struct Query<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for Query<T>
+where
+    T: DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = HttpError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        debug!("[request] query={}", &parts.uri.query().unwrap_or_default());
+        let result = extract::Query::<T>::try_from_uri(&parts.uri);
+        match result {
+            Ok(extract::Query(query)) => Ok(Query(query)),
+            Err(rejection) => Err(exception!(
+                severity = Severity::Warn,
+                code = error_code::BAD_REQUEST,
+                message = format!("failed to parse query"),
+                source = rejection
+            )
+            .into()),
         }
     }
 }

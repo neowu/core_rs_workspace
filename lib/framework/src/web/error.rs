@@ -19,10 +19,10 @@ pub struct HttpError {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct HttpErrorBody {
-    severity: Severity,
-    code: Option<String>,
-    message: String,
+pub(crate) struct HttpErrorBody {
+    pub(crate) severity: Severity,
+    pub(crate) code: Option<String>,
+    pub(crate) message: String,
 }
 
 impl IntoResponse for HttpError {
