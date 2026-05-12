@@ -419,16 +419,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "db_test"
-version = "1.0.0"
-dependencies = [
- "framework",
- "framework_macro",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "demo"
 version = "0.5.3"
 dependencies = [
