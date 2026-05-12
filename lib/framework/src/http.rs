@@ -53,6 +53,17 @@ pub enum HttpMethod {
     Delete,
 }
 
+impl HttpMethod {
+    fn to_str(&self) -> &'static str {
+        match self {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+            HttpMethod::Put => "PUT",
+            HttpMethod::Delete => "DELETE",
+        }
+    }
+}
+
 impl From<HttpMethod> for Method {
     fn from(method: HttpMethod) -> Self {
         match method {
@@ -72,7 +83,7 @@ pub struct HttpResponse {
 
 impl HttpClient {
     pub async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, Exception> {
-        let span = debug_span!("http", url = request.url, method = ?request.method);
+        let span = debug_span!("http");
         async {
             let http_request = create_request(request)?;
 
@@ -97,7 +108,7 @@ impl HttpClient {
     }
 
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
-        let span = debug_span!("http", url = request.url, method = ?request.method);
+        let span = debug_span!("sse");
         async {
             request.headers.insert(header::ACCEPT, "text/event-stream".to_owned());
             let http_request = create_request(request)?;
@@ -139,7 +150,7 @@ fn parse_headers(response: &reqwest::Response) -> Result<HashMap<HeaderName, Str
 }
 
 fn create_request(request: HttpRequest) -> Result<Request, Exception> {
-    debug!(method = ?request.method, "[request]");
+    debug!(method = request.method.to_str(), "[request]");
     debug!(url = request.url, "[request]");
     let url = Url::parse(&request.url)?;
     let mut http_request = Request::new(request.method.into(), url);

@@ -61,11 +61,12 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
             use super::*;
 
-            pub fn route<T>(service: Arc<T>) -> Router
+            pub fn route<T, S>(service: Arc<T>) -> Router<S>
             where
                 T: #trait_ident + Send + Sync + 'static,
+                S: Clone + Send + Sync + 'static,
             {
-                let router = Router::new();
+                let router = Router::<S>::new();
                 #(#route_statements)*
                 router
             }
@@ -87,7 +88,7 @@ struct MethodInfo {
     method_ident: Ident,
     http_method: HttpMethod,
     path: LitStr,
-    request_type: Type,
+    request_type: Option<Type>,
     response_type: Type,
 }
 
@@ -156,15 +157,17 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
         return Err(Error::new_spanned(method, "method must take &self as first argument"));
     }
 
-    let request_arg =
-        inputs.next().ok_or_else(|| Error::new_spanned(method, "method must take exactly one request parameter"))?;
-    let FnArg::Typed(pat_type) = request_arg else {
-        return Err(Error::new_spanned(method, "request parameter must be typed"));
+    let request_type = if let Some(request_arg) = inputs.next() {
+        let FnArg::Typed(pat_type) = request_arg else {
+            return Err(Error::new_spanned(method, "request parameter must be typed"));
+        };
+        if inputs.next().is_some() {
+            return Err(Error::new_spanned(method, "method must take at most one request parameter"));
+        }
+        Some((*pat_type.ty).clone())
+    } else {
+        None
     };
-    if inputs.next().is_some() {
-        return Err(Error::new_spanned(method, "method must take exactly one request parameter"));
-    }
-    let request_type = (*pat_type.ty).clone();
 
     let ReturnType::Type(_, return_type) = &method.sig.output else {
         return Err(Error::new_spanned(method, "method must return `Result<..., Exception>`"));
@@ -177,32 +180,51 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
 fn build_route_stmt(info: &MethodInfo) -> TokenStream {
     let method_ident = &info.method_ident;
     let filter = info.http_method.filter();
-    let extractor = info.http_method.extractor();
     let path = &info.path;
-    let request_type = &info.request_type;
+
+    let handler = if let Some(request_type) = &info.request_type {
+        let extractor = info.http_method.extractor();
+        quote! {
+            async move |#extractor(req): #extractor<#request_type>| {
+                let result = svc.#method_ident(req).await;
+                __into_response(result)
+            }
+        }
+    } else {
+        quote! {
+            async move || {
+                let result = svc.#method_ident().await;
+                __into_response(result)
+            }
+        }
+    };
 
     quote! {
         let svc = Arc::clone(&service);
         let router = router.route(
             #path,
-            on(#filter, async move |#extractor(req): #extractor<#request_type>| {
-                let result = svc.#method_ident(req).await;
-                __into_response(result)
-            }),
+            on(#filter, #handler),
         );
     }
 }
 
 fn build_client_method(info: &MethodInfo) -> TokenStream {
     let method_ident = &info.method_ident;
-    let request_type = &info.request_type;
     let response_type = &info.response_type;
     let client_call = info.http_method.client_call();
     let path = &info.path;
 
-    quote! {
-        async fn #method_ident(&self, request: #request_type) -> #response_type {
-            self.client.#client_call(#path, request).await
+    if let Some(request_type) = &info.request_type {
+        quote! {
+            async fn #method_ident(&self, request: #request_type) -> #response_type {
+                self.client.#client_call(#path, request).await
+            }
+        }
+    } else {
+        quote! {
+            async fn #method_ident(&self) -> #response_type {
+                self.client.#client_call(#path, ()).await
+            }
         }
     }
 }
@@ -259,11 +281,12 @@ mod tests {
 
                     use super::*;
 
-                    pub fn route<T>(service: Arc<T>) -> Router
+                    pub fn route<T, S>(service: Arc<T>) -> Router<S>
                     where
                         T: UserService + Send + Sync + 'static,
+                        S: Clone + Send + Sync + 'static,
                     {
-                        let router = Router::new();
+                        let router = Router::<S>::new();
                         let svc = Arc::clone(&service);
                         let router = router.route(
                             "/user/search",
@@ -304,6 +327,92 @@ mod tests {
                             }
                             async fn update(&self, request: UpdateUserRequest) -> Result<UpdateUserResponse, Exception> {
                                 self.client.put("/user/update", request).await
+                            }
+                        }
+                        Client { client: ApiClient::new(http_client, api_url) }
+                    }
+                }
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn build_webservice_with_optional() {
+        let source = quote! {
+            #[webservice]
+            pub trait UserService {
+                #[get]
+                #[path("/user/get_all")]
+                async fn get_all(&self) -> Result<GetAllUserResponse, Exception>;
+
+                #[post]
+                #[path("/user/create")]
+                async fn create(&self, request: CreateUserRequest) -> Result<(), Exception>;
+            }
+        };
+
+        let output = build(source).unwrap();
+
+        assert_eq!(
+            output.to_string(),
+            quote! {
+                #[webservice]
+                pub trait UserService {
+                    fn get_all(&self) -> impl ::core::future::Future<Output = Result<GetAllUserResponse, Exception> > + Send;
+                    fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
+                }
+
+                #[allow(clippy::wildcard_imports, clippy::needless_pass_by_value)]
+                pub mod user_service {
+                    use std::sync::Arc;
+
+                    use axum::Router;
+                    use axum::routing::MethodFilter;
+                    use axum::routing::on;
+                    use framework::http::HttpClient;
+                    use framework::web::api::ApiClient;
+                    use framework::web::api::__into_response;
+                    use framework::web::body::Json;
+                    use framework::web::body::Query;
+
+                    use super::*;
+
+                    pub fn route<T, S>(service: Arc<T>) -> Router<S>
+                    where
+                        T: UserService + Send + Sync + 'static,
+                        S: Clone + Send + Sync + 'static,
+                    {
+                        let router = Router::<S>::new();
+                        let svc = Arc::clone(&service);
+                        let router = router.route(
+                            "/user/get_all",
+                            on(MethodFilter::GET, async move || {
+                                let result = svc.get_all().await;
+                                __into_response(result)
+                            }),
+                        );
+                        let svc = Arc::clone(&service);
+                        let router = router.route(
+                            "/user/create",
+                            on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
+                                let result = svc.create(req).await;
+                                __into_response(result)
+                            }),
+                        );
+                        router
+                    }
+
+                    pub fn client(http_client: HttpClient, api_url: &'static str) -> impl UserService {
+                        struct Client {
+                            client: ApiClient,
+                        }
+                        impl UserService for Client {
+                            async fn get_all(&self) -> Result<GetAllUserResponse, Exception> {
+                                self.client.get("/user/get_all", ()).await
+                            }
+                            async fn create(&self, request: CreateUserRequest) -> Result<(), Exception> {
+                                self.client.post("/user/create", request).await
                             }
                         }
                         Client { client: ApiClient::new(http_client, api_url) }

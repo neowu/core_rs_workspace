@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use axum::Router;
 use chrono::FixedOffset;
+use demo::AppState;
 use framework::asset::asset_path;
 use framework::exception::Exception;
 use framework::log;
@@ -22,8 +23,6 @@ mod web;
 // #[derive(Debug, Deserialize, Clone)]
 // struct AppConfig {}
 
-pub struct AppState {}
-
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
@@ -43,12 +42,12 @@ async fn main() -> Result<(), Exception> {
 
     task::spawn_task(async move {
         let app = Router::new();
-        let app = app.merge(web::routes());
         let app = app.merge(job::routes());
+        let app = app.merge(web::routes(state));
         let app = app
             .route_service("/", ServeFile::new(asset_path("assets/web/index.html")?))
-            .route_service("/static/{*path}", ServeDir::new(asset_path("assets/web/")?))
-            .fallback_service(ServeFile::new(asset_path("assets/web/index.html")?));
+            .route_service("/static/{*path}", ServeDir::new(asset_path("assets/web/")?));
+        //     .fallback_service(ServeFile::new(asset_path("assets/web/index.html")?));
         let app = app.with_state(state);
         start_http_server(app, signal, HttpServerConfig::default()).await
     });

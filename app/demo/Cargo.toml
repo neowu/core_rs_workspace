@@ -18,3 +18,4 @@ tokio-util = "*"
 tokio-stream = "*"
 futures = "*"
 uuid = { version = "*", features = ["v7"] }
+serde_html_form = "*"

@@ -398,6 +398,7 @@ dependencies = [
  "framework_macro",
  "futures",
  "serde",
+ "serde_html_form",
  "tokio",
  "tokio-stream",
  "tokio-util",

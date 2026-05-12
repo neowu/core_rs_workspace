@@ -102,6 +102,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         let http_response = next.run(request).await;
 
         let status = http_response.status().as_u16();
+        // TODO: warn on 404, 405?
         debug!(status, "[response]");
         debug!(response_status = status, "context");
         for (name, value) in http_response.headers() {
