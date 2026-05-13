@@ -48,7 +48,7 @@ impl ApiClient {
         Self { http_client, api_url }
     }
 
-    // TODO: add retry
+    // TODO: add current action id
     #[inline]
     pub async fn get<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where
@@ -66,7 +66,6 @@ impl ApiClient {
         parse_response(&response)
     }
 
-    // TODO: add current action id
     #[inline]
     pub async fn post<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where
@@ -79,7 +78,6 @@ impl ApiClient {
         parse_response(&response)
     }
 
-    // TODO: add retry
     #[inline]
     pub async fn put<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where

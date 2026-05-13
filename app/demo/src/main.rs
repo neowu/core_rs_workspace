@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use axum::Router;
+use axum::http::StatusCode;
+use axum::routing::get;
 use chrono::FixedOffset;
 use demo::AppState;
 use framework::asset::asset_path;
@@ -42,17 +44,21 @@ async fn main() -> Result<(), Exception> {
 
     task::spawn_task(async move {
         let app = Router::new();
-        let app = app.merge(job::routes());
+        let app = app.merge(job::routes(state));
         let app = app.merge(web::routes(state));
+        let app = app.merge(Router::new().route("/503", get(http_503)));
         let app = app
             .route_service("/", ServeFile::new(asset_path("assets/web/index.html")?))
             .route_service("/static/{*path}", ServeDir::new(asset_path("assets/web/")?));
         //     .fallback_service(ServeFile::new(asset_path("assets/web/index.html")?));
-        let app = app.with_state(state);
         start_http_server(app, signal, HttpServerConfig::default()).await
     });
 
     task::shutdown().await;
 
     Ok(())
+}
+
+async fn http_503() -> StatusCode {
+    StatusCode::SERVICE_UNAVAILABLE
 }

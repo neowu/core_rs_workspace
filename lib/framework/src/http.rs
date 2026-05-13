@@ -16,15 +16,43 @@ use reqwest::Body;
 use reqwest::Method;
 use reqwest::Request;
 use reqwest::Url;
+use tokio::time::sleep;
 use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
+use tracing::warn;
 
 use crate::exception::Exception;
+use crate::exception::Severity;
 
 #[derive(Clone)]
 pub struct HttpClient {
     client: reqwest::Client,
+    retry: RetryConfig,
+}
+
+#[allow(unused)]
+#[derive(Clone)]
+pub struct RetryConfig {
+    pub max_attempts: u32,
+    pub interval: Duration,
+}
+
+#[allow(unused)]
+pub struct HttpClientConfig {
+    pub accept_invalid_cert: bool,
+    pub timeout: Duration,
+    pub retry: RetryConfig,
+}
+
+impl Default for HttpClientConfig {
+    fn default() -> Self {
+        Self {
+            accept_invalid_cert: false,
+            timeout: Duration::from_secs(30),
+            retry: RetryConfig { max_attempts: 3, interval: Duration::from_millis(500) },
+        }
+    }
 }
 
 pub struct HttpRequest {
@@ -45,7 +73,7 @@ impl HttpRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HttpMethod {
     Get,
     Post,
@@ -82,12 +110,65 @@ pub struct HttpResponse {
 }
 
 impl HttpClient {
+    pub fn new(config: HttpClientConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .tls_danger_accept_invalid_certs(config.accept_invalid_cert)
+            .pool_idle_timeout(Duration::from_mins(5))
+            .http2_prior_knowledge()
+            .connection_verbose(false)
+            .build()
+            .expect("build cannot fail");
+        HttpClient { client, retry: config.retry }
+    }
+
     pub async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, Exception> {
         let span = debug_span!("http");
         async {
-            let http_request = create_request(request)?;
+            let max_attempts = self.retry.max_attempts.max(1);
+            let interval = self.retry.interval;
+            let idempotent = matches!(request.method, HttpMethod::Get | HttpMethod::Put | HttpMethod::Delete);
 
-            let response = self.client.execute(http_request).await?;
+            let mut attempt: u32 = 0;
+            let response = loop {
+                attempt += 1;
+                let http_request = create_request(&request)?;
+                match self.client.execute(http_request).await {
+                    Ok(response) => {
+                        let status = response.status().as_u16();
+                        if status == 503 && attempt < max_attempts {
+                            warn!(
+                                error_code = "HTTP_REQUEST_FAILED",
+                                attempt, status, "http request failed, retry soon"
+                            );
+                            sleep(interval * attempt).await;
+                            continue;
+                        }
+                        break response;
+                    }
+                    Err(err) => {
+                        if idempotent && attempt < max_attempts {
+                            warn!(
+                                "{:?}",
+                                exception!(
+                                    severity = Severity::Warn,
+                                    code = "HTTP_REQUEST_FAILED",
+                                    message = "http request failed, retry soon",
+                                    source = err
+                                )
+                            );
+                            sleep(interval * attempt).await;
+                            continue;
+                        }
+                        return Err(exception!(
+                            code = "HTTP_REQUEST_FAILED",
+                            message = "http request failed",
+                            source = err
+                        ));
+                    }
+                }
+            };
+
             let status = response.status().as_u16();
             debug!(status, "[response]");
 
@@ -111,7 +192,7 @@ impl HttpClient {
         let span = debug_span!("sse");
         async {
             request.headers.insert(header::ACCEPT, "text/event-stream".to_owned());
-            let http_request = create_request(request)?;
+            let http_request = create_request(&request)?;
 
             let response = self.client.execute(http_request).await?;
             let status = response.status().as_u16();
@@ -149,36 +230,21 @@ fn parse_headers(response: &reqwest::Response) -> Result<HashMap<HeaderName, Str
     Ok(headers)
 }
 
-fn create_request(request: HttpRequest) -> Result<Request, Exception> {
+fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
     debug!(method = request.method.to_str(), "[request]");
     debug!(url = request.url, "[request]");
     let url = Url::parse(&request.url)?;
-    let mut http_request = Request::new(request.method.into(), url);
-    for (key, value) in request.headers {
+    let mut http_request = Request::new(request.method.clone().into(), url);
+    for (key, value) in &request.headers {
         debug!("[header] {}={}", key, value);
         http_request.headers_mut().insert(key, value.parse()?);
     }
-    if let Some(body) = request.body {
+    if let Some(ref body) = request.body {
         debug!("[request] body={body}");
         debug!(http_write_bytes = body.len(), "stats");
-        *http_request.body_mut() = Some(Body::from(body));
+        *http_request.body_mut() = Some(Body::from(body.to_owned()));
     }
     Ok(http_request)
-}
-
-impl Default for HttpClient {
-    fn default() -> Self {
-        HttpClient {
-            client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(30))
-                .danger_accept_invalid_certs(true)
-                .pool_idle_timeout(Duration::from_mins(5))
-                .http2_prior_knowledge()
-                .connection_verbose(false)
-                .build()
-                .expect("build cannot fail"),
-        }
-    }
 }
 
 #[derive(Debug)]

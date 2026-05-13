@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use framework::exception;
 use framework::exception::Exception;
 use framework::http::HttpClient;
+use framework::http::HttpClientConfig;
 use framework::http::HttpMethod::Delete;
 use framework::http::HttpMethod::Get;
 use framework::http::HttpMethod::Post;
@@ -24,7 +25,7 @@ pub struct Elasticsearch {
 
 impl Elasticsearch {
     pub fn new(uri: &str) -> Self {
-        Self { uri: uri.to_owned(), client: HttpClient::default() }
+        Self { uri: uri.to_owned(), client: HttpClient::new(HttpClientConfig::default()) }
     }
 
     pub async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {

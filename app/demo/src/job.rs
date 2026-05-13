@@ -10,20 +10,13 @@ use framework::web::error::HttpResult;
 
 use crate::AppState;
 
-pub fn routes() -> Router<&'static AppState> {
-    Router::new().route("/job/demo_job", post(run_demo_job))
+pub fn routes(state: &'static AppState) -> Router {
+    Router::new().route("/job/demo_job", post(run_demo_job)).with_state(state)
 }
 
 #[debug_handler]
 async fn run_demo_job(State(state): State<&'static AppState>) -> HttpResult<StatusCode> {
-    demo_job(
-        state,
-        JobContext {
-            name: "demo_job",
-            scheduled_time: Utc::now(),
-        },
-    )
-    .await?;
+    demo_job(state, JobContext { name: "demo_job", scheduled_time: Utc::now() }).await?;
     Ok(StatusCode::ACCEPTED)
 }
 

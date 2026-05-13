@@ -11,11 +11,11 @@ use tracing::warn;
 
 use crate::AppState;
 
-pub fn routes(state: &'static AppState) -> Router<&'static AppState> {
+pub fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { _state: state };
     let service = Arc::new(service);
 
-    user_service::route(service)
+    user_service::route(service).with_state(state)
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

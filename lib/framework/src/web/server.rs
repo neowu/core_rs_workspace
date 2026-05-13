@@ -61,6 +61,9 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
     }
 
     let mut response = None;
+
+    // TODO: get ref_id from header?
+
     log::start_action("http", None, async {
         let method = request.method().clone();
         let uri = request.uri();
