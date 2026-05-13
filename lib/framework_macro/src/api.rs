@@ -30,23 +30,22 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         let TraitItem::Fn(method) = item else {
             continue;
         };
-        let info = parse_method(method)?;
+        let model = parse_method(method)?;
         method.attrs.retain(|attr| {
             let path = attr.path();
             !path.is_ident("get") && !path.is_ident("post") && !path.is_ident("put") && !path.is_ident("path")
         });
         method.sig.asyncness = None;
-        let response_type = &info.response_type;
+        let response_type = &model.response_type;
         let new_return: Type = parse_quote!(impl ::core::future::Future<Output = #response_type> + Send);
         method.sig.output = ReturnType::Type(RArrow::default(), Box::new(new_return));
-        route_statements.push(build_route_stmt(&info));
-        client_methods.push(build_client_method(&info));
+        route_statements.push(build_route_statement(&model));
+        client_methods.push(build_client_method(&model));
     }
 
     Ok(quote! {
         #trait_def
 
-        #[allow(clippy::wildcard_imports, clippy::needless_pass_by_value)]
         #trait_vis mod #mod_ident {
             use std::sync::Arc;
 
@@ -84,46 +83,17 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     })
 }
 
-struct MethodInfo {
+struct MethodModel {
     method_ident: Ident,
-    http_method: HttpMethod,
     path: LitStr,
     request_type: Option<Type>,
     response_type: Type,
+    filter: TokenStream,
+    extractor: TokenStream,
+    client_call: Ident,
 }
 
-enum HttpMethod {
-    Get,
-    Post,
-    Put,
-}
-
-impl HttpMethod {
-    fn filter(&self) -> TokenStream {
-        match self {
-            HttpMethod::Get => quote!(MethodFilter::GET),
-            HttpMethod::Post => quote!(MethodFilter::POST),
-            HttpMethod::Put => quote!(MethodFilter::PUT),
-        }
-    }
-
-    fn extractor(&self) -> TokenStream {
-        match self {
-            HttpMethod::Get => quote!(Query),
-            HttpMethod::Post | HttpMethod::Put => quote!(Json),
-        }
-    }
-
-    fn client_call(&self) -> Ident {
-        match self {
-            HttpMethod::Get => format_ident!("get"),
-            HttpMethod::Post => format_ident!("post"),
-            HttpMethod::Put => format_ident!("put"),
-        }
-    }
-}
-
-fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
+fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     let method_ident = method.sig.ident.clone();
 
     if method.sig.asyncness.is_none() {
@@ -136,17 +106,17 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
     for attr in &method.attrs {
         let attr_path = attr.path();
         if attr_path.is_ident("get") {
-            http_method = Some(HttpMethod::Get);
+            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("get")));
         } else if attr_path.is_ident("post") {
-            http_method = Some(HttpMethod::Post);
+            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("post")));
         } else if attr_path.is_ident("put") {
-            http_method = Some(HttpMethod::Put);
+            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("put")));
         } else if attr_path.is_ident("path") {
             path = Some(attr.parse_args::<LitStr>()?);
         }
     }
 
-    let http_method = http_method.ok_or_else(|| {
+    let (filter, extractor, client_call) = http_method.ok_or_else(|| {
         Error::new_spanned(method, "missing HTTP method attribute, expected #[get], #[post] or #[put]")
     })?;
     let path = path.ok_or_else(|| Error::new_spanned(method, "missing #[path(\"...\")] attribute"))?;
@@ -174,16 +144,16 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodInfo> {
     };
     let response_type = (**return_type).clone();
 
-    Ok(MethodInfo { method_ident, http_method, path, request_type, response_type })
+    Ok(MethodModel { method_ident, path, request_type, response_type, filter, extractor, client_call })
 }
 
-fn build_route_stmt(info: &MethodInfo) -> TokenStream {
-    let method_ident = &info.method_ident;
-    let filter = info.http_method.filter();
-    let path = &info.path;
+fn build_route_statement(model: &MethodModel) -> TokenStream {
+    let method_ident = &model.method_ident;
+    let filter = &model.filter;
+    let path = &model.path;
 
-    let handler = if let Some(request_type) = &info.request_type {
-        let extractor = info.http_method.extractor();
+    let handler = if let Some(request_type) = &model.request_type {
+        let extractor = &model.extractor;
         quote! {
             async move |#extractor(req): #extractor<#request_type>| {
                 let result = svc.#method_ident(req).await;
@@ -208,13 +178,13 @@ fn build_route_stmt(info: &MethodInfo) -> TokenStream {
     }
 }
 
-fn build_client_method(info: &MethodInfo) -> TokenStream {
-    let method_ident = &info.method_ident;
-    let response_type = &info.response_type;
-    let client_call = info.http_method.client_call();
-    let path = &info.path;
+fn build_client_method(model: &MethodModel) -> TokenStream {
+    let method_ident = &model.method_ident;
+    let response_type = &model.response_type;
+    let client_call = &model.client_call;
+    let path = &model.path;
 
-    if let Some(request_type) = &info.request_type {
+    if let Some(request_type) = &model.request_type {
         quote! {
             async fn #method_ident(&self, request: #request_type) -> #response_type {
                 self.client.#client_call(#path, request).await
@@ -266,7 +236,6 @@ mod tests {
                     fn update(&self, request: UpdateUserRequest) -> impl ::core::future::Future<Output = Result<UpdateUserResponse, Exception> > + Send;
                 }
 
-                #[allow(clippy::wildcard_imports, clippy::needless_pass_by_value)]
                 pub mod user_service {
                     use std::sync::Arc;
 
@@ -363,7 +332,6 @@ mod tests {
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
                 }
 
-                #[allow(clippy::wildcard_imports, clippy::needless_pass_by_value)]
                 pub mod user_service {
                     use std::sync::Arc;
 
