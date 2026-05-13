@@ -141,7 +141,7 @@ thread={:?}",
             let seconds = total_seconds % 60;
             let nanos = elapsed.subsec_nanos();
 
-            let mut log = String::new();
+            let mut log = String::with_capacity(128);
             write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} ");
 
             let metadata = event.metadata();
@@ -207,7 +207,7 @@ impl ActionVisitor {
                 error_message: None,
                 context: IndexMap::new(),
                 stats: IndexMap::new(),
-                logs: Vec::new(),
+                logs: Vec::with_capacity(32),
             })
         } else {
             None

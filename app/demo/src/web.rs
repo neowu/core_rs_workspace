@@ -4,7 +4,7 @@ use axum::Router;
 use framework::exception::Exception;
 use framework::validate::Validator;
 use framework_macro::Validate;
-use framework_macro::webservice;
+use framework_macro::api;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
@@ -35,7 +35,7 @@ pub struct SearchUserResponse {
     pub name: String,
 }
 
-#[webservice]
+#[api]
 pub trait UserService {
     #[post]
     #[path("/user/create")]
