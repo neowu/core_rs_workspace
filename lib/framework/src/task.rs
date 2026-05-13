@@ -37,7 +37,6 @@ where
 }
 
 pub async fn shutdown() {
-    info!("waiting for {} task(s) to finish", TASK_TRACKER.len());
     TASK_TRACKER.close();
     TASK_TRACKER.wait().await;
     info!("tasks finished");
