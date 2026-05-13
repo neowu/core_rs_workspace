@@ -105,12 +105,12 @@ async fn process_events(
     let now = Utc::now();
     for event in request.events {
         if let Err(error) = event.validate() {
-            warn!("skip invalid event, error={error:?}");
+            warn!("skip invalid event, error={error}");
             continue;
         }
 
         if let Err(error) = event.custom_validate() {
-            warn!("skip invalid event, error={error:?}");
+            warn!("skip invalid event, error={error}");
             continue;
         }
 
@@ -185,13 +185,13 @@ impl Event {
     fn custom_validate(&self) -> Result<(), Exception> {
         // Validate action for OK result
         if matches!(self.result, EventResult::Ok) && self.action.is_empty() {
-            return Err(validation_error!(message = "action must not be empty if result is OK".to_owned()));
+            return Err(validation_error!(message = "action must not be empty if result is OK"));
         }
 
         if (matches!(self.result, EventResult::Warn) || matches!(self.result, EventResult::Error))
             && self.error_code.as_ref().is_none_or(String::is_empty)
         {
-            return Err(validation_error!(message = "errorCode must not be empty if result is WARN/ERROR".to_owned()));
+            return Err(validation_error!(message = "errorCode must not be empty if result is WARN/ERROR"));
         }
 
         // Validate maps and estimate size

@@ -4,9 +4,9 @@ use framework::validation_error;
 
 pub fn main() {
     let error = test().err().unwrap();
-    println!("{error:?}");
+    println!("{error}");
     let error = test2().err().unwrap();
-    println!("{error:?}");
+    println!("{error}");
 }
 
 fn test() -> Result<(), Exception> {

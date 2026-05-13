@@ -39,17 +39,17 @@ pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exc
     Ok(())
 }
 
-pub async fn upload_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
-    let action_log_path = local_file_path("action", date, state)?;
+pub async fn upload_archive(date: NaiveDate, state: Arc<AppState>) -> Result<(), Exception> {
+    let action_log_path = local_file_path("action", date, &state)?;
     if action_log_path.exists() {
-        let remote_path = remote_path("action", date, state);
+        let remote_path = remote_path("action", date, &state);
         let columns = "{'date': 'TIMESTAMPTZ', id: 'STRING', app: 'STRING', host: 'STRING', result: 'STRING', action: 'STRING', ref_ids: 'STRING[]', correlation_ids: 'STRING[]', clients: 'STRING[]', error_code: 'STRING', error_message: 'STRING', elapsed: 'LONG', context: 'MAP(STRING, STRING[])', stats: 'MAP(STRING, DOUBLE)', perf_stats: 'MAP(STRING, MAP(STRING, DOUBLE))'}";
         convert_parquet_and_upload(action_log_path, &remote_path, columns, state.duckdb_memory_limit).await?;
     }
 
-    let event_path = local_file_path("event", date, state)?;
+    let event_path = local_file_path("event", date, &state)?;
     if event_path.exists() {
-        let remote_path = remote_path("event", date, state);
+        let remote_path = remote_path("event", date, &state);
         let columns = "{'date': 'TIMESTAMPTZ', id: 'STRING', app: 'STRING', received_time: 'TIMESTAMPTZ', result: 'STRING', action: 'STRING', error_code: 'STRING', error_message: 'STRING', elapsed: 'LONG', context: 'MAP(STRING, STRING)', stats: 'MAP(STRING, DOUBLE)', info: 'MAP(STRING, STRING)'}";
         convert_parquet_and_upload(event_path, &remote_path, columns, state.duckdb_memory_limit).await?;
     }

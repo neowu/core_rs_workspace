@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 framework = { workspace = true, features = ["kafka"] }
+framework_macro.workspace = true
 
 tracing.workspace = true
 serde.workspace = true

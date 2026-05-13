@@ -121,9 +121,8 @@ async fn main() -> Result<(), Exception> {
     });
 
     let app = Router::new();
-    let app = app.merge(web::routes());
-    let app = app.with_state(state);
-    start_http_server(app, http_signal, HttpServerConfig::default()).await?;
+    let app = app.merge(web::routes(Arc::clone(&state)));
+    start_http_server(app.with_state(state), http_signal, HttpServerConfig::default()).await?;
 
     task::shutdown().await;
 
