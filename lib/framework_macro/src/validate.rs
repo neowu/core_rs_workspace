@@ -156,7 +156,21 @@ fn build_not_blank_validator(field: &FieldModel) -> TokenStream {
 fn build_nested_validator(field: &FieldModel) -> TokenStream {
     let field_ident = &field.ident;
 
-    if field.is_optional_type() {
+    if field.is_optional_vec_type() {
+        quote!(
+            if let Some(ref values) = self.#field_ident {
+                for value in values {
+                    value.validate()?;
+                }
+            }
+        )
+    } else if field.is_vec_type() {
+        quote!(
+            for value in &self.#field_ident {
+                value.validate()?;
+            }
+        )
+    } else if field.is_optional_type() {
         quote!(
             if let Some(ref value) = self.#field_ident {
                 value.validate()?;
@@ -185,12 +199,19 @@ mod tests {
                 col1: i32,
                 #[length(min = 1, max = 10)]
                 col2: Vec<String>,
-                #[not_blank]
-                col3: String,
-                #[validate]
-                col4: Child,
                 #[length(min = 1)]
-                col5: Option<Vec<String>>,
+                col3: Option<Vec<String>>,
+                #[not_blank]
+                col4: String,
+                #[validate]
+                child: Child,
+                #[validate]
+                optional_child: Option<Child>,
+                #[validate]
+                children: Vec<Child>,
+                #[validate]
+                optional_children: Option<Vec<Child>>,
+
             }
         };
 
@@ -217,15 +238,29 @@ mod tests {
                         return Err(framework::validation_error!(message = format!("col2 length must not be less than 1, value={value}")));
                     }
 
-                    if self.col3.chars().all(char::is_whitespace) {
-                        return Err(framework::validation_error!(message = "col3 must not be blank"));
+                    if let Some(ref value) = self.col3 && value.len() < 1 {
+                        let value = value.len();
+                        return Err(framework::validation_error!(message = format!("col3 length must not be less than 1, value={value}")));
                     }
 
-                    self.col4.validate()?;
+                    if self.col4.chars().all(char::is_whitespace) {
+                        return Err(framework::validation_error!(message = "col4 must not be blank"));
+                    }
 
-                    if let Some(ref value) = self.col5 && value.len() < 1 {
-                        let value = value.len();
-                        return Err(framework::validation_error!(message = format!("col5 length must not be less than 1, value={value}")));
+                    self.child.validate()?;
+
+                    if let Some(ref value) = self.optional_child {
+                        value.validate()?;
+                    }
+
+                    for value in &self.children {
+                        value.validate()?;
+                    }
+
+                    if let Some(ref values) = self.optional_children {
+                        for value in values {
+                            value.validate()?;
+                        }
                     }
 
                     Ok(())

@@ -44,6 +44,14 @@ impl FieldModel {
         self.field_type.starts_with("Option<")
     }
 
+    pub(crate) fn is_vec_type(&self) -> bool {
+        self.field_type.starts_with("Vec<")
+    }
+
+    pub(crate) fn is_optional_vec_type(&self) -> bool {
+        self.field_type.starts_with("Option<Vec<")
+    }
+
     pub(crate) fn attr(&self, attr_name: &'static str) -> Result<&AttributeModel> {
         self.optional_attr(attr_name)
             .ok_or_else(|| Error::new_spanned(&self.ident, format!("can not find {attr_name} attribute")))
