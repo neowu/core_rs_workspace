@@ -8,17 +8,14 @@ use layer::ActionLogLayer;
 use serde::Serialize;
 use tokio::task_local;
 use tracing::Instrument as _;
-use tracing::error;
 use tracing::info_span;
 use tracing::level_filters::LevelFilter;
-use tracing::warn;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::exception::Exception;
-use crate::exception::Severity;
 
 pub mod appender;
 pub mod id_generator;
@@ -83,23 +80,12 @@ where
             async {
                 let result = task.await;
                 if let Err(e) = result {
-                    log_exception(&e);
+                    e.log();
                 }
             }
             .instrument(action_span),
         )
         .await;
-}
-
-pub(crate) fn log_exception(e: &Exception) {
-    let backtrace = e.to_string();
-    let message = &e.message;
-    match (&e.severity, e.code.as_ref()) {
-        (&Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
-        (&Severity::Warn, None) => warn!(backtrace, "{message}"),
-        (&Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
-        (&Severity::Error, None) => error!(backtrace, "{message}"),
-    }
 }
 
 #[inline]

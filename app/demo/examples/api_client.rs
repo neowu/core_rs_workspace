@@ -13,7 +13,7 @@ use tracing::warn;
 async fn main() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
 
-    let client = user_service::client(HttpClient::new(HttpClientConfig::default()), "http://localhost:8080");
+    let client = user_service::client(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080");
 
     task::spawn_action("client", async move {
         client.create(CreateUserRequest { name: "yes".to_owned() }).await?;

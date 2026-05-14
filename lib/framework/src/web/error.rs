@@ -7,7 +7,6 @@ use serde::Serialize;
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::exception::error_code;
-use crate::log;
 use crate::web::body::Json;
 
 pub type HttpResult<T> = Result<T, HttpError>;
@@ -37,7 +36,7 @@ where
 {
     fn from(err: E) -> Self {
         let exception: Exception = err.into();
-        log::log_exception(&exception);
+        exception.log();
 
         let status_code = exception.code.as_deref().map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
             error_code::BAD_REQUEST | error_code::VALIDATION_ERROR => StatusCode::BAD_REQUEST,

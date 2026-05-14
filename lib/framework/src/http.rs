@@ -168,15 +168,13 @@ impl HttpClient {
                     }
                     Err(err) => {
                         if idempotent && attempt < max_attempts {
-                            warn!(
-                                "{:?}",
-                                exception!(
-                                    severity = Severity::Warn,
-                                    code = "HTTP_REQUEST_FAILED",
-                                    message = "http request failed, retry soon",
-                                    source = err
-                                )
-                            );
+                            exception!(
+                                severity = Severity::Warn,
+                                code = "HTTP_REQUEST_FAILED",
+                                message = "http request failed, retry soon",
+                                source = err
+                            )
+                            .log();
                             sleep(interval * attempt).await;
                             continue;
                         }

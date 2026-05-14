@@ -22,7 +22,7 @@ async fn main() {
 
 #[allow(unused)]
 async fn test_http() -> Result<(), Exception> {
-    let http_client = HttpClient::new(HttpClientConfig::default());
+    let http_client = HttpClient::new(HttpClientConfig::internal_only());
     let mut request = HttpRequest::new(HttpMethod::Get, "http://localhost:8080/504");
     // request.body("{some json}".to_owned(), "application/json".to_owned());
     // request.headers.insert(header::USER_AGENT, "Rust".to_string());

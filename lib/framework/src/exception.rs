@@ -6,6 +6,10 @@ use std::fmt::Formatter;
 
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::error;
+use tracing::warn;
+
+use crate::write_str;
 
 pub mod error_code;
 
@@ -25,12 +29,46 @@ pub enum Severity {
     Error,
 }
 
-impl Display for Severity {
+impl Exception {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match *self {
-            Severity::Warn => write!(f, "WARN"),
-            Severity::Error => write!(f, "ERROR"),
+    pub fn backtrace(&self) -> String {
+        let mut trace = String::with_capacity(256);
+        let mut index = 0;
+        let mut current_source = Some(self);
+        while let Some(source) = current_source {
+            if index > 0 {
+                trace.push('\n');
+            }
+            write_str!(
+                trace,
+                "{index}: {} ",
+                match source.severity {
+                    Severity::Warn => "WARN",
+                    Severity::Error => "ERROR",
+                }
+            );
+            if let Some(ref code) = source.code {
+                write_str!(trace, "[{code}] ");
+            }
+            write_str!(trace, "{}", source.message);
+            if let Some(ref location) = source.location {
+                write_str!(trace, " at {location}");
+            }
+            index += 1;
+            current_source = source.source.as_ref().map(Box::as_ref);
+        }
+        trace
+    }
+
+    #[inline]
+    pub fn log(&self) {
+        let backtrace = self.backtrace();
+        let message = &self.message;
+        match (&self.severity, self.code.as_ref()) {
+            (&Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
+            (&Severity::Warn, None) => warn!(backtrace, "{message}"),
+            (&Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
+            (&Severity::Error, None) => error!(backtrace, "{message}"),
         }
     }
 }
@@ -45,23 +83,7 @@ impl Debug for Exception {
 impl Display for Exception {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut index = 0;
-        let mut current_source = Some(self);
-        while let Some(source) = current_source {
-            if index > 0 {
-                writeln!(f)?;
-            }
-            write!(f, "{index}: {} ", source.severity)?;
-            if let Some(ref code) = source.code {
-                write!(f, "[{code}] ")?;
-            }
-            write!(f, "{}", source.message)?;
-            if let Some(ref location) = source.location {
-                write!(f, " at {location}")?;
-            }
-            index += 1;
-            current_source = source.source.as_ref().map(Box::as_ref);
-        }
+        write!(f, "{}", self.message)?;
         Ok(())
     }
 }
@@ -140,5 +162,53 @@ where
             location: None,
             source: source(error.source()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backtrace_with_single() {
+        let exception = Exception {
+            severity: Severity::Error,
+            code: Some("E001".to_owned()),
+            message: "bad input".to_owned(),
+            location: Some("src/foo.rs:10:5".to_owned()),
+            source: None,
+        };
+        assert_eq!(exception.backtrace(), "0: ERROR [E001] bad input at src/foo.rs:10:5");
+    }
+
+    #[test]
+    fn backtrace_with_nested_error() {
+        let root = Exception {
+            severity: Severity::Error,
+            code: None,
+            message: "root cause".to_owned(),
+            location: Some("src/root.rs:1:1".to_owned()),
+            source: None,
+        };
+        let middle = Exception {
+            severity: Severity::Error,
+            code: Some("MID".to_owned()),
+            message: "middle".to_owned(),
+            location: None,
+            source: Some(Box::new(root)),
+        };
+        let top = Exception {
+            severity: Severity::Warn,
+            code: Some("TOP".to_owned()),
+            message: "top".to_owned(),
+            location: Some("src/top.rs:5:5".to_owned()),
+            source: Some(Box::new(middle)),
+        };
+        assert_eq!(
+            top.backtrace(),
+            "0: WARN [TOP] top at src/top.rs:5:5
+1: ERROR [MID] middle
+2: ERROR root cause at src/root.rs:1:1"
+        );
     }
 }

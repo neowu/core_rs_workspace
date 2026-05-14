@@ -3,6 +3,7 @@ pub mod asset;
 pub mod db;
 #[macro_use]
 pub mod exception;
+pub mod config;
 pub mod fs;
 pub mod http;
 pub mod json;
