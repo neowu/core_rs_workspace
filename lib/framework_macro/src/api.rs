@@ -88,6 +88,7 @@ struct MethodModel {
     path: LitStr,
     request_type: Option<Type>,
     response_type: Type,
+
     filter: TokenStream,
     extractor: TokenStream,
     client_call: Ident,

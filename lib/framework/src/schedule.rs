@@ -22,11 +22,11 @@ pub struct JobContext {
     pub scheduled_time: DateTime<Utc>,
 }
 
-type BoxJob<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 struct Schedule<S> {
     name: &'static str,
-    job: BoxJob<S>,
+    job: Job<S>,
     trigger: Trigger,
 }
 

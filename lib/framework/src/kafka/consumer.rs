@@ -46,19 +46,7 @@ impl<T: DeserializeOwned> Message<T> {
     }
 }
 
-trait MessageHandler<S>: Send {
-    fn handle(&self, state: S, messages: Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-}
-
-impl<F, Fut, S> MessageHandler<S> for F
-where
-    F: Fn(S, Vec<BorrowedMessage>) -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    fn handle(&self, state: S, messages: Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(self(state, messages))
-    }
-}
+type MessageHandler<S> = Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 pub struct ConsumerConfig {
     pub poll_max_wait_time: Duration,
@@ -73,7 +61,7 @@ impl Default for ConsumerConfig {
 
 pub struct MessageConsumer<S> {
     config: ClientConfig,
-    handlers: HashMap<&'static str, Box<dyn MessageHandler<S>>>,
+    handlers: HashMap<&'static str, MessageHandler<S>>,
     poll_max_wait_time: Duration,
     poll_max_records: usize,
 }
@@ -101,11 +89,12 @@ where
         H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
         M: DeserializeOwned + Send + 'static,
+        S: Clone + Send + Sync + 'static,
     {
         let topic = topic.name;
         let handler = move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<Message<M>> = messages.into_iter().map(Message::from).collect();
-            handle_messages(topic, messages, handler, state)
+            handle_messages(topic, messages, handler, &state)
         };
 
         self.handlers.insert(topic, Box::new(handler));
@@ -140,7 +129,7 @@ where
                     let mut handles = Vec::with_capacity(topic_messages.len());
                     for (topic, messages) in topic_messages {
                         if let Some(handler) = handlers.get(topic.as_str()) {
-                            handles.push(tokio::spawn(handler.handle(state.clone(), messages)));
+                            handles.push(tokio::spawn(handler(state.clone(), messages)));
                         }
                     }
                     join_all(handles).await;
@@ -214,27 +203,32 @@ fn poll_message_groups(
     Ok(messages)
 }
 
-async fn handle_bulk_messages<H, S, M, Fut>(topic: &'static str, messages: Vec<Message<M>>, handler: H, state: S)
+fn handle_bulk_messages<H, S, M, Fut>(
+    topic: &'static str,
+    messages: Vec<Message<M>>,
+    handler: H,
+    state: S,
+) -> Pin<Box<dyn Future<Output = ()> + Send>>
 where
-    H: Fn(S, Vec<Message<M>>) -> Fut,
-    Fut: Future<Output = Result<(), Exception>>,
-    M: DeserializeOwned,
+    S: Send + 'static,
+    H: Fn(S, Vec<Message<M>>) -> Fut + Send + 'static,
+    Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+    M: DeserializeOwned + Send + 'static,
 {
-    log::start_action("message", None, async {
+    Box::pin(log::start_action("message", None, async move {
+        debug!(topic, "context");
         let mut kafka_read_bytes = 0;
         for message in &messages {
             debug!(key = message.key, payload = message.payload, "[message]");
             kafka_read_bytes += message.payload.len();
         }
-        debug!(topic, "context");
         debug!(kafka_read_messages = messages.len(), kafka_read_bytes, "stats");
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");
         }
         handler(state, messages).await
-    })
-    .await;
+    }))
 }
 
 struct MessageNode<M>
@@ -245,9 +239,14 @@ where
     next: Option<Vec<MessageNode<M>>>,
 }
 
-async fn handle_messages<H, S, M, Fut>(topic: &'static str, messages: Vec<Message<M>>, handler: H, state: S)
+fn handle_messages<H, S, M, Fut>(
+    topic: &'static str,
+    messages: Vec<Message<M>>,
+    handler: H,
+    state: &S,
+) -> Pin<Box<dyn Future<Output = ()> + Send>>
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send,
     M: DeserializeOwned + Send + 'static,
@@ -283,7 +282,9 @@ where
         }));
     }
 
-    join_all(handles).await;
+    Box::pin(async move {
+        join_all(handles).await;
+    })
 }
 
 async fn handle_message<H, S, M, Fut>(topic: &'static str, message: Message<M>, handler: H, state: S)
@@ -294,14 +295,12 @@ where
 {
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
     log::start_action("message", ref_id, async {
-        debug!(topic, "[message]");
-        debug!(key = ?message.key, "[message]");
+        debug!(topic, key = message.key, "context");
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
         for (key, value) in &message.headers {
             debug!("[header] {}={}", key, value);
         }
-        debug!(topic, key = message.key, "context");
         debug!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len(), "stats");
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;
