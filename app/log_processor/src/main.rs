@@ -4,6 +4,7 @@ use std::sync::Arc;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset::asset_path;
+use framework::config::ConfigValue;
 use framework::exception::Exception;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
@@ -27,22 +28,16 @@ mod job;
 mod kafka;
 mod kibana;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 struct AppConfig {
-    kafka_uri: String,
-    elasticsearch_uri: String,
-    kibana_uri: String,
-    banner: String,
+    kafka_uri: ConfigValue<String>,
+    elasticsearch_uri: ConfigValue<String>,
+    kibana_uri: ConfigValue<String>,
+    banner: ConfigValue<String>,
 }
 
 pub struct AppState {
     elasticsearch: Elasticsearch,
-}
-
-impl AppState {
-    fn new(config: &AppConfig) -> Self {
-        AppState { elasticsearch: Elasticsearch::new(&config.elasticsearch_uri) }
-    }
 }
 
 #[tokio::main]
@@ -56,8 +51,8 @@ async fn main() -> Result<(), Exception> {
     let scheduler_signal = shutdown.subscribe();
     shutdown.listen();
 
-    let kibana_uri = config.kibana_uri.clone();
-    let banner = config.banner.clone();
+    let kibana_uri = config.kibana_uri.value()?;
+    let banner = config.banner.value()?;
     task::spawn_action("import_kibana_objects", async move {
         let objects = fs::read_to_string(&asset_path("assets/kibana_objects.json")?)?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
@@ -65,7 +60,7 @@ async fn main() -> Result<(), Exception> {
         Ok(())
     });
 
-    let state = Arc::new(AppState::new(&config));
+    let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri.value()?) });
 
     let scheduler_state = Arc::clone(&state);
     task::spawn_task(async move {
@@ -80,7 +75,8 @@ async fn main() -> Result<(), Exception> {
 
     put_index_templates(&state.elasticsearch).await?;
 
-    let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
+    let mut consumer =
+        MessageConsumer::new(config.kafka_uri.value()?, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);

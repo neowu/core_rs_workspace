@@ -13,9 +13,7 @@ use crate::AppState;
 
 pub fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { _state: state };
-    let service = Arc::new(service);
-
-    user_service::route(service).with_state(state)
+    user_service::route(Arc::new(service))
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

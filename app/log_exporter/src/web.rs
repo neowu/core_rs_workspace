@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::AppState;
 use crate::service::upload_archive;
 
-pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+pub fn routes(state: Arc<AppState>) -> Router {
     let service = OperationWebServiceImpl { state };
     operation_web_service::route(Arc::new(service))
 }

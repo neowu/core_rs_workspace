@@ -6,6 +6,7 @@ use axum::Router;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset::asset_path;
+use framework::config::ConfigValue;
 use framework::exception::Exception;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
@@ -34,11 +35,11 @@ mod kafka;
 mod service;
 mod web;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 struct AppConfig {
-    kafka_uri: String,
-    log_dir: String,
-    bucket: String,
+    kafka_uri: ConfigValue<String>,
+    log_dir: ConfigValue<String>,
+    bucket: ConfigValue<String>,
 }
 
 pub struct AppState {
@@ -49,21 +50,6 @@ pub struct AppState {
     bucket: String,
 
     duckdb_memory_limit: u32, // in bytes
-}
-
-impl AppState {
-    fn new(config: &AppConfig) -> Result<Self, Exception> {
-        let hostname = hostname::get()?.to_string_lossy().to_string();
-        let hash = hash(&hostname);
-
-        Ok(AppState {
-            topics: Topics { action: Topic::new("action-log-v2"), event: Topic::new("event") },
-            log_dir: config.log_dir.clone(),
-            hash,
-            bucket: config.bucket.clone(),
-            duckdb_memory_limit: duckdb_memory_limit()?,
-        })
-    }
 }
 
 fn hash(hostname: &str) -> String {
@@ -99,7 +85,18 @@ async fn main() -> Result<(), Exception> {
     let consumer_signal = shutdown.subscribe();
     shutdown.listen();
 
-    let state = Arc::new(AppState::new(&config)?);
+    let state = Arc::new({
+        let hostname = hostname::get()?.to_string_lossy().to_string();
+        let hash = hash(&hostname);
+
+        AppState {
+            topics: Topics { action: Topic::new("action-log-v2"), event: Topic::new("event") },
+            log_dir: config.log_dir.value()?,
+            hash,
+            bucket: config.bucket.value()?,
+            duckdb_memory_limit: duckdb_memory_limit()?,
+        }
+    });
     let scheduler_state = Arc::clone(&state);
     let consumer_state = Arc::clone(&state);
 
@@ -114,7 +111,11 @@ async fn main() -> Result<(), Exception> {
     });
 
     task::spawn_task(async move {
-        let mut consumer = MessageConsumer::new(&config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
+        let mut consumer = MessageConsumer::new(
+            config.kafka_uri.value()?,
+            env!("CARGO_BIN_NAME").to_owned(),
+            &ConsumerConfig::default(),
+        );
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
         consumer.start(consumer_state, consumer_signal).await
@@ -122,7 +123,7 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(Arc::clone(&state)));
-    start_http_server(app.with_state(state), http_signal, HttpServerConfig::default()).await?;
+    start_http_server(app, http_signal, HttpServerConfig::default()).await?;
 
     task::shutdown().await;
 

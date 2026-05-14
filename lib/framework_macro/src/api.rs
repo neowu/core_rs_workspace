@@ -60,12 +60,11 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
             use super::*;
 
-            pub fn route<T, S>(service: Arc<T>) -> Router<S>
+            pub fn route<T>(service: Arc<T>) -> Router
             where
                 T: #trait_ident + Send + Sync + 'static,
-                S: Clone + Send + Sync + 'static,
             {
-                let router = Router::<S>::new();
+                let router = Router::new();
                 #(#route_statements)*
                 router
             }
@@ -251,12 +250,11 @@ mod tests {
 
                     use super::*;
 
-                    pub fn route<T, S>(service: Arc<T>) -> Router<S>
+                    pub fn route<T>(service: Arc<T>) -> Router
                     where
                         T: UserService + Send + Sync + 'static,
-                        S: Clone + Send + Sync + 'static,
                     {
-                        let router = Router::<S>::new();
+                        let router = Router::new();
                         let svc = Arc::clone(&service);
                         let router = router.route(
                             "/user/search",
@@ -347,12 +345,11 @@ mod tests {
 
                     use super::*;
 
-                    pub fn route<T, S>(service: Arc<T>) -> Router<S>
+                    pub fn route<T>(service: Arc<T>) -> Router
                     where
                         T: UserService + Send + Sync + 'static,
-                        S: Clone + Send + Sync + 'static,
                     {
-                        let router = Router::<S>::new();
+                        let router = Router::new();
                         let svc = Arc::clone(&service);
                         let router = router.route(
                             "/user/get_all",

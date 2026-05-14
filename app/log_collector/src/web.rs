@@ -35,11 +35,12 @@ use tracing::warn;
 use crate::AppState;
 use crate::kafka::EventMessage;
 
-pub fn routes() -> Router<Arc<AppState>> {
+pub fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/robots.txt", get(robots_txt))
         .route("/event/{app}", options(event_options))
         .route("/event/{app}", post(event_post))
+        .with_state(state)
 }
 
 #[debug_handler]

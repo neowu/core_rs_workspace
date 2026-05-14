@@ -70,7 +70,7 @@ impl<S> MessageConsumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new(bootstrap_servers: &str, group_id: &str, config: &ConsumerConfig) -> Self {
+    pub fn new(bootstrap_servers: String, group_id: String, config: &ConsumerConfig) -> Self {
         Self {
             config: ClientConfig::new()
                 .set("group.id", group_id)

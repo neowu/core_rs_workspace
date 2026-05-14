@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use framework::asset::asset_path;
+use framework::config::ConfigValue;
 use framework::exception::Exception;
 use framework::json;
 use framework::kafka::producer::Producer;
@@ -17,23 +18,14 @@ use serde::Deserialize;
 mod kafka;
 mod web;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 struct AppConfig {
-    kafka_uri: String,
+    kafka_uri: ConfigValue<String>,
 }
 
 pub struct AppState {
     topics: Topics,
     producer: Producer,
-}
-
-impl AppState {
-    fn new(config: &AppConfig) -> Self {
-        AppState {
-            topics: Topics { event: Topic::new("event") },
-            producer: Producer::new(&config.kafka_uri, env!("CARGO_BIN_NAME")),
-        }
-    }
 }
 
 struct Topics {
@@ -50,10 +42,12 @@ async fn main() -> Result<(), Exception> {
     let signal = shutdown.subscribe();
     shutdown.listen();
 
-    let state = Arc::new(AppState::new(&config));
+    let state = Arc::new(AppState {
+        topics: Topics { event: Topic::new("event") },
+        producer: Producer::new(config.kafka_uri.value()?, env!("CARGO_BIN_NAME").to_owned()),
+    });
 
     let app = Router::new();
-    let app = app.merge(web::routes());
-    let app = app.with_state(state);
+    let app = app.merge(web::routes(state));
     start_http_server(app, signal, HttpServerConfig::default()).await
 }

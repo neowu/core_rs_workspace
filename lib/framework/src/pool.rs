@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -13,11 +14,11 @@ use tracing::warn;
 
 use crate::exception::Exception;
 
-pub(crate) trait ResourceManager {
+pub trait ResourceManager {
     type Target: Sized;
 
-    async fn create(&self) -> Result<Self::Target, Exception>;
-    async fn is_valid(item: &Self::Target) -> bool;
+    fn create(&self) -> impl Future<Output = Result<Self::Target, Exception>> + Send;
+    fn is_valid(item: &Self::Target) -> impl Future<Output = bool> + Send;
     fn is_closed(item: &Self::Target) -> bool;
 }
 
@@ -27,7 +28,7 @@ struct Resource<T> {
     return_time: Instant,
 }
 
-pub(crate) struct ResourcePool<R>
+pub struct ResourcePool<R>
 where
     R: ResourceManager,
 {
@@ -43,7 +44,7 @@ impl<R> ResourcePool<R>
 where
     R: ResourceManager,
 {
-    pub(crate) fn new(
+    pub fn new(
         manager: R,
         capacity: usize,
         max_valid_window: Duration,
@@ -60,7 +61,7 @@ where
         }
     }
 
-    pub(crate) async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
+    pub async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
         let permit = match time::timeout(self.checkout_timeout, Arc::clone(&self.semaphore).acquire_owned()).await {
             Ok(Ok(permit)) => permit,
             Ok(Err(_)) => return Err(exception!(message = "pool is closed")),
@@ -98,7 +99,7 @@ where
     }
 }
 
-pub(crate) struct ResourceGuard<'a, R>
+pub struct ResourceGuard<'a, R>
 where
     R: ResourceManager,
 {

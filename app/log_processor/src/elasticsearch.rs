@@ -24,8 +24,8 @@ pub struct Elasticsearch {
 }
 
 impl Elasticsearch {
-    pub fn new(uri: &str) -> Self {
-        Self { uri: uri.to_owned(), client: HttpClient::new(HttpClientConfig::internal_only()) }
+    pub fn new(uri: String) -> Self {
+        Self { uri, client: HttpClient::new(HttpClientConfig::internal_only()) }
     }
 
     pub async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {

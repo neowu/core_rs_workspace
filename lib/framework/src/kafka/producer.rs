@@ -23,14 +23,14 @@ pub struct Producer {
 }
 
 impl Producer {
-    pub fn new(bootstrap_servers: &str, client: &str) -> Self {
+    pub fn new(bootstrap_servers: String, client: String) -> Self {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_servers)
             .set("message.timeout.ms", "5000")
             .set("compression.codec", "zstd")
             .create()
             .expect("Producer creation error");
-        Self { producer, client: client.to_owned() }
+        Self { producer, client }
     }
 
     pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> Result<(), Exception>
