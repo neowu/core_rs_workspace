@@ -14,7 +14,7 @@ impl PathBufExt for PathBuf {
             self
         } else {
             let current_dir = env::current_dir()
-                .map_err(|err| exception!(message = "failed to get current directory", source = err))?;
+                .map_err(|err| exception!("failed to get current directory", source = err))?;
             current_dir.join(self)
         };
 

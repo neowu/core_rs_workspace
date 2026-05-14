@@ -88,9 +88,9 @@ async fn handle_request(success: bool) -> Result<(), Exception> {
         warn!(error_code = "SOMETHING", status = "failure", "Something went wrong");
         error!(error_code = "DB", reason = "database_error", "Could not connect to database");
         Err(exception!(
+            format!("key length must be 16 characters, got {:?}", "key"),
             severity = Severity::Warn,
-            code = "E001",
-            message = format!("key length must be 16 characters, got {:?}", "key")
+            code = "E001"
         ))
     }
 }

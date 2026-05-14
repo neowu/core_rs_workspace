@@ -57,9 +57,9 @@ where
             ConfigValue::Literal(value) => Ok(value),
             ConfigValue::FromEnv { env } => match env::var(&env) {
                 Ok(value) => {
-                    value.parse().map_err(|err| exception!(message = format!("failed to parse, env={env}, err={err}")))
+                    value.parse().map_err(|err| exception!(format!("failed to parse, env={env}, err={err}")))
                 }
-                Err(err) => Err(exception!(message = format!("failed to load from env, env={env}"), source = err)),
+                Err(err) => Err(exception!(format!("failed to load from env, env={env}"), source = err)),
             },
         }
     }

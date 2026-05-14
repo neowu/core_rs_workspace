@@ -41,7 +41,7 @@ where
         let status_code = exception.code.as_deref().map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
             error_code::BAD_REQUEST | error_code::VALIDATION_ERROR => StatusCode::BAD_REQUEST,
             error_code::NOT_FOUND => StatusCode::NOT_FOUND,
-            error_code::FORDIDDEN => StatusCode::FORBIDDEN,
+            error_code::FORBIDDEN => StatusCode::FORBIDDEN,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         });
 

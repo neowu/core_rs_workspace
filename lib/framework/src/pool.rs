@@ -64,8 +64,8 @@ where
     pub async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
         let permit = match time::timeout(self.checkout_timeout, Arc::clone(&self.semaphore).acquire_owned()).await {
             Ok(Ok(permit)) => permit,
-            Ok(Err(_)) => return Err(exception!(message = "pool is closed")),
-            Err(_) => return Err(exception!(message = "timeout")),
+            Ok(Err(_)) => return Err(exception!("pool is closed")),
+            Err(_) => return Err(exception!("timeout")),
         };
 
         let item = loop {

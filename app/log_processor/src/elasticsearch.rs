@@ -37,7 +37,7 @@ impl Elasticsearch {
             request.body(template, "application/json");
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(message = format!("failed to create index template, name={name}")));
+                return Err(exception!(format!("failed to create index template, name={name}")));
             }
             Ok(())
         }
@@ -67,7 +67,7 @@ impl Elasticsearch {
 
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(message = format!("failed to bulk index, index={index}")));
+                return Err(exception!(format!("failed to bulk index, index={index}")));
             }
             Ok(())
         }
@@ -82,7 +82,7 @@ impl Elasticsearch {
             let request = HttpRequest::new(Get, format!("{uri}/_cluster/state"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(message = format!("failed to get state")));
+                return Err(exception!(format!("failed to get state")));
             }
             json::from_json(&response.body)
         }
@@ -98,7 +98,7 @@ impl Elasticsearch {
             let request = HttpRequest::new(Post, format!("{uri}/{index}/_close"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(message = format!("failed to close index, index={index}")));
+                return Err(exception!(format!("failed to close index, index={index}")));
             }
             Ok(())
         }
@@ -114,7 +114,7 @@ impl Elasticsearch {
             let request = HttpRequest::new(Delete, format!("{uri}/{index}"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
-                return Err(exception!(message = format!("failed to delete index, index={index}")));
+                return Err(exception!(format!("failed to delete index, index={index}")));
             }
             Ok(())
         }

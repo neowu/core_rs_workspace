@@ -109,17 +109,17 @@ where
     {
         if let Some(ref code) = error.code {
             Err(exception!(
+                format!("failed to call api, status={status}, error={}", error.message),
                 severity = error.severity,
-                code = code,
-                message = format!("failed to call api, status={status}, error={}", error.message)
+                code = code
             ))
         } else {
             Err(exception!(
-                severity = error.severity,
-                message = format!("failed to call api, status={status}, error={}", error.message)
+                format!("failed to call api, status={status}, error={}", error.message),
+                severity = error.severity
             ))
         }
     } else {
-        Err(exception!(message = format!("failed to call api, status={status}, body={}", response.body)))
+        Err(exception!(format!("failed to call api, status={status}, body={}", response.body)))
     }
 }

@@ -56,14 +56,14 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
         if field.is_optional_type() {
             body.push(quote!(
                 if let Some(value) = self.#field_ident && value > #max {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
                 let value = self.#field_ident;
                 if value > #max {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         }
@@ -74,14 +74,14 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
         if field.is_optional_type() {
             body.push(quote!(
                 if let Some(value) = self.#field_ident && value < #min {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
                 let value = self.#field_ident;
                 if value < #min {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         }
@@ -100,14 +100,14 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
             body.push(quote!(
                 if let Some(ref value) = self.#field_ident && value.len() > #max {
                     let value = value.len();
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
                 let value = self.#field_ident.len();
                 if value > #max {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         }
@@ -119,14 +119,14 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
             body.push(quote!(
                 if let Some(ref value) = self.#field_ident && value.len() < #min {
                     let value = value.len();
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
                 let value = self.#field_ident.len();
                 if value < #min {
-                    return Err(framework::validation_error!(message = format!(#message)));
+                    return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         }
@@ -141,13 +141,13 @@ fn build_not_blank_validator(field: &FieldModel) -> TokenStream {
     if field.is_optional_type() {
         quote!(
             if let Some(ref value) = self.#field_ident && value.chars().all(char::is_whitespace) {
-                return Err(framework::validation_error!(message = #message));
+                return Err(framework::validation_error!(#message));
             }
         )
     } else {
         quote!(
             if self.#field_ident.chars().all(char::is_whitespace) {
-                return Err(framework::validation_error!(message = #message));
+                return Err(framework::validation_error!(#message));
             }
         )
     }
@@ -222,29 +222,29 @@ mod tests {
                 fn validate(&self) -> Result<(), framework::exception::Exception> {
                     let value = self.col1;
                     if value > 100 {
-                        return Err(framework::validation_error!(message = format!("col1 must not be greater than 100, value={value}")));
+                        return Err(framework::validation_error!(format!("col1 must not be greater than 100, value={value}")));
                     }
                     let value = self.col1;
                     if value < 2 {
-                        return Err(framework::validation_error!(message = format!("col1 must not be less than 2, value={value}")));
+                        return Err(framework::validation_error!(format!("col1 must not be less than 2, value={value}")));
                     }
 
                     let value = self.col2.len();
                     if value > 10 {
-                        return Err(framework::validation_error!(message = format!("col2 length must not be greater than 10, value={value}")));
+                        return Err(framework::validation_error!(format!("col2 length must not be greater than 10, value={value}")));
                     }
                     let value = self.col2.len();
                     if value < 1 {
-                        return Err(framework::validation_error!(message = format!("col2 length must not be less than 1, value={value}")));
+                        return Err(framework::validation_error!(format!("col2 length must not be less than 1, value={value}")));
                     }
 
                     if let Some(ref value) = self.col3 && value.len() < 1 {
                         let value = value.len();
-                        return Err(framework::validation_error!(message = format!("col3 length must not be less than 1, value={value}")));
+                        return Err(framework::validation_error!(format!("col3 length must not be less than 1, value={value}")));
                     }
 
                     if self.col4.chars().all(char::is_whitespace) {
-                        return Err(framework::validation_error!(message = "col4 must not be blank"));
+                        return Err(framework::validation_error!("col4 must not be blank"));
                     }
 
                     self.child.validate()?;

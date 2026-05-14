@@ -169,9 +169,9 @@ impl HttpClient {
                     Err(err) => {
                         if idempotent && attempt < max_attempts {
                             exception!(
+                                "http request failed, retry soon",
                                 severity = Severity::Warn,
                                 code = "HTTP_REQUEST_FAILED",
-                                message = "http request failed, retry soon",
                                 source = err
                             )
                             .log();
@@ -179,8 +179,8 @@ impl HttpClient {
                             continue;
                         }
                         return Err(exception!(
+                            "http request failed",
                             code = "HTTP_REQUEST_FAILED",
-                            message = "http request failed",
                             source = err
                         ));
                     }
@@ -228,9 +228,9 @@ impl HttpClient {
                 let body = response.text().await?;
                 debug!("[response] body={body}");
                 let content_type = headers.get(&header::CONTENT_TYPE);
-                Err(exception!(
-                    message = format!("invalid sse response, status={status}, content_type={content_type:?}")
-                ))
+                Err(exception!(format!(
+                    "invalid sse response, status={status}, content_type={content_type:?}"
+                )))
             }
         }
         .instrument(span)

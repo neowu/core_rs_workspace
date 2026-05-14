@@ -18,7 +18,7 @@ pub async fn import(kibana_uri: &str, objects: String) -> Result<(), Exception> 
     if response.status == 200 {
         info!("kibana objects are imported");
     } else {
-        return Err(exception!(message = format!("failed to import kibana objects, status={}", response.status)));
+        return Err(exception!(format!("failed to import kibana objects, status={}", response.status)));
     }
 
     Ok(())

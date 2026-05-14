@@ -100,7 +100,7 @@ pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, 
         debug!("upsert, sql={sql}, params={params:?}");
         let row = conn.with_timeout(conn.client.query_one(sql, &params), database.query_timeout).await?;
         let inserted: bool =
-            row.try_get(0).map_err(|err| exception!(message = "failed to get result", source = err))?;
+            row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
         debug!("inserted={inserted}");
         debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
         Ok(inserted)
@@ -119,7 +119,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
         let params = entity.__insert_params();
         debug!("insert, sql={sql}, params={params:?}");
         let row = conn.with_timeout(conn.client.query_one(sql, &params), database.query_timeout).await?;
-        let id: i64 = row.try_get(0).map_err(|err| exception!(message = "failed to get result", source = err))?;
+        let id: i64 = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
         debug!(db_write_rows = 1, "stats");
         Ok(id)
     }
@@ -147,7 +147,7 @@ where
         let statement = conn.prepared_statement(&sql).await?;
         let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
-        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
+        row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await
@@ -169,7 +169,7 @@ where
         rows.into_iter()
             .map(T::try_from)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| exception!(message = "failed to map row", source = err))
+            .map_err(|err| exception!("failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await

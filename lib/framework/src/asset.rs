@@ -11,10 +11,11 @@ pub fn asset_path(path: &str) -> Result<PathBuf, Exception> {
     if asset_path.exists() {
         Ok(asset_path)
     } else {
-        Err(exception!(
-            message =
-                format!("asset not found, asset={}, exe={}", asset_path.to_string_lossy(), exe_path.to_string_lossy())
-        ))
+        Err(exception!(format!(
+            "asset not found, asset={}, exe={}",
+            asset_path.to_string_lossy(),
+            exe_path.to_string_lossy()
+        )))
     }
 }
 

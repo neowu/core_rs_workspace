@@ -46,9 +46,9 @@ where
             Err(rejection) => {
                 let error_message = rejection.body_text();
                 Err(exception!(
+                    format!("failed to read body, error={error_message}"),
                     severity = Severity::Warn,
-                    code = error_code::BAD_REQUEST,
-                    message = format!("failed to read body, error={error_message}")
+                    code = error_code::BAD_REQUEST
                 )
                 .into())
             }
@@ -74,9 +74,9 @@ where
                 match body_object {
                     Ok(value) => Ok(Self(value)),
                     Err(exception) => Err(exception!(
+                        "failed to parse json body",
                         severity = Severity::Warn,
                         code = error_code::BAD_REQUEST,
-                        message = "failed to parse json body",
                         source = exception
                     )
                     .into()),
@@ -85,9 +85,9 @@ where
             Err(rejection) => {
                 let error_message = rejection.body_text();
                 Err(exception!(
+                    format!("failed to read body, error={error_message}"),
                     severity = Severity::Warn,
-                    code = error_code::BAD_REQUEST,
-                    message = format!("failed to read body, error={error_message}")
+                    code = error_code::BAD_REQUEST
                 )
                 .into())
             }
@@ -138,9 +138,9 @@ where
         match result {
             Ok(extract::Query(query)) => Ok(Query(query)),
             Err(rejection) => Err(exception!(
+                format!("failed to parse query"),
                 severity = Severity::Warn,
                 code = error_code::BAD_REQUEST,
-                message = format!("failed to parse query"),
                 source = rejection
             )
             .into()),

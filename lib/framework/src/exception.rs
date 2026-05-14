@@ -17,11 +17,11 @@ pub struct Exception {
     pub severity: Severity,
     pub code: Option<String>,
     pub message: String,
-    pub location: Option<String>,
+    pub location: Option<&'static str>,
     pub source: Option<Box<Exception>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Severity {
     #[serde(rename = "WARN")]
     Warn,
@@ -30,6 +30,36 @@ pub enum Severity {
 }
 
 impl Exception {
+    #[inline]
+    #[doc(hidden)]
+    pub fn __new(message: impl Into<String>, location: &'static str) -> Self {
+        Self { severity: Severity::Error, code: None, message: message.into(), location: Some(location), source: None }
+    }
+
+    #[inline]
+    #[must_use]
+    #[doc(hidden)]
+    pub fn __with_severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    #[doc(hidden)]
+    pub fn __with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    #[doc(hidden)]
+    pub fn __with_source(mut self, source: impl Into<Exception>) -> Self {
+        self.source = Some(Box::new(source.into()));
+        self
+    }
+
     #[inline]
     pub fn backtrace(&self) -> String {
         let mut trace = String::with_capacity(256);
@@ -51,7 +81,7 @@ impl Exception {
                 write_str!(trace, "[{code}] ");
             }
             write_str!(trace, "{}", source.message);
-            if let Some(ref location) = source.location {
+            if let Some(location) = source.location {
                 write_str!(trace, " at {location}");
             }
             index += 1;
@@ -64,11 +94,11 @@ impl Exception {
     pub fn log(&self) {
         let backtrace = self.backtrace();
         let message = &self.message;
-        match (&self.severity, self.code.as_ref()) {
-            (&Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
-            (&Severity::Warn, None) => warn!(backtrace, "{message}"),
-            (&Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
-            (&Severity::Error, None) => error!(backtrace, "{message}"),
+        match (self.severity, self.code.as_deref()) {
+            (Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
+            (Severity::Warn, None) => warn!(backtrace, "{message}"),
+            (Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
+            (Severity::Error, None) => error!(backtrace, "{message}"),
         }
     }
 }
@@ -83,70 +113,47 @@ impl Debug for Exception {
 impl Display for Exception {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)?;
-        Ok(())
+        write!(f, "{}", self.message)
     }
 }
 
 #[macro_export]
 macro_rules! exception {
-    ($(severity = $severity:expr,)? $(code = $code:expr,)? message = $message:expr $(,source = $source:expr)?) => {{
-        #[allow(unused_variables)]
-        let severity = $crate::exception::Severity::Error;
-        $(
-            let severity = $severity;
-        )?
-        #[allow(unused_variables)]
-        let code: Option<String> = None;
-        $(
-            let code = Some($code.to_string());
-        )?
-        #[allow(unused_variables)]
-        let source: Option<Box<$crate::exception::Exception>> = None;
-        $(
-            let source = Some(Box::new($source.into()));
-        )?
-        $crate::exception::Exception {
-            severity,
-            code,
-            message: $message.to_string(),
-            location: Some(format!("{}:{}:{}", file!(), line!(), column!())),
-            source,
-        }
+    ($message:expr $(, severity = $severity:expr)? $(, code = $code:expr)? $(, source = $source:expr)?) => {{
+        let result = $crate::exception::Exception::__new(
+            $message,
+            concat!(file!(), ":", line!(), ":", column!()),
+        );
+        $( let result = result.__with_severity($severity); )?
+        $( let result = result.__with_code($code); )?
+        $( let result = result.__with_source($source); )?
+        result
     }};
 }
 
 #[macro_export]
 macro_rules! validation_error {
-    ($(severity = $severity:expr,)? message = $message:expr) => {{
-        #[allow(unused_variables)]
-        let severity = $crate::exception::Severity::Warn;
-        $(
-            let severity = $severity;
-        )?
-        $crate::exception!(severity = severity, code = $crate::exception::error_code::VALIDATION_ERROR, message = $message)
+    ($message:expr $(, severity = $severity:expr)?) => {{
+        let result = $crate::exception::Exception::__new(
+            $message,
+            concat!(file!(), ":", line!(), ":", column!()),
+        );
+        let result = result.__with_code($crate::exception::error_code::VALIDATION_ERROR);
+        $( let result = result.__with_severity($severity); )?
+        result
     }};
 }
 
-fn source(source: Option<&(dyn Error + 'static)>) -> Option<Box<Exception>> {
-    let mut sources = Vec::new();
-    let mut current_source = source;
-    while let Some(target) = current_source {
-        sources.push(target);
-        current_source = target.source();
-    }
-
-    let mut result = None;
-    for error in sources.into_iter().rev() {
-        result = Some(Box::new(Exception {
+fn source(error: Option<&(dyn Error + 'static)>) -> Option<Box<Exception>> {
+    error.map(|e| {
+        Box::new(Exception {
             severity: Severity::Error,
             code: None,
-            message: error.to_string(),
+            message: e.to_string(),
             location: None,
-            source: result,
-        }));
-    }
-    result
+            source: source(e.source()),
+        })
+    })
 }
 
 impl<T> From<T> for Exception
@@ -175,7 +182,7 @@ mod tests {
             severity: Severity::Error,
             code: Some("E001".to_owned()),
             message: "bad input".to_owned(),
-            location: Some("src/foo.rs:10:5".to_owned()),
+            location: Some("src/foo.rs:10:5"),
             source: None,
         };
         assert_eq!(exception.backtrace(), "0: ERROR [E001] bad input at src/foo.rs:10:5");
@@ -187,7 +194,7 @@ mod tests {
             severity: Severity::Error,
             code: None,
             message: "root cause".to_owned(),
-            location: Some("src/root.rs:1:1".to_owned()),
+            location: Some("src/root.rs:1:1"),
             source: None,
         };
         let middle = Exception {
@@ -201,7 +208,7 @@ mod tests {
             severity: Severity::Warn,
             code: Some("TOP".to_owned()),
             message: "top".to_owned(),
-            location: Some("src/top.rs:5:5".to_owned()),
+            location: Some("src/top.rs:5:5"),
             source: Some(Box::new(middle)),
         };
         assert_eq!(

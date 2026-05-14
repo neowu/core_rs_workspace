@@ -10,9 +10,9 @@ pub fn main() {
 }
 
 fn test() -> Result<(), Exception> {
-    Err(validation_error!(message = "some field is wrong"))
+    Err(validation_error!("some field is wrong"))
 }
 
 fn test2() -> Result<(), Exception> {
-    Err(validation_error!(severity = Severity::Error, message = "some field is wrong"))
+    Err(validation_error!("some field is wrong", severity = Severity::Error))
 }

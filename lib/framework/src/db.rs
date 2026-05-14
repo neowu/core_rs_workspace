@@ -43,7 +43,7 @@ impl Connection {
                 .client
                 .prepare(sql)
                 .await
-                .map_err(|err| exception!(message = "failed to prepare statement", source = err))?;
+                .map_err(|err| exception!("failed to prepare statement", source = err))?;
             self.statement_cache.insert(sql.to_owned(), statement.clone());
             Ok(statement)
         }
@@ -56,13 +56,13 @@ impl Connection {
     ) -> Result<T, Exception> {
         let result = timeout(query_timeout, operation).await;
         match result {
-            Ok(result) => result.map_err(|err| exception!(message = "failed to call db", source = err)),
+            Ok(result) => result.map_err(|err| exception!("failed to call db", source = err)),
             Err(_elapsed) => {
                 debug!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
-                    Ok(()) => Err(exception!(message = "query timed out")),
-                    Err(err) => Err(exception!(message = "query timed out, failed to cancel", source = err)),
+                    Ok(()) => Err(exception!("query timed out")),
+                    Err(err) => Err(exception!("query timed out, failed to cancel", source = err)),
                 }
             }
         }
@@ -141,7 +141,7 @@ where
         debug!("select_one, sql={statement}, params={params:?}");
         let row = conn.with_timeout(conn.client.query_opt(statement, params), database.query_timeout).await?;
         debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
-        row.map(T::try_from).transpose().map_err(|err| exception!(message = "failed to map row", source = err))
+        row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await
@@ -159,7 +159,7 @@ where
         rows.into_iter()
             .map(T::try_from)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| exception!(message = "failed to map row", source = err))
+            .map_err(|err| exception!("failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
     .await
