@@ -38,7 +38,7 @@ async fn main() -> Result<(), Exception> {
 
     task::spawn_task(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
-        scheduler.schedule_fixed_rate("demo_job", demo_job, Duration::from_hours(5));
+        scheduler.schedule_fixed_rate("demo_job", demo_job, Duration::from_hours(1));
         scheduler.start(state, scheduler_signal).await
     });
 

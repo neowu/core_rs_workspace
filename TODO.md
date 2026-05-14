@@ -4,3 +4,5 @@
 * make state with Box::leak()
 
 * log_collector supports collect cookies
+
+* scheduler: impl web trigger?

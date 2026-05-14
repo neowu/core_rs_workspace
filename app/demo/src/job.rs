@@ -7,6 +7,7 @@ use chrono::Utc;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
 use framework::web::error::HttpResult;
+use tracing::warn;
 
 use crate::AppState;
 
@@ -22,5 +23,6 @@ async fn run_demo_job(State(state): State<&'static AppState>) -> HttpResult<Stat
 
 pub async fn demo_job(_state: &AppState, context: JobContext) -> Result<(), Exception> {
     println!("run demo job, scheduled_time={}", context.scheduled_time);
+    warn!("trigger");
     Ok(())
 }

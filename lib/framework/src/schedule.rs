@@ -10,11 +10,10 @@ use tokio::sync::broadcast;
 use tokio::time;
 use tracing::debug;
 use tracing::info;
-use trigger::DailyTrigger;
-use trigger::FixedRateTrigger;
 
 use crate::exception::Exception;
 use crate::log;
+use crate::schedule::trigger::Trigger;
 
 mod trigger;
 
@@ -23,28 +22,12 @@ pub struct JobContext {
     pub scheduled_time: DateTime<Utc>,
 }
 
-trait Job<S>: Send {
-    fn execute(&self, state: S, context: JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-}
-
-impl<F, Fut, S> Job<S> for F
-where
-    F: Fn(S, JobContext) -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    fn execute(&self, state: S, context: JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(self(state, context))
-    }
-}
-
-trait Trigger: Send {
-    fn next(&self, previous: DateTime<Utc>) -> DateTime<Utc>;
-}
+type BoxJob<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 struct Schedule<S> {
     name: &'static str,
-    job: Box<dyn Job<S>>,
-    trigger: Box<dyn Trigger>,
+    job: BoxJob<S>,
+    trigger: Trigger,
 }
 
 pub struct Scheduler<S> {
@@ -65,8 +48,7 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        let trigger = Box::new(FixedRateTrigger { interval });
-        self.add_job(name, job, trigger);
+        self.add_job(name, job, Trigger::FixedRate(interval));
     }
 
     pub fn schedule_daily<J, Fut>(&mut self, name: &'static str, job: J, time: NaiveTime)
@@ -74,17 +56,16 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        let trigger = Box::new(DailyTrigger { time_zone: self.timezone, time });
-        self.add_job(name, job, trigger);
+        self.add_job(name, job, Trigger::Daily { time_zone: self.timezone, time });
     }
 
-    fn add_job<J, Fut>(&mut self, name: &'static str, job: J, trigger: Box<dyn Trigger>)
+    fn add_job<J, Fut>(&mut self, name: &'static str, job: J, trigger: Trigger)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        let job = move |state: S, context| process_job(job, state, context);
-        self.schedules.push(Schedule { name, job: Box::new(job), trigger });
+        let job = Box::new(move |state: S, context| process_job(job, state, context));
+        self.schedules.push(Schedule { name, job, trigger });
     }
 
     pub async fn start(self, state: S, shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception>
@@ -98,8 +79,10 @@ where
             handles.push(tokio::spawn(async move {
                 time::sleep(Duration::from_secs(3)).await; // initial delay
                 let mut previous = Utc::now();
+                let mut first = true;
                 loop {
-                    let next = schedule.trigger.next(previous);
+                    let next = schedule.trigger.next(previous, first);
+                    first = false;
                     let context = JobContext { name: schedule.name, scheduled_time: next };
                     info!(
                         name = context.name,
@@ -114,7 +97,7 @@ where
                         }
                         () = time::sleep(waiting_time) => {
                             let state = state.clone();
-                            tokio::spawn(schedule.job.execute(state, context));
+                            tokio::spawn((schedule.job)(state, context));
                         }
                     }
                 }
@@ -129,18 +112,16 @@ where
     }
 }
 
-async fn process_job<S, J, Fut>(job: J, state: S, context: JobContext)
+fn process_job<S, J, Fut>(job: J, state: S, context: JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>>
 where
-    J: Fn(S, JobContext) -> Fut,
-    Fut: Future<Output = Result<(), Exception>>,
+    S: Send + 'static,
+    J: Fn(S, JobContext) -> Fut + Send + 'static,
+    Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    log::start_action("job", None, async move {
+    Box::pin(log::start_action("job", None, async move {
         let name = context.name;
         let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true);
-        debug!(name, "[job]");
-        debug!(scheduled_time, "[job]");
         debug!(job = name, scheduled_time, "context");
         job(state, context).await
-    })
-    .await;
+    }))
 }

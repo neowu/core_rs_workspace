@@ -13,6 +13,7 @@ use futures::TryStreamExt as _;
 pub use http::HeaderName;
 pub use http::header;
 use reqwest::Body;
+use reqwest::Certificate;
 use reqwest::Method;
 use reqwest::Request;
 use reqwest::Url;
@@ -41,14 +42,29 @@ pub struct RetryConfig {
 #[allow(unused)]
 pub struct HttpClientConfig {
     pub accept_invalid_cert: bool,
+    pub accept_certs: Option<Vec<Certificate>>,
     pub timeout: Duration,
     pub retry: RetryConfig,
 }
 
 impl Default for HttpClientConfig {
+    // for docker image used on cloud env, must install "ca-certificates"
     fn default() -> Self {
         Self {
             accept_invalid_cert: false,
+            accept_certs: None,
+            timeout: Duration::from_secs(30),
+            retry: RetryConfig { max_attempts: 1, interval: Duration::from_millis(500) },
+        }
+    }
+}
+
+impl HttpClientConfig {
+    // use to call internal services with self signed certs
+    pub fn internal_only() -> Self {
+        Self {
+            accept_invalid_cert: true,
+            accept_certs: Some(vec![]),
             timeout: Duration::from_secs(30),
             retry: RetryConfig { max_attempts: 3, interval: Duration::from_millis(500) },
         }
@@ -111,14 +127,18 @@ pub struct HttpResponse {
 
 impl HttpClient {
     pub fn new(config: HttpClientConfig) -> Self {
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .timeout(config.timeout)
             .tls_danger_accept_invalid_certs(config.accept_invalid_cert)
             .pool_idle_timeout(Duration::from_mins(5))
             .http2_prior_knowledge()
-            .connection_verbose(false)
-            .build()
-            .expect("build cannot fail");
+            .connection_verbose(false);
+
+        if let Some(certs) = config.accept_certs {
+            builder = builder.tls_certs_only(certs);
+        }
+
+        let client = builder.build().expect("build cannot fail");
         HttpClient { client, retry: config.retry }
     }
 

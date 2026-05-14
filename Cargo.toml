@@ -3,7 +3,7 @@ resolver = "3"
 members = ["app/*", "lib/*"]
 
 [workspace.package]
-version = "0.5.4"
+version = "0.5.5"
 
 [workspace.dependencies]
 framework = { path = "lib/framework", features = ["kafka"] }
@@ -15,16 +15,6 @@ chrono = { version = "*", features = ["serde"] }
 
 tokio = { version = "*", features = ["full"] }
 axum = { version = "*", features = ["macros", "http2"] }
-
-# [profile.dev]
-# debug = "line-tables-only"
-
-# [profile.dev.package."*"]
-# debug = false
-
-# [profile.debugging]
-# inherits = "dev"
-# debug = true
 
 [profile.release]
 debug = "line-tables-only"
