@@ -14,12 +14,14 @@ use syn::LitInt;
 use syn::Meta;
 use syn::Result;
 use syn::Token;
+use syn::Visibility;
 use syn::parse2;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 
 pub(crate) struct StructModel {
     pub(crate) ident: Ident,
+    pub(crate) vis: Visibility,
     attrs: Vec<AttributeModel>,
     pub(crate) fields: Vec<FieldModel>,
 }
@@ -114,6 +116,7 @@ impl AttributeModel {
 pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
     let ast: DeriveInput = parse2(tokens)?;
     let ident = ast.ident;
+    let vis = ast.vis;
     let attrs = ast.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
 
     let fields: Punctuated<Field, Comma> = if let Struct(data_struct) = ast.data {
@@ -136,7 +139,7 @@ pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
         })
         .collect();
 
-    Ok(StructModel { ident, attrs, fields })
+    Ok(StructModel { ident, vis, attrs, fields })
 }
 
 #[cfg(test)]

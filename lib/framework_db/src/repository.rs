@@ -19,22 +19,22 @@ pub trait Field {
     type Value: ToSql + Sync + 'static;
 
     #[inline]
-    fn update(value: &Self::Value) -> Update<'_, Self::Entity> {
+    fn update<'a>(&self, value: &'a Self::Value) -> Update<'a, Self::Entity> {
         Update::new(Self::COLUMN, value)
     }
 
     #[inline]
-    fn eq(value: &Self::Value) -> Cond<'_, Self::Entity> {
+    fn eq<'a>(&self, value: &'a Self::Value) -> Cond<'a, Self::Entity> {
         Cond::eq(Self::COLUMN, value)
     }
 
     #[inline]
-    fn is_in(values: Vec<&Self::Value>) -> Cond<'_, Self::Entity> {
+    fn is_in<'a>(&self, values: Vec<&'a Self::Value>) -> Cond<'a, Self::Entity> {
         Cond::is_in(Self::COLUMN, values.into_iter().map(|value| value as &QueryParam).collect())
     }
 
     #[inline]
-    fn not_null() -> Cond<'static, Self::Entity> {
+    fn not_null(&self) -> Cond<'static, Self::Entity> {
         Cond::not_null(Self::COLUMN)
     }
 }

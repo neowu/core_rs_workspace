@@ -3,6 +3,7 @@ use quote::quote;
 use syn::Error;
 use syn::Ident;
 use syn::Result;
+use syn::Visibility;
 
 use crate::model;
 use crate::model::StructModel;
@@ -27,7 +28,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
-    let fields_impl = if model.has_primary_key {
+    let has_non_pk_columns = model.columns.iter().any(|c| !c.primary_key);
+    let fields_impl = if model.has_primary_key && has_non_pk_columns {
         fields_impl(&model)
     } else {
         quote! {}
@@ -43,6 +45,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
 struct EntityModel {
     struct_ident: Ident,
+    struct_vis: Visibility,
     table: String,
     columns: Vec<ColumnModel>,
     has_primary_key: bool,
@@ -110,6 +113,7 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
 
     Ok(EntityModel {
         struct_ident: model.ident,
+        struct_vis: model.vis,
         table,
         columns,
         has_primary_key: primary_key_fields > 0,
@@ -269,14 +273,18 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
 
 fn fields_impl(model: &EntityModel) -> TokenStream {
     let entity = &model.struct_ident;
-    let mod_name = proc_macro2::Ident::new(&format!("{}_fields", to_snake_case(&entity.to_string())), entity.span());
+    let vis = &model.struct_vis;
+    let mod_name = proc_macro2::Ident::new(&format!("__{}_fields", to_snake_case(&entity.to_string())), entity.span());
 
-    let field_structs = model.columns.iter().filter(|c| !c.primary_key).map(|c| {
+    let non_pk_columns: Vec<_> = model.columns.iter().filter(|c| !c.primary_key).collect();
+
+    let marker_structs = non_pk_columns.iter().map(|c| {
         let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
         let column = &c.column;
         let value_type: TokenStream = c.field_type.parse().expect("parse cannot fail");
         quote! {
-            pub(crate) struct #struct_name;
+            #[derive(Copy, Clone)]
+            #vis struct #struct_name;
             impl framework_db::repository::Field for #struct_name {
                 const COLUMN: &'static str = #column;
                 type Value = #value_type;
@@ -285,10 +293,35 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
         }
     });
 
+    let fields_struct_members = non_pk_columns.iter().map(|c| {
+        let field_ident = &c.field_ident;
+        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
+        quote! { #vis #field_ident: #struct_name, }
+    });
+
+    let fields_struct_init = non_pk_columns.iter().map(|c| {
+        let field_ident = &c.field_ident;
+        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
+        quote! { #field_ident: #mod_name::#struct_name, }
+    });
+
     quote! {
-        mod #mod_name {
+        #[doc(hidden)]
+        #vis mod #mod_name {
             use super::*;
-            #(#field_structs)*
+            #(#marker_structs)*
+            #[derive(Copy, Clone)]
+            #vis struct Fields {
+                #(#fields_struct_members)*
+            }
+        }
+        impl #entity {
+            #[inline]
+            #vis const fn fields() -> #mod_name::Fields {
+                #mod_name::Fields {
+                    #(#fields_struct_init)*
+                }
+            }
         }
     }
 }
@@ -359,13 +392,27 @@ mod tests {
                     }
                 }
 
-                mod test_entity_fields {
+                #[doc(hidden)]
+                mod __test_entity_fields {
                     use super::*;
-                    pub(crate) struct Col1;
+                    #[derive(Copy, Clone)]
+                    struct Col1;
                     impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
+                    }
+                    #[derive(Copy, Clone)]
+                    struct Fields {
+                        col1: Col1,
+                    }
+                }
+                impl TestEntity {
+                    #[inline]
+                    const fn fields() -> __test_entity_fields::Fields {
+                        __test_entity_fields::Fields {
+                            col1: __test_entity_fields::Col1,
+                        }
                     }
                 }
             }
@@ -378,7 +425,7 @@ mod tests {
         let source = quote! {
             #[derive(Entity)]
             #[table(name = "test_entity")]
-            struct TestEntity {
+            pub struct TestEntity {
                 #[primary_key]
                 #[column(name = "id1")]
                 id1: i32,
@@ -440,13 +487,27 @@ mod tests {
                     }
                 }
 
-                mod test_entity_fields {
+                #[doc(hidden)]
+                pub mod __test_entity_fields {
                     use super::*;
-                    pub(crate) struct Col1;
+                    #[derive(Copy, Clone)]
+                    pub struct Col1;
                     impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
+                    }
+                    #[derive(Copy, Clone)]
+                    pub struct Fields {
+                        pub col1: Col1,
+                    }
+                }
+                impl TestEntity {
+                    #[inline]
+                    pub const fn fields() -> __test_entity_fields::Fields {
+                        __test_entity_fields::Fields {
+                            col1: __test_entity_fields::Col1,
+                        }
                     }
                 }
             }
@@ -510,13 +571,27 @@ mod tests {
                     }
                 }
 
-                mod test_entity_fields {
+                #[doc(hidden)]
+                mod __test_entity_fields {
                     use super::*;
-                    pub(crate) struct Col1;
+                    #[derive(Copy, Clone)]
+                    struct Col1;
                     impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = Option<String>;
                         type Entity = super::TestEntity;
+                    }
+                    #[derive(Copy, Clone)]
+                    struct Fields {
+                        col1: Col1,
+                    }
+                }
+                impl TestEntity {
+                    #[inline]
+                    const fn fields() -> __test_entity_fields::Fields {
+                        __test_entity_fields::Fields {
+                            col1: __test_entity_fields::Col1,
+                        }
                     }
                 }
             }
