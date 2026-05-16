@@ -1,6 +1,6 @@
 [package]
-name = "demo"
-version.workspace = true
+name = "db_test"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
@@ -8,15 +8,6 @@ framework = { workspace = true }
 framework_db = { workspace = true }
 framework_macro = { workspace = true }
 
-tracing.workspace = true
-serde.workspace = true
-chrono.workspace = true
 tokio.workspace = true
-axum.workspace = true
 
-bytes = "*"
-tokio-util = "*"
-tokio-stream = "*"
-futures = "*"
 uuid = { version = "*", features = ["v7"] }
-serde_html_form = "*"

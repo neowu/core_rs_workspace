@@ -395,6 +395,7 @@ dependencies = [
  "bytes",
  "chrono",
  "framework",
+ "framework_db",
  "framework_macro",
  "futures",
  "serde",
@@ -526,12 +527,21 @@ dependencies = [
  "serde_html_form",
  "serde_json",
  "tokio",
- "tokio-postgres",
  "tokio-util",
  "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "framework_db"
+version = "0.5.5"
+dependencies = [
+ "framework",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
 ]
 
 [[package]]

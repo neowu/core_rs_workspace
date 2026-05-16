@@ -1,6 +1,4 @@
 pub mod asset;
-#[cfg(feature = "db")]
-pub mod db;
 #[macro_use]
 pub mod exception;
 pub mod config;

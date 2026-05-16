@@ -21,6 +21,7 @@ pub struct Exception {
     pub source: Option<Box<Exception>>,
 }
 
+// used by HttpErrorBody to serialize/deserialize
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Severity {
     #[serde(rename = "WARN")]

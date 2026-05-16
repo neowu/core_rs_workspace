@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
-use crate::db::QueryParam;
-use crate::write_str;
+use framework::write_str;
+
+use crate::QueryParam;
 
 pub struct Update<'a, E> {
     column: &'static str,

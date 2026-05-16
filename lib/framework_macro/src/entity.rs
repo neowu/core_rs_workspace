@@ -125,8 +125,8 @@ fn from_row_impl(model: &EntityModel) -> TokenStream {
     });
     let struct_name = &model.struct_ident;
     quote! {
-        impl framework::db::FromRow for #struct_name {
-            fn try_from(row: framework::db::Row) -> ::std::result::Result<#struct_name, framework::db::PgError> {
+        impl framework_db::FromRow for #struct_name {
+            fn try_from(row: framework_db::Row) -> ::std::result::Result<#struct_name, framework_db::PgError> {
                 Ok(#struct_name {
                     #(#assignments)*
                 })
@@ -146,16 +146,16 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
     let sql = format!("INSERT INTO \"{table}\" ({insert_columns}) VALUES ({placeholders}) RETURNING {primary_key}");
     let params = insert_fields.iter().map(|column| {
         let field = &column.field_ident;
-        quote! { &self.#field as &framework::db::QueryParam, }
+        quote! { &self.#field as &framework_db::QueryParam, }
     });
     quote! {
-        impl framework::db::repository::InsertWithAutoIncrementId for #struct_name {
+        impl framework_db::repository::InsertWithAutoIncrementId for #struct_name {
             #[inline]
             fn __insert_sql() -> &'static str {
                 #sql
             }
             #[inline]
-            fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
                 vec![#(#params)*]
             }
         }
@@ -194,12 +194,12 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
         .iter()
         .map(|column| {
             let field = &column.field_ident;
-            quote! { &self.#field as &framework::db::QueryParam, }
+            quote! { &self.#field as &framework_db::QueryParam, }
         })
         .collect();
 
     quote! {
-        impl framework::db::repository::Insert for #struct_name {
+        impl framework_db::repository::Insert for #struct_name {
             fn __insert_sql() -> &'static str {
                 #sql
             }
@@ -209,7 +209,7 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
             fn __upsert_sql() -> &'static str {
                 #sql_upsert
             }
-            fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
                 vec![#(#params)*]
             }
         }
@@ -236,23 +236,23 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
         let col = primary_key_columns.first().expect("cannot be empty").column.as_str();
         (
             quote! { #id_type },
-            quote! { vec![framework::db::Cond::Eq { column: #col, value: ids as &framework::db::QueryParam, _entity: ::std::marker::PhantomData }] },
+            quote! { vec![framework_db::Cond::Eq { column: #col, value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }] },
         )
     } else {
         let id_indices: Vec<_> = (0..primary_key_columns.len()).map(syn::Index::from).collect();
         let cols: Vec<_> = primary_key_columns.iter().map(|c| c.column.as_str()).collect();
         (
             quote! { (#(#id_types,)*) },
-            quote! { vec![#(framework::db::Cond::Eq { column: #cols, value: &ids.#id_indices as &framework::db::QueryParam, _entity: ::std::marker::PhantomData },)*] },
+            quote! { vec![#(framework_db::Cond::Eq { column: #cols, value: &ids.#id_indices as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },)*] },
         )
     };
 
     quote! {
-        impl framework::db::repository::Entity for #struct_name {
+        impl framework_db::repository::Entity for #struct_name {
             type Id = #id_type;
             type Type = #struct_name;
             #[inline]
-            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework::db::Cond<'_, Self::Type>> {
+            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
                 #id_conditions
             }
             #[inline]
@@ -277,7 +277,7 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
         let value_type: TokenStream = c.field_type.parse().expect("parse cannot fail");
         quote! {
             pub(crate) struct #struct_name;
-            impl framework::db::repository::Field for #struct_name {
+            impl framework_db::repository::Field for #struct_name {
                 const COLUMN: &'static str = #column;
                 type Value = #value_type;
                 type Entity = super::#entity;
@@ -318,8 +318,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework::db::FromRow for TestEntity {
-                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                impl framework_db::FromRow for TestEntity {
+                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,
                             col1: row.try_get("col1")?,
@@ -327,7 +327,7 @@ mod tests {
                     }
                 }
 
-                impl framework::db::repository::Insert for TestEntity {
+                impl framework_db::repository::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)"
                     }
@@ -337,17 +337,17 @@ mod tests {
                     fn __upsert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
                     }
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&self.id as &framework::db::QueryParam, &self.col1 as &framework::db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
+                        vec![&self.id as &framework_db::QueryParam, &self.col1 as &framework_db::QueryParam,]
                     }
                 }
 
-                impl framework::db::repository::Entity for TestEntity {
+                impl framework_db::repository::Entity for TestEntity {
                     type Id = i32;
                     type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework::db::Cond<'_, Self::Type>> {
-                        vec![framework::db::Cond::Eq { column: "id", value: ids as &framework::db::QueryParam, _entity: ::std::marker::PhantomData }]
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
+                        vec![framework_db::Cond::Eq { column: "id", value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {
@@ -362,7 +362,7 @@ mod tests {
                 mod test_entity_fields {
                     use super::*;
                     pub(crate) struct Col1;
-                    impl framework::db::repository::Field for Col1 {
+                    impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
@@ -395,8 +395,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework::db::FromRow for TestEntity {
-                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                impl framework_db::FromRow for TestEntity {
+                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
                         Ok(TestEntity {
                             id1: row.try_get("id1")?,
                             id2: row.try_get("id2")?,
@@ -405,7 +405,7 @@ mod tests {
                     }
                 }
 
-                impl framework::db::repository::Insert for TestEntity {
+                impl framework_db::repository::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3)"
                     }
@@ -415,19 +415,19 @@ mod tests {
                     fn __upsert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3) ON CONFLICT (id1, id2) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
                     }
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&self.id1 as &framework::db::QueryParam, &self.id2 as &framework::db::QueryParam, &self.col1 as &framework::db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
+                        vec![&self.id1 as &framework_db::QueryParam, &self.id2 as &framework_db::QueryParam, &self.col1 as &framework_db::QueryParam,]
                     }
                 }
 
-                impl framework::db::repository::Entity for TestEntity {
+                impl framework_db::repository::Entity for TestEntity {
                     type Id = (i32, String,);
                     type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework::db::Cond<'_, Self::Type>> {
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
                         vec![
-                            framework::db::Cond::Eq { column: "id1", value: &ids.0 as &framework::db::QueryParam, _entity: ::std::marker::PhantomData },
-                            framework::db::Cond::Eq { column: "id2", value: &ids.1 as &framework::db::QueryParam, _entity: ::std::marker::PhantomData },
+                            framework_db::Cond::Eq { column: "id1", value: &ids.0 as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },
+                            framework_db::Cond::Eq { column: "id2", value: &ids.1 as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },
                         ]
                     }
                     #[inline]
@@ -443,7 +443,7 @@ mod tests {
                 mod test_entity_fields {
                     use super::*;
                     pub(crate) struct Col1;
-                    impl framework::db::repository::Field for Col1 {
+                    impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
@@ -473,8 +473,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework::db::FromRow for TestEntity {
-                    fn try_from(row: framework::db::Row) -> ::std::result::Result<TestEntity, framework::db::PgError> {
+                impl framework_db::FromRow for TestEntity {
+                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,
                             col1: row.try_get("col1")?,
@@ -482,23 +482,23 @@ mod tests {
                     }
                 }
 
-                impl framework::db::repository::InsertWithAutoIncrementId for TestEntity {
+                impl framework_db::repository::InsertWithAutoIncrementId for TestEntity {
                     #[inline]
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id"
                     }
                     #[inline]
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework::db::QueryParam> {
-                        vec![&self.col1 as &framework::db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
+                        vec![&self.col1 as &framework_db::QueryParam,]
                     }
                 }
 
-                impl framework::db::repository::Entity for TestEntity {
+                impl framework_db::repository::Entity for TestEntity {
                     type Id = i64;
                     type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework::db::Cond<'_, Self::Type>> {
-                        vec![framework::db::Cond::Eq { column: "id", value: ids as &framework::db::QueryParam, _entity: ::std::marker::PhantomData }]
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
+                        vec![framework_db::Cond::Eq { column: "id", value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {
@@ -513,7 +513,7 @@ mod tests {
                 mod test_entity_fields {
                     use super::*;
                     pub(crate) struct Col1;
-                    impl framework::db::repository::Field for Col1 {
+                    impl framework_db::repository::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = Option<String>;
                         type Entity = super::TestEntity;

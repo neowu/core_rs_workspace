@@ -7,6 +7,7 @@ version = "0.5.5"
 
 [workspace.dependencies]
 framework = { path = "lib/framework", features = ["kafka"] }
+framework_db = { path = "lib/framework_db" }
 framework_macro = { path = "lib/framework_macro" }
 
 tracing = { version = "*", features = ["max_level_debug"] }
@@ -171,9 +172,7 @@ empty_drop = "warn"
 empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 error_impl_error = "warn"
-exit = "warn"
 filetype_is_file = "warn"
-float_arithmetic = "warn"
 float_cmp_const = "warn"
 fn_to_numeric_cast_any = "warn"
 get_unwrap = "warn"

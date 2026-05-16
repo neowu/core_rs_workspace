@@ -1,13 +1,8 @@
 * refactor shutdown with CancellationToken
-
 * action log records message_handler, job_handler, task_handler? only by macro with file!()/line!()/column!()?
 * make state with Box::leak()?
-
 * log_collector supports collect cookies?
-
 * scheduler: impl web trigger?
-* think about how to handle config /w env?
-
 
 # Thoughts on AI era
 1. require more streamlined build server? no ui, drive by api / slack?, which can dynamically create new kube deployment?

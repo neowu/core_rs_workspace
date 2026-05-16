@@ -1,7 +1,6 @@
 use syn::Error;
 
 mod api;
-#[cfg(feature = "db")]
 mod entity;
 mod model;
 mod util;
@@ -19,7 +18,7 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// Derive `framework::db::Entity<T>` for a struct.
+/// Derive `framework_db::Entity<T>` for a struct.
 /// struct attributes
 /// ```
 /// #[table(name = "table_name")]
@@ -30,7 +29,6 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// #[primary_key]                  // assigned pk, included in INSERT
 /// #[column(name = "column_name")]
 /// ```
-#[cfg(feature = "db")]
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()

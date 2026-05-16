@@ -1,0 +1,13 @@
+[package]
+name = "framework_db"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+framework = { workspace = true }
+tracing.workspace = true
+tokio.workspace = true
+tokio-postgres = { version = "*", features = ["default", "with-chrono-0_4", "with-uuid-1"] }
+
+[lints]
+workspace = true
