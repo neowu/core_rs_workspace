@@ -140,7 +140,7 @@ fn from_row_impl(model: &EntityModel) -> TokenStream {
 }
 
 fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
-    let struct_name = &model.struct_ident;
+    let struct_ident = &model.struct_ident;
     let table = &model.table;
     let primary_key =
         &model.columns.iter().find(|column| column.auto_increment).expect("must have auto increment column").column;
@@ -153,7 +153,7 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
         quote! { &self.#field as &framework_db::QueryParam, }
     });
     quote! {
-        impl framework_db::repository::InsertWithAutoIncrementId for #struct_name {
+        impl framework_db::InsertWithAutoIncrementId for #struct_ident {
             #[inline]
             fn __insert_sql() -> &'static str {
                 #sql
@@ -167,7 +167,7 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
 }
 
 fn insert_impl(model: &EntityModel) -> TokenStream {
-    let struct_name = &model.struct_ident;
+    let struct_ident = &model.struct_ident;
     let table = &model.table;
     let insert_columns = model.columns.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
     let placeholders = (1..=model.columns.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(", ");
@@ -203,7 +203,7 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
         .collect();
 
     quote! {
-        impl framework_db::repository::Insert for #struct_name {
+        impl framework_db::Insert for #struct_ident {
             fn __insert_sql() -> &'static str {
                 #sql
             }
@@ -221,7 +221,7 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
 }
 
 fn entity_impl(model: &EntityModel) -> TokenStream {
-    let struct_name = &model.struct_ident;
+    let struct_ident = &model.struct_ident;
     let table = &model.table;
     let all_columns = model.columns.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
     let primary_key_columns: Vec<_> = model.columns.iter().filter(|column| column.primary_key).collect();
@@ -252,9 +252,9 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     };
 
     quote! {
-        impl framework_db::repository::Entity for #struct_name {
+        impl framework_db::Entity for #struct_ident {
             type Id = #id_type;
-            type Type = #struct_name;
+            type Type = #struct_ident;
             #[inline]
             fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
                 #id_conditions
@@ -274,54 +274,54 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
 fn fields_impl(model: &EntityModel) -> TokenStream {
     let entity = &model.struct_ident;
     let vis = &model.struct_vis;
-    let mod_name = proc_macro2::Ident::new(&format!("__{}_fields", to_snake_case(&entity.to_string())), entity.span());
+    let mod_ident = proc_macro2::Ident::new(&format!("__{}_fields", to_snake_case(&entity.to_string())), entity.span());
 
     let non_pk_columns: Vec<_> = model.columns.iter().filter(|c| !c.primary_key).collect();
 
-    let marker_structs = non_pk_columns.iter().map(|c| {
-        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
-        let column = &c.column;
-        let value_type: TokenStream = c.field_type.parse().expect("parse cannot fail");
+    let field_structs = non_pk_columns.iter().map(|column| {
+        let struct_ident =
+            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
+        let column_name = &column.column;
+        let value_type: TokenStream = column.field_type.parse().expect("parse cannot fail");
         quote! {
             #[derive(Copy, Clone)]
-            #vis struct #struct_name;
-            impl framework_db::repository::Field for #struct_name {
-                const COLUMN: &'static str = #column;
+            #vis struct #struct_ident;
+            impl framework_db::Field for #struct_ident {
+                const COLUMN: &'static str = #column_name;
                 type Value = #value_type;
                 type Entity = super::#entity;
             }
         }
     });
 
-    let fields_struct_members = non_pk_columns.iter().map(|c| {
-        let field_ident = &c.field_ident;
-        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
-        quote! { #vis #field_ident: #struct_name, }
+    let fields_struct_members = non_pk_columns.iter().map(|column| {
+        let field_ident = &column.field_ident;
+        let struct_ident =
+            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
+        quote! { #vis #field_ident: #struct_ident, }
     });
 
-    let fields_struct_init = non_pk_columns.iter().map(|c| {
-        let field_ident = &c.field_ident;
-        let struct_name = proc_macro2::Ident::new(&to_pascal_case(&c.field_ident.to_string()), c.field_ident.span());
-        quote! { #field_ident: #mod_name::#struct_name, }
+    let fields_struct_init = non_pk_columns.iter().map(|column| {
+        let field_ident = &column.field_ident;
+        let struct_ident =
+            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
+        quote! { #field_ident: #mod_ident::#struct_ident, }
     });
 
     quote! {
         #[doc(hidden)]
-        #vis mod #mod_name {
+        #vis mod #mod_ident {
             use super::*;
-            #(#marker_structs)*
+            #(#field_structs)*
             #[derive(Copy, Clone)]
             #vis struct Fields {
                 #(#fields_struct_members)*
             }
         }
         impl #entity {
-            #[inline]
-            #vis const fn fields() -> #mod_name::Fields {
-                #mod_name::Fields {
-                    #(#fields_struct_init)*
-                }
-            }
+            #vis const FIELDS: #mod_ident::Fields = #mod_ident::Fields {
+                #(#fields_struct_init)*
+            };
         }
     }
 }
@@ -360,7 +360,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::Insert for TestEntity {
+                impl framework_db::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)"
                     }
@@ -375,7 +375,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::Entity for TestEntity {
+                impl framework_db::Entity for TestEntity {
                     type Id = i32;
                     type Type = TestEntity;
                     #[inline]
@@ -397,7 +397,7 @@ mod tests {
                     use super::*;
                     #[derive(Copy, Clone)]
                     struct Col1;
-                    impl framework_db::repository::Field for Col1 {
+                    impl framework_db::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
@@ -408,12 +408,9 @@ mod tests {
                     }
                 }
                 impl TestEntity {
-                    #[inline]
-                    const fn fields() -> __test_entity_fields::Fields {
-                        __test_entity_fields::Fields {
-                            col1: __test_entity_fields::Col1,
-                        }
-                    }
+                    const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
+                        col1: __test_entity_fields::Col1,
+                    };
                 }
             }
             .to_string()
@@ -452,7 +449,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::Insert for TestEntity {
+                impl framework_db::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3)"
                     }
@@ -467,7 +464,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::Entity for TestEntity {
+                impl framework_db::Entity for TestEntity {
                     type Id = (i32, String,);
                     type Type = TestEntity;
                     #[inline]
@@ -492,7 +489,7 @@ mod tests {
                     use super::*;
                     #[derive(Copy, Clone)]
                     pub struct Col1;
-                    impl framework_db::repository::Field for Col1 {
+                    impl framework_db::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = String;
                         type Entity = super::TestEntity;
@@ -503,12 +500,9 @@ mod tests {
                     }
                 }
                 impl TestEntity {
-                    #[inline]
-                    pub const fn fields() -> __test_entity_fields::Fields {
-                        __test_entity_fields::Fields {
-                            col1: __test_entity_fields::Col1,
-                        }
-                    }
+                    pub const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
+                        col1: __test_entity_fields::Col1,
+                    };
                 }
             }
             .to_string()
@@ -543,7 +537,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::InsertWithAutoIncrementId for TestEntity {
+                impl framework_db::InsertWithAutoIncrementId for TestEntity {
                     #[inline]
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id"
@@ -554,7 +548,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::repository::Entity for TestEntity {
+                impl framework_db::Entity for TestEntity {
                     type Id = i64;
                     type Type = TestEntity;
                     #[inline]
@@ -576,7 +570,7 @@ mod tests {
                     use super::*;
                     #[derive(Copy, Clone)]
                     struct Col1;
-                    impl framework_db::repository::Field for Col1 {
+                    impl framework_db::Field for Col1 {
                         const COLUMN: &'static str = "col1";
                         type Value = Option<String>;
                         type Entity = super::TestEntity;
@@ -587,12 +581,9 @@ mod tests {
                     }
                 }
                 impl TestEntity {
-                    #[inline]
-                    const fn fields() -> __test_entity_fields::Fields {
-                        __test_entity_fields::Fields {
-                            col1: __test_entity_fields::Col1,
-                        }
-                    }
+                    const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
+                        col1: __test_entity_fields::Col1,
+                    };
                 }
             }
             .to_string()

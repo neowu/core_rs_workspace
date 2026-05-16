@@ -5,62 +5,15 @@ use tracing::debug;
 use tracing::debug_span;
 
 use crate::Database;
+use crate::Entity;
 use crate::FromRow;
+use crate::Insert;
+use crate::InsertWithAutoIncrementId;
 use crate::QueryParam;
-use crate::ToSql;
-use crate::query::Cond;
-use crate::query::Update;
-use crate::query::build_conditions;
-use crate::query::build_update;
-
-pub trait Field {
-    const COLUMN: &'static str;
-    type Entity;
-    type Value: ToSql + Sync + 'static;
-
-    #[inline]
-    fn update<'a>(&self, value: &'a Self::Value) -> Update<'a, Self::Entity> {
-        Update::new(Self::COLUMN, value)
-    }
-
-    #[inline]
-    fn eq<'a>(&self, value: &'a Self::Value) -> Cond<'a, Self::Entity> {
-        Cond::eq(Self::COLUMN, value)
-    }
-
-    #[inline]
-    fn is_in<'a>(&self, values: Vec<&'a Self::Value>) -> Cond<'a, Self::Entity> {
-        Cond::is_in(Self::COLUMN, values.into_iter().map(|value| value as &QueryParam).collect())
-    }
-
-    #[inline]
-    fn not_null(&self) -> Cond<'static, Self::Entity> {
-        Cond::not_null(Self::COLUMN)
-    }
-}
-
-#[doc(hidden)] // disable auto complete, it's used by framework
-pub trait InsertWithAutoIncrementId {
-    fn __insert_sql() -> &'static str;
-    fn __insert_params(&self) -> Vec<&QueryParam>;
-}
-
-#[doc(hidden)] // disable auto complete, it's used by framework
-pub trait Insert {
-    fn __insert_sql() -> &'static str;
-    fn __insert_ignore_sql() -> &'static str;
-    fn __upsert_sql() -> &'static str;
-    fn __insert_params(&self) -> Vec<&QueryParam>;
-}
-
-#[doc(hidden)] // disable auto complete, it's used by framework
-pub trait Entity {
-    type Id;
-    type Type;
-    fn __id_conditions(ids: &Self::Id) -> Vec<Cond<'_, Self::Type>>;
-    fn __table_name() -> &'static str;
-    fn __select_sql() -> &'static str;
-}
+use crate::cond::Cond;
+use crate::cond::build_conditions;
+use crate::update::Update;
+use crate::update::build_update;
 
 pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Exception> {
     async {
@@ -99,8 +52,7 @@ pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, 
         let params = entity.__insert_params();
         debug!("upsert, sql={sql}, params={params:?}");
         let row = conn.with_timeout(conn.client.query_one(sql, &params), database.query_timeout).await?;
-        let inserted: bool =
-            row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
+        let inserted: bool = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
         debug!("inserted={inserted}");
         debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
         Ok(inserted)
