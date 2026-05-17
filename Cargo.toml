@@ -23,8 +23,12 @@ opt-level = 3
 
 [workspace.lints.rust]
 unused_crate_dependencies = "warn"
+unreachable-pub = "warn"
 
 [workspace.lints.clippy]
+# nursery
+missing_const_for_fn = "warn"
+needless_pass_by_ref_mut = "warn"
 # pedantic
 assigning_clones = "warn"
 borrow_as_ptr = "warn"

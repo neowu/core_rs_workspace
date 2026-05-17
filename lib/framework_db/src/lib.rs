@@ -10,7 +10,7 @@ pub use tokio_postgres::types::ToSql;
 pub use update::Update;
 
 mod cond;
-pub(crate) mod connection;
+mod connection;
 pub mod database;
 mod field;
 pub mod repository;

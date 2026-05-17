@@ -61,7 +61,7 @@ impl Default for HttpClientConfig {
 
 impl HttpClientConfig {
     // use to call internal services with self signed certs
-    pub fn internal_only() -> Self {
+    pub const fn internal_only() -> Self {
         Self {
             accept_invalid_cert: true,
             accept_certs: Some(vec![]),
@@ -98,7 +98,7 @@ pub enum HttpMethod {
 }
 
 impl HttpMethod {
-    fn to_str(&self) -> &'static str {
+    const fn to_str(&self) -> &'static str {
         match self {
             HttpMethod::Get => "GET",
             HttpMethod::Post => "POST",
@@ -178,11 +178,7 @@ impl HttpClient {
                             sleep(interval * attempt).await;
                             continue;
                         }
-                        return Err(exception!(
-                            "http request failed",
-                            code = "HTTP_REQUEST_FAILED",
-                            source = err
-                        ));
+                        return Err(exception!("http request failed", code = "HTTP_REQUEST_FAILED", source = err));
                     }
                 }
             };
@@ -228,9 +224,7 @@ impl HttpClient {
                 let body = response.text().await?;
                 debug!("[response] body={body}");
                 let content_type = headers.get(&header::CONTENT_TYPE);
-                Err(exception!(format!(
-                    "invalid sse response, status={status}, content_type={content_type:?}"
-                )))
+                Err(exception!(format!("invalid sse response, status={status}, content_type={content_type:?}")))
             }
         }
         .instrument(span)

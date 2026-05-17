@@ -16,7 +16,7 @@ use crate::AppState;
 use crate::service::local_file_path;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EventMessage {
+pub(crate) struct EventMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
@@ -31,7 +31,7 @@ pub struct EventMessage {
     info: HashMap<String, String>,
 }
 
-pub async fn event_message_handler(
+pub(crate) async fn event_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<EventMessage>>,
 ) -> Result<(), Exception> {

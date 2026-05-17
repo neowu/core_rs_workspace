@@ -39,7 +39,7 @@ impl<S> Scheduler<S>
 where
     S: Send + Sync + 'static,
 {
-    pub fn new(timezone: FixedOffset) -> Self {
+    pub const fn new(timezone: FixedOffset) -> Self {
         Self { timezone, schedules: Vec::new() }
     }
 

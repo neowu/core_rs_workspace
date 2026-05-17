@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EventMessage {
+pub(crate) struct EventMessage {
     pub id: String,
     pub date: DateTime<Utc>,
     pub app: String,

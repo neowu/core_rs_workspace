@@ -13,7 +13,7 @@ use crate::AppState;
 
 // action log message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ActionLogMessage {
+pub(crate) struct ActionLogMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
@@ -33,7 +33,7 @@ pub struct ActionLogMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PerformanceStatMessage {
+struct PerformanceStatMessage {
     total_elapsed: i64,
     count: i64,
     read_entries: Option<i64>,
@@ -43,7 +43,7 @@ pub struct PerformanceStatMessage {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ActionLogDocument {
+struct ActionLogDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
@@ -65,7 +65,7 @@ pub struct ActionLogDocument {
 }
 
 #[derive(Debug, Serialize)]
-pub struct TraceDocument {
+struct TraceDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
@@ -75,7 +75,7 @@ pub struct TraceDocument {
     content: String,
 }
 
-pub async fn action_log_message_handler(
+pub(crate) async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
 ) -> Result<(), Exception> {

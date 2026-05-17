@@ -6,7 +6,7 @@ pub struct Topic<T> {
 }
 
 impl<T> Topic<T> {
-    pub fn new(name: &'static str) -> Self {
+    pub const fn new(name: &'static str) -> Self {
         Self { name, _marker: PhantomData }
     }
 }

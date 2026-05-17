@@ -18,17 +18,17 @@ use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
-pub struct Elasticsearch {
+pub(crate) struct Elasticsearch {
     uri: String,
     client: HttpClient,
 }
 
 impl Elasticsearch {
-    pub fn new(uri: String) -> Self {
+    pub(crate) fn new(uri: String) -> Self {
         Self { uri, client: HttpClient::new(HttpClientConfig::internal_only()) }
     }
 
-    pub async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {
+    pub(crate) async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {
         let span = debug_span!("es");
         async {
             debug!(name, "put index template");
@@ -45,7 +45,7 @@ impl Elasticsearch {
         .await
     }
 
-    pub async fn bulk_index<T>(&self, index: &str, documents: Vec<(String, T)>) -> Result<(), Exception>
+    pub(crate) async fn bulk_index<T>(&self, index: &str, documents: Vec<(String, T)>) -> Result<(), Exception>
     where
         T: Serialize + Debug,
     {
@@ -75,7 +75,7 @@ impl Elasticsearch {
         .await
     }
 
-    pub async fn state(&self) -> Result<ClusterStateResponse, Exception> {
+    pub(crate) async fn state(&self) -> Result<ClusterStateResponse, Exception> {
         let span = debug_span!("es");
         async {
             let uri = &self.uri;
@@ -90,7 +90,7 @@ impl Elasticsearch {
         .await
     }
 
-    pub async fn close_index(&self, index: String) -> Result<(), Exception> {
+    pub(crate) async fn close_index(&self, index: String) -> Result<(), Exception> {
         let span = debug_span!("es");
         async {
             debug!(index, "close index");
@@ -106,7 +106,7 @@ impl Elasticsearch {
         .await
     }
 
-    pub async fn delete_index(&self, index: String) -> Result<(), Exception> {
+    pub(crate) async fn delete_index(&self, index: String) -> Result<(), Exception> {
         let span = debug_span!("es");
         async {
             debug!(index, "delete index");
@@ -124,22 +124,22 @@ impl Elasticsearch {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ClusterStateResponse {
+pub(crate) struct ClusterStateResponse {
     pub metadata: Metadata,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Metadata {
+pub(crate) struct Metadata {
     pub indices: HashMap<String, Index>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Index {
+pub(crate) struct Index {
     pub state: IndexState,
 }
 
 #[derive(Debug, Deserialize)]
-pub enum IndexState {
+pub(crate) enum IndexState {
     #[serde(rename = "open")]
     Open,
     #[serde(rename = "close")]

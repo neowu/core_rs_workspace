@@ -35,7 +35,7 @@ use tracing::warn;
 use crate::AppState;
 use crate::kafka::EventMessage;
 
-pub fn routes(state: Arc<AppState>) -> Router {
+pub(super) fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/robots.txt", get(robots_txt))
         .route("/event/{app}", options(event_options))
@@ -61,9 +61,9 @@ Disallow: /",
 async fn event_options(headers: HeaderMap) -> HttpResult<HeaderMap> {
     let mut response_headers = HeaderMap::new();
 
-    let origin = headers.get(header::ORIGIN).ok_or_else(|| {
-        exception!("access denied", severity = Severity::Warn, code = error_code::FORBIDDEN)
-    })?;
+    let origin = headers
+        .get(header::ORIGIN)
+        .ok_or_else(|| exception!("access denied", severity = Severity::Warn, code = error_code::FORBIDDEN))?;
     response_headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone());
 
     response_headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("POST, PUT, OPTIONS"));
@@ -168,7 +168,7 @@ struct Event {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum EventResult {
+enum EventResult {
     #[serde(rename = "OK")]
     Ok,
     #[serde(rename = "WARN")]

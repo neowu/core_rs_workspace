@@ -9,7 +9,7 @@ use regex::Regex;
 use crate::AppState;
 use crate::elasticsearch::IndexState;
 
-pub async fn cleanup_old_index_job(state: Arc<AppState>, context: JobContext) -> Result<(), Exception> {
+pub(crate) async fn cleanup_old_index_job(state: Arc<AppState>, context: JobContext) -> Result<(), Exception> {
     let today = context.scheduled_time.date_naive();
     let cluster_state = state.elasticsearch.state().await?;
     for (name, index) in cluster_state.metadata.indices {

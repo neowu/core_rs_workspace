@@ -13,7 +13,7 @@ use crate::AppState;
 
 // event message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EventMessage {
+pub(crate) struct EventMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
@@ -29,7 +29,7 @@ pub struct EventMessage {
 }
 
 #[derive(Debug, Serialize)]
-pub struct EventDocument {
+struct EventDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
@@ -44,7 +44,10 @@ pub struct EventDocument {
     elapsed: i64,
 }
 
-pub async fn event_message_handler(state: Arc<AppState>, messages: Vec<Message<EventMessage>>) -> Result<(), Exception> {
+pub(crate) async fn event_message_handler(
+    state: Arc<AppState>,
+    messages: Vec<Message<EventMessage>>,
+) -> Result<(), Exception> {
     let mut documents: Vec<(String, EventDocument)> = Vec::with_capacity(messages.len());
     for message in messages {
         let payload = message.payload()?;

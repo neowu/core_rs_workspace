@@ -13,7 +13,7 @@ use crate::AppState;
 
 // stat message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StatMessage {
+pub(crate) struct StatMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
@@ -26,7 +26,7 @@ pub struct StatMessage {
 }
 
 #[derive(Debug, Serialize)]
-pub struct StatDocument {
+struct StatDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
@@ -38,7 +38,10 @@ pub struct StatDocument {
     info: Option<HashMap<String, String>>,
 }
 
-pub async fn stat_message_handler(state: Arc<AppState>, messages: Vec<Message<StatMessage>>) -> Result<(), Exception> {
+pub(crate) async fn stat_message_handler(
+    state: Arc<AppState>,
+    messages: Vec<Message<StatMessage>>,
+) -> Result<(), Exception> {
     let mut documents: Vec<(String, StatDocument)> = Vec::with_capacity(messages.len());
     for message in messages {
         let payload = message.payload()?;

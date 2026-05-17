@@ -18,7 +18,7 @@ use crate::service::local_file_path;
 
 // action log message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ActionLogMessage {
+pub(crate) struct ActionLogMessage {
     id: String,
     date: DateTime<Utc>,
     app: String,
@@ -38,7 +38,7 @@ pub struct ActionLogMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PerformanceStatMessage {
+struct PerformanceStatMessage {
     total_elapsed: i64,
     count: i64,
     read_entries: Option<i64>,
@@ -47,7 +47,7 @@ pub struct PerformanceStatMessage {
     write_bytes: Option<i64>,
 }
 
-pub async fn action_log_message_handler(
+pub(crate) async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
 ) -> Result<(), Exception> {

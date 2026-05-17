@@ -190,7 +190,7 @@ struct ActionVisitor {
 }
 
 impl ActionVisitor {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self { action: None, action_id: None, ref_id: None }
     }
 

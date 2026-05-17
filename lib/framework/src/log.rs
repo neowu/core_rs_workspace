@@ -118,7 +118,7 @@ pub enum ActionResult {
 }
 
 impl ActionResult {
-    fn level(&self) -> u32 {
+    const fn level(&self) -> u32 {
         match *self {
             ActionResult::Ok => 0,
             ActionResult::Warn => 1,

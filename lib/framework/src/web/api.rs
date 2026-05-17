@@ -44,7 +44,7 @@ pub struct ApiClient {
 
 impl ApiClient {
     #[inline]
-    pub fn new(http_client: HttpClient, api_url: &'static str) -> Self {
+    pub const fn new(http_client: HttpClient, api_url: &'static str) -> Self {
         Self { http_client, api_url }
     }
 

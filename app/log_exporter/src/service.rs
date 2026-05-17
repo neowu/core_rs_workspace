@@ -10,7 +10,7 @@ use tracing::info;
 
 use crate::AppState;
 
-pub fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> Result<PathBuf, Exception> {
+pub(crate) fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> Result<PathBuf, Exception> {
     let dir = &state.log_dir;
     let year = date.year();
     let hash = &state.hash;
@@ -23,7 +23,7 @@ pub fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>) -> Re
     Ok(path)
 }
 
-pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
+pub(crate) fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
     info!("clean up archives, date={date}");
 
     let action_log_path = local_file_path("action", date, state)?;
@@ -39,7 +39,7 @@ pub fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exc
     Ok(())
 }
 
-pub async fn upload_archive(date: NaiveDate, state: Arc<AppState>) -> Result<(), Exception> {
+pub(crate) async fn upload_archive(date: NaiveDate, state: Arc<AppState>) -> Result<(), Exception> {
     let action_log_path = local_file_path("action", date, &state)?;
     if action_log_path.exists() {
         let remote_path = remote_path("action", date, &state);
