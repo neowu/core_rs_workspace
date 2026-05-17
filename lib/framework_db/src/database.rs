@@ -1,35 +1,12 @@
-use std::sync::Arc;
-use std::time::Duration;
-
 use framework::exception;
 use framework::exception::Exception;
-use framework::pool::ResourcePool;
-use tokio_postgres::Config;
 use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
+use crate::Database;
 use crate::FromRow;
 use crate::QueryParam;
-use crate::connection::ConnectionManager;
-
-pub struct Database {
-    pub(crate) pool: Arc<ResourcePool<ConnectionManager>>,
-    pub(crate) query_timeout: Duration,
-}
-
-impl Database {
-    pub fn new(config: Config) -> Self {
-        let pool = Arc::new(ResourcePool::new(
-            ConnectionManager { config },
-            50,
-            Duration::from_secs(30),
-            Duration::from_hours(1),
-            Duration::from_secs(5),
-        ));
-        Database { pool, query_timeout: Duration::from_secs(5) }
-    }
-}
 
 pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam]) -> Result<u64, Exception> {
     async {

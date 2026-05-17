@@ -17,7 +17,7 @@ use tracing::error;
 use crate::PgError;
 
 pub(crate) struct Connection {
-    pub(crate) client: Client,
+    pub client: Client,
     cancel_token: CancelToken,
     statement_cache: HashMap<String, Statement>,
 }
@@ -58,7 +58,7 @@ impl Connection {
 }
 
 pub(crate) struct ConnectionManager {
-    pub(crate) config: Config,
+    pub config: Config,
 }
 
 impl ResourceManager for ConnectionManager {
