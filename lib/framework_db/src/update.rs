@@ -11,12 +11,12 @@ pub struct Update<'a, E> {
 }
 
 impl<'a, E> Update<'a, E> {
-    pub(super) fn new(column: &'static str, value: &'a QueryParam) -> Update<'a, E> {
+    pub(crate) fn new(column: &'static str, value: &'a QueryParam) -> Update<'a, E> {
         Self { column, value, _entity: PhantomData }
     }
 }
 
-pub(super) fn build_update<'a, T>(
+pub(crate) fn build_update<'a, T>(
     updates: Vec<Update<'a, T>>,
     sql: &mut String,
     params: &mut Vec<&'a QueryParam>,

@@ -14,8 +14,8 @@ use crate::QueryParam;
 use crate::connection::ConnectionManager;
 
 pub struct Database {
-    pub(super) pool: Arc<ResourcePool<ConnectionManager>>,
-    pub(super) query_timeout: Duration,
+    pub(crate) pool: Arc<ResourcePool<ConnectionManager>>,
+    pub(crate) query_timeout: Duration,
 }
 
 impl Database {

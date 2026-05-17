@@ -11,15 +11,15 @@ pub enum Cond<'a, E> {
 }
 
 impl<'a, E> Cond<'a, E> {
-    pub(crate) fn eq(column: &'static str, value: &'a QueryParam) -> Self {
+    pub fn eq(column: &'static str, value: &'a QueryParam) -> Self {
         Cond::Eq { column, value, _entity: PhantomData }
     }
 
-    pub(crate) fn is_in(column: &'static str, values: Vec<&'a QueryParam>) -> Self {
+    pub fn is_in(column: &'static str, values: Vec<&'a QueryParam>) -> Self {
         Cond::In { column, values, _entity: PhantomData }
     }
 
-    pub(crate) const fn not_null(column: &'static str) -> Cond<'static, E> {
+    pub const fn not_null(column: &'static str) -> Cond<'static, E> {
         Cond::NotNull { column, _entity: PhantomData }
     }
 }

@@ -1,7 +1,6 @@
 pub use cond::Cond;
 pub use database::Database;
 pub use field::Field;
-pub use tokio_postgres::Client;
 pub use tokio_postgres::Config;
 pub use tokio_postgres::Error as PgError;
 pub use tokio_postgres::Row;

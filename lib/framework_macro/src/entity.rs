@@ -238,16 +238,13 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     let (id_type, id_conditions) = if primary_key_columns.len() == 1 {
         let id_type = id_types.first();
         let col = primary_key_columns.first().expect("cannot be empty").column.as_str();
-        (
-            quote! { #id_type },
-            quote! { vec![framework_db::Cond::Eq { column: #col, value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }] },
-        )
+        (quote! { #id_type }, quote! { vec![framework_db::Cond::eq(#col, ids as &framework_db::QueryParam)] })
     } else {
         let id_indices: Vec<_> = (0..primary_key_columns.len()).map(syn::Index::from).collect();
         let cols: Vec<_> = primary_key_columns.iter().map(|c| c.column.as_str()).collect();
         (
             quote! { (#(#id_types,)*) },
-            quote! { vec![#(framework_db::Cond::Eq { column: #cols, value: &ids.#id_indices as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },)*] },
+            quote! { vec![#(framework_db::Cond::eq(#cols, &ids.#id_indices as &framework_db::QueryParam),)*] },
         )
     };
 
@@ -380,7 +377,7 @@ mod tests {
                     type Type = TestEntity;
                     #[inline]
                     fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
-                        vec![framework_db::Cond::Eq { column: "id", value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }]
+                        vec![framework_db::Cond::eq("id", ids as &framework_db::QueryParam)]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {
@@ -470,8 +467,8 @@ mod tests {
                     #[inline]
                     fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
                         vec![
-                            framework_db::Cond::Eq { column: "id1", value: &ids.0 as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },
-                            framework_db::Cond::Eq { column: "id2", value: &ids.1 as &framework_db::QueryParam, _entity: ::std::marker::PhantomData },
+                            framework_db::Cond::eq("id1", &ids.0 as &framework_db::QueryParam),
+                            framework_db::Cond::eq("id2", &ids.1 as &framework_db::QueryParam),
                         ]
                     }
                     #[inline]
@@ -553,7 +550,7 @@ mod tests {
                     type Type = TestEntity;
                     #[inline]
                     fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
-                        vec![framework_db::Cond::Eq { column: "id", value: ids as &framework_db::QueryParam, _entity: ::std::marker::PhantomData }]
+                        vec![framework_db::Cond::eq("id", ids as &framework_db::QueryParam)]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {

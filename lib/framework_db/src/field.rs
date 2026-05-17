@@ -1,8 +1,8 @@
 use tokio_postgres::types::ToSql;
 
-use crate::Cond;
 use crate::QueryParam;
-use crate::Update;
+use crate::cond::Cond;
+use crate::update::Update;
 
 pub trait Field {
     const COLUMN: &'static str;
