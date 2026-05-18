@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 
+pub mod consumer;
+pub mod producer;
+
 pub struct Topic<T> {
     pub name: &'static str,
     _marker: PhantomData<T>,

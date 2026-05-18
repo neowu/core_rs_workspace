@@ -5,8 +5,6 @@ pub mod config;
 pub mod fs;
 pub mod http;
 pub mod json;
-#[cfg(feature = "kafka")]
-pub mod kafka;
 pub mod log;
 pub mod number;
 pub mod pool;

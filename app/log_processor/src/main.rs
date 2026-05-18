@@ -6,14 +6,14 @@ use chrono::NaiveTime;
 use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
-use framework::kafka::consumer::ConsumerConfig;
-use framework::kafka::consumer::MessageConsumer;
-use framework::kafka::topic::Topic;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
 use framework::task;
+use framework_kafka::Topic;
+use framework_kafka::consumer::ConsumerConfig;
+use framework_kafka::consumer::MessageConsumer;
 use serde::Deserialize;
 
 use crate::elasticsearch::Elasticsearch;

@@ -396,6 +396,7 @@ dependencies = [
  "chrono",
  "framework",
  "framework_db",
+ "framework_kafka",
  "framework_macro",
  "futures",
  "serde",
@@ -521,7 +522,6 @@ dependencies = [
  "futures",
  "http",
  "indexmap",
- "rdkafka",
  "reqwest",
  "serde",
  "serde_html_form",
@@ -541,6 +541,19 @@ dependencies = [
  "framework",
  "tokio",
  "tokio-postgres",
+ "tracing",
+]
+
+[[package]]
+name = "framework_kafka"
+version = "0.5.5"
+dependencies = [
+ "chrono",
+ "framework",
+ "futures",
+ "rdkafka",
+ "serde",
+ "tokio",
  "tracing",
 ]
 
@@ -1184,6 +1197,7 @@ dependencies = [
  "axum",
  "chrono",
  "framework",
+ "framework_kafka",
  "framework_macro",
  "serde",
  "tokio",
@@ -1197,6 +1211,7 @@ dependencies = [
  "axum",
  "chrono",
  "framework",
+ "framework_kafka",
  "framework_macro",
  "hex",
  "hostname",
@@ -1212,6 +1227,7 @@ version = "0.5.5"
 dependencies = [
  "chrono",
  "framework",
+ "framework_kafka",
  "regex",
  "serde",
  "tokio",

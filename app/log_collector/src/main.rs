@@ -4,13 +4,13 @@ use axum::Router;
 use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
-use framework::kafka::producer::Producer;
-use framework::kafka::topic::Topic;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::shutdown::Shutdown;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
+use framework_kafka::Topic;
+use framework_kafka::producer::Producer;
 use kafka::EventMessage;
 use serde::Deserialize;
 

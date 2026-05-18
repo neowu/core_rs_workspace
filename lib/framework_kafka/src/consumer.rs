@@ -8,6 +8,9 @@ use std::time::Instant;
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
+use framework::exception::Exception;
+use framework::json::from_json;
+use framework::log;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
 use rdkafka::Message as _;
@@ -27,10 +30,7 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
-use super::topic::Topic;
-use crate::exception::Exception;
-use crate::json::from_json;
-use crate::log;
+use crate::Topic;
 
 pub struct Message<T: DeserializeOwned> {
     pub key: Option<String>,

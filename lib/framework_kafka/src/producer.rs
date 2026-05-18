@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 
 use chrono::Utc;
+use framework::exception::Exception;
+use framework::json::to_json;
+use framework::log::current_action_id;
 use rdkafka::ClientConfig;
 use rdkafka::message::Header;
 use rdkafka::message::OwnedHeaders;
@@ -12,10 +15,7 @@ use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
 
-use super::topic::Topic;
-use crate::exception::Exception;
-use crate::json::to_json;
-use crate::log::current_action_id;
+use crate::Topic;
 
 pub struct Producer {
     producer: FutureProducer,

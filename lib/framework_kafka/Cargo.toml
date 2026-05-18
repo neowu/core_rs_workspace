@@ -1,22 +1,21 @@
 [package]
-name = "log_exporter"
+name = "framework_kafka"
 version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework.workspace = true
-framework_kafka.workspace = true
-framework_macro.workspace = true
-
+framework = { workspace = true }
 tracing.workspace = true
 serde.workspace = true
 chrono.workspace = true
 tokio.workspace = true
-axum.workspace = true
 
-hostname = "*"
-sha2 = "*"
-hex = "*"
+futures = "*"
+rdkafka = { version = "*", default-features = false, features = [
+    "dynamic-linking",
+    "tokio",
+    "zstd",
+] }
 
 [lints]
 workspace = true

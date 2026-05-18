@@ -1,6 +1,6 @@
 use framework::exception::Exception;
-use framework::kafka::producer::Producer;
-use framework::kafka::topic::Topic;
+use framework_kafka::Topic;
+use framework_kafka::producer::Producer;
 use serde::Deserialize;
 use serde::Serialize;
 

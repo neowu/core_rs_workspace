@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use framework::exception::Exception;
-use framework::kafka::consumer::ConsumerConfig;
-use framework::kafka::consumer::Message;
-use framework::kafka::consumer::MessageConsumer;
-use framework::kafka::producer::Producer;
-use framework::kafka::topic::Topic;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::shutdown::Shutdown;
+use framework_kafka::Topic;
+use framework_kafka::consumer::ConsumerConfig;
+use framework_kafka::consumer::Message;
+use framework_kafka::consumer::MessageConsumer;
+use framework_kafka::producer::Producer;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc;

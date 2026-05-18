@@ -4,9 +4,10 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework = { workspace = true }
-framework_db = { workspace = true }
-framework_macro = { workspace = true }
+framework.workspace = true
+framework_db.workspace = true
+framework_kafka.workspace = true
+framework_macro.workspace = true
 
 tracing.workspace = true
 serde.workspace = true

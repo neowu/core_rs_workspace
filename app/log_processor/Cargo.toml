@@ -4,7 +4,8 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework = { workspace = true, features = ["kafka"] }
+framework.workspace = true
+framework_kafka.workspace = true
 
 tracing.workspace = true
 serde.workspace = true

@@ -9,7 +9,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use framework::exception::Exception;
 use framework::json;
-use framework::kafka::consumer::Message;
+use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
 
