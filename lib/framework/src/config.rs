@@ -1,22 +1,26 @@
 use std::env;
+use std::fmt;
+use std::fmt::Debug;
 use std::fmt::Display;
-use std::str::FromStr;
+use std::fmt::Formatter;
+use std::ops::Deref;
 
 use serde::Deserialize;
+use serde::de;
 
 use crate::exception::Exception;
 
-/// A configuration field that can be set inline or sourced from an environment variable.
+/// A string configuration loaded inline or from an environment variable.
 ///
-/// Used to load service configuration at startup from JSON, while allowing
-/// any field to be overridden by an environment variable lookup. The `FromEnv`
-/// form is detected by the presence of an `env` key in the JSON object.
+/// The raw JSON value is always a string: if it starts with `env:`, the suffix
+/// names an environment variable read at resolution time; otherwise the
+/// string itself is the literal.
 ///
 /// # JSON forms
 ///
 /// ```json
-/// { "port": 8080 }
-/// { "port": { "env": "PORT" } }
+/// { "token": "abc123" }
+/// { "token": "env:API_TOKEN" }
 /// ```
 ///
 /// # Example
@@ -24,45 +28,106 @@ use crate::exception::Exception;
 /// ```ignore
 /// #[derive(Deserialize)]
 /// struct Config {
-///     port: ConfigValue<u16>,
+///     token: EnvString,
 /// }
 ///
 /// let config: Config = serde_json::from_str(json)?;
-/// let port: u16 = config.port.value()?;
+/// let token: String = config.token.value();
 /// ```
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum ConfigValue<T> {
-    /// The value is provided directly in the configuration.
-    Literal(T),
-    /// The value must be resolved from the named environment variable at load time.
-    FromEnv { env: String },
+pub struct EnvString(String);
+
+impl<'de> Deserialize<'de> for EnvString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        let resolved = if let Some(key) = raw.strip_prefix("env:") {
+            env::var(key).map_err(|err| de::Error::custom(format!("failed to load from env, env={key}, err={err}")))?
+        } else {
+            raw
+        };
+        Ok(EnvString(resolved))
+    }
 }
 
-impl<T: Clone + FromStr> ConfigValue<T>
-where
-    T::Err: Display,
-{
-    /// Resolve the configured value.
-    ///
-    /// For `Literal`, returns the inline value as-is. For `FromEnv`, reads the
-    /// named environment variable and parses it via [`FromStr`].
-    ///
-    /// # Errors
-    ///
-    /// Returns an [`Exception`] if the environment variable is unset, or if
-    /// its value cannot be parsed into `T`.
-    pub fn value(self) -> Result<T, Exception> {
-        match self {
-            ConfigValue::Literal(value) => Ok(value),
-            ConfigValue::FromEnv { env } => match env::var(&env) {
-                Ok(value) => {
-                    value.parse().map_err(|err| exception!(format!("failed to parse, env={env}, err={err}")))
-                }
-                Err(err) => Err(exception!(format!("failed to load from env, env={env}"), source = err)),
-            },
+impl Display for EnvString {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Debug for EnvString {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self, f)
+    }
+}
+
+impl Deref for EnvString {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<EnvString> for String {
+    fn from(env: EnvString) -> Self {
+        env.0
+    }
+}
+
+/// Loads environment variables from a file in debug builds; no-op in release.
+///
+/// The file is parsed line-by-line as `KEY=VALUE`. Blank lines and lines
+/// starting with `#` are ignored. The first `=` is the separator; later `=`
+/// characters stay in the value. Whitespace around the key and value is
+/// trimmed. Existing env vars are always overwritten.
+///
+/// The path is resolved relative to the caller crate's `CARGO_MANIFEST_DIR`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[tokio::main]
+/// async fn main() -> Result<(), Exception> {
+///     framework::load_env!(".env")?;
+///     // ...
+/// }
+/// ```
+#[macro_export]
+macro_rules! load_env {
+    ($path:expr) => {
+        $crate::config::__load_env(env!("CARGO_MANIFEST_DIR"), $path)
+    };
+}
+
+#[doc(hidden)]
+pub fn __load_env(manifest_dir: &str, path: &str) -> Result<(), Exception> {
+    #[cfg(debug_assertions)]
+    {
+        use std::fs::read_to_string;
+        use std::path::PathBuf;
+
+        let file_path = PathBuf::from(manifest_dir).join(path);
+        let contents = read_to_string(&file_path).map_err(|err| {
+            exception!(format!("failed to read env file, file={}", file_path.to_string_lossy()), source = err)
+        })?;
+        tracing::info!("load env vars, file={}", file_path.to_string_lossy());
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let Some((key, value)) = line.split_once('=') else {
+                return Err(exception!(format!("invalid env line, path={}, line={line}", file_path.to_string_lossy())));
+            };
+            unsafe {
+                env::set_var(key.trim(), value.trim());
+            }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -70,55 +135,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn literal_value() {
-        let config: ConfigValue<u16> = serde_json::from_str("8080").unwrap();
-        assert_eq!(config.value().unwrap(), 8080);
+    fn env_string_with_literal_value() {
+        let string: EnvString = serde_json::from_str(r#""value""#).unwrap();
+        assert_eq!(string.0, "value");
     }
 
     #[test]
-    fn literal_string_value() {
-        let config: ConfigValue<String> = serde_json::from_str(r#""hello""#).unwrap();
-        assert_eq!(config.value().unwrap(), "hello");
+    fn env_string_with_env_var() {
+        unsafe { env::set_var("CONFIG_TEST_SECRET", "secret") }
+        let secret: EnvString = serde_json::from_str(r#""env:CONFIG_TEST_SECRET""#).unwrap();
+        assert_eq!(secret.0, "secret");
+        unsafe { env::remove_var("CONFIG_TEST_SECRET") }
     }
 
     #[test]
-    fn from_env_value() {
-        // SAFETY: unique env var name avoids races with other tests
-        unsafe { env::set_var("CONFIG_TEST_PORT", "9090") }
-        let config: ConfigValue<u16> = serde_json::from_str(r#"{"env":"CONFIG_TEST_PORT"}"#).unwrap();
-        assert_eq!(config.value().unwrap(), 9090);
-        unsafe { env::remove_var("CONFIG_TEST_PORT") }
+    fn env_string_with_missing_env_var() {
+        unsafe { env::remove_var("CONFIG_TEST_SECRET_MISSING") }
+        let err = serde_json::from_str::<EnvString>(r#""env:CONFIG_TEST_SECRET_MISSING""#).unwrap_err();
+        assert!(err.to_string().contains("failed to load from env, env=CONFIG_TEST_SECRET_MISSING"));
     }
 
     #[test]
-    fn from_env_missing() {
-        unsafe { env::remove_var("CONFIG_TEST_MISSING") }
-        let config: ConfigValue<u16> = serde_json::from_str(r#"{"env":"CONFIG_TEST_MISSING"}"#).unwrap();
-        let err = config.value().unwrap_err();
-        assert!(err.message.contains("failed to load from env, env=CONFIG_TEST_MISSING"));
-    }
-
-    #[test]
-    fn from_env_parse_failure() {
-        unsafe { env::set_var("CONFIG_TEST_BAD", "not_a_number") }
-        let config: ConfigValue<u16> = serde_json::from_str(r#"{"env":"CONFIG_TEST_BAD"}"#).unwrap();
-        let err = config.value().unwrap_err();
-        assert!(err.message.contains("failed to parse, env=CONFIG_TEST_BAD"));
-        unsafe { env::remove_var("CONFIG_TEST_BAD") }
-    }
-
-    #[test]
-    fn nested_in_struct() {
-        #[derive(Deserialize)]
-        struct Config {
-            name: ConfigValue<String>,
-            port: ConfigValue<u16>,
-        }
-        unsafe { env::set_var("CONFIG_TEST_NAME", "service-a") }
-        let json = r#"{"port": 8080, "name": {"env": "CONFIG_TEST_NAME"}}"#;
-        let config: Config = serde_json::from_str(json).unwrap();
-        assert_eq!(config.port.value().unwrap(), 8080);
-        assert_eq!(config.name.value().unwrap(), "service-a");
-        unsafe { env::remove_var("CONFIG_TEST_NAME") }
+    fn env_string_display_debug() {
+        let string: EnvString = serde_json::from_str(r#""value""#).unwrap();
+        assert_eq!(format!("{string}"), "value");
+        assert_eq!(format!("{string:?}"), "value");
     }
 }

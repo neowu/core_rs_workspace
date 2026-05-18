@@ -5,8 +5,7 @@ use std::sync::Arc;
 use axum::Router;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
-use framework::asset::asset_path;
-use framework::config::ConfigValue;
+use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
@@ -37,9 +36,9 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    kafka_uri: ConfigValue<String>,
-    log_dir: ConfigValue<String>,
-    bucket: ConfigValue<String>,
+    kafka_uri: String,
+    log_dir: String,
+    bucket: String,
 }
 
 pub struct AppState {
@@ -77,7 +76,7 @@ struct Topics {
 async fn main() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
 
-    let config: AppConfig = json::load_file(&asset_path("assets/conf.json")?)?;
+    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
     let shutdown = Shutdown::new();
     let http_signal = shutdown.subscribe();
@@ -91,9 +90,9 @@ async fn main() -> Result<(), Exception> {
 
         AppState {
             topics: Topics { action: Topic::new("action-log-v2"), event: Topic::new("event") },
-            log_dir: config.log_dir.value()?,
+            log_dir: config.log_dir,
             hash,
-            bucket: config.bucket.value()?,
+            bucket: config.bucket,
             duckdb_memory_limit: duckdb_memory_limit()?,
         }
     });
@@ -111,11 +110,8 @@ async fn main() -> Result<(), Exception> {
     });
 
     task::spawn_task(async move {
-        let mut consumer = MessageConsumer::new(
-            config.kafka_uri.value()?,
-            env!("CARGO_BIN_NAME").to_owned(),
-            &ConsumerConfig::default(),
-        );
+        let mut consumer =
+            MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
         consumer.start(consumer_state, consumer_signal).await

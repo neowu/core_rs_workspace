@@ -1,8 +1,11 @@
+use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
 
 pub use cond::Cond;
 pub use field::Field;
+use framework::exception;
+use framework::exception::Exception;
 use framework::pool::ResourcePool;
 pub use tokio_postgres::Config;
 pub use tokio_postgres::Error as PgError;
@@ -63,15 +66,30 @@ pub struct Database {
     query_timeout: Duration,
 }
 
+pub struct DbConfig {
+    pub uri: String,
+    pub user: String,
+    pub password: String,
+    pub client: &'static str, // pass as env!("CARGO_BIN_NAME")
+}
+
 impl Database {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: DbConfig) -> Result<Self, Exception> {
+        let mut postgres_config =
+            Config::from_str(&config.uri).map_err(|err| exception!("failed to parse postgres uri", source = err))?;
+        postgres_config.user(config.user);
+        postgres_config.password(config.password);
+        postgres_config.connect_timeout(Duration::from_secs(5));
+        postgres_config.application_name(config.client);
+
         let pool = Arc::new(ResourcePool::new(
-            ConnectionManager { config },
+            ConnectionManager { config: postgres_config },
             50,
             Duration::from_secs(30),
             Duration::from_hours(1),
             Duration::from_secs(5),
         ));
-        Database { pool, query_timeout: Duration::from_secs(5) }
+
+        Ok(Database { pool, query_timeout: Duration::from_secs(5) })
     }
 }

@@ -114,7 +114,7 @@ impl Debug for Exception {
 impl Display for Exception {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{}\n{}", self.message, self.backtrace())
     }
 }
 

@@ -2,3 +2,4 @@
 /target/
 /.claude/
 /.zed/
+.env

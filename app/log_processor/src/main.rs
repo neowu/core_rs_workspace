@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use chrono::FixedOffset;
 use chrono::NaiveTime;
-use framework::asset::asset_path;
-use framework::config::ConfigValue;
+use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::kafka::consumer::ConsumerConfig;
@@ -30,10 +29,10 @@ mod kibana;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    kafka_uri: ConfigValue<String>,
-    elasticsearch_uri: ConfigValue<String>,
-    kibana_uri: ConfigValue<String>,
-    banner: ConfigValue<String>,
+    kafka_uri: String,
+    elasticsearch_uri: String,
+    kibana_uri: String,
+    banner: String,
 }
 
 pub struct AppState {
@@ -44,23 +43,23 @@ pub struct AppState {
 async fn main() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
 
-    let config: AppConfig = json::load_file(&asset_path("assets/conf.json")?)?;
+    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
     let shutdown = Shutdown::new();
     let consumer_signal = shutdown.subscribe();
     let scheduler_signal = shutdown.subscribe();
     shutdown.listen();
 
-    let kibana_uri = config.kibana_uri.value()?;
-    let banner = config.banner.value()?;
+    let kibana_uri = config.kibana_uri;
+    let banner = config.banner;
     task::spawn_action("import_kibana_objects", async move {
-        let objects = fs::read_to_string(&asset_path("assets/kibana_objects.json")?)?;
+        let objects = fs::read_to_string(&asset_path!("assets/kibana_objects.json")?)?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
         kibana::import(&kibana_uri, objects).await?;
         Ok(())
     });
 
-    let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri.value()?) });
+    let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri) });
 
     let scheduler_state = Arc::clone(&state);
     task::spawn_task(async move {
@@ -76,7 +75,7 @@ async fn main() -> Result<(), Exception> {
     put_index_templates(&state.elasticsearch).await?;
 
     let mut consumer =
-        MessageConsumer::new(config.kafka_uri.value()?, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
+        MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
@@ -89,16 +88,16 @@ async fn main() -> Result<(), Exception> {
 
 async fn put_index_templates(elasticsearch: &Elasticsearch) -> Result<(), Exception> {
     elasticsearch
-        .put_index_template("action", fs::read_to_string(&asset_path("assets/index/action-index-template.json")?)?)
+        .put_index_template("action", fs::read_to_string(&asset_path!("assets/index/action-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template("event", fs::read_to_string(&asset_path("assets/index/event-index-template.json")?)?)
+        .put_index_template("event", fs::read_to_string(&asset_path!("assets/index/event-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template("stat", fs::read_to_string(&asset_path("assets/index/stat-index-template.json")?)?)
+        .put_index_template("stat", fs::read_to_string(&asset_path!("assets/index/stat-index-template.json")?)?)
         .await?;
     elasticsearch
-        .put_index_template("trace", fs::read_to_string(&asset_path("assets/index/trace-index-template.json")?)?)
+        .put_index_template("trace", fs::read_to_string(&asset_path!("assets/index/trace-index-template.json")?)?)
         .await?;
     Ok(())
 }
