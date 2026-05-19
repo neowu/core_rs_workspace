@@ -1,30 +1,32 @@
 use std::time::Duration;
 
 use axum::Router;
-use axum::http::StatusCode;
-use axum::routing::get;
 use chrono::FixedOffset;
 use framework::asset_path;
 use framework::config::EnvString;
 use framework::exception::Exception;
 use framework::json;
+use framework::load_env;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
 use framework::task;
 use framework::web::server::HttpServerConfig;
-use framework::web::server::ServeDir;
-use framework::web::server::ServeFile;
 use framework::web::server::start_http_server;
+use framework_db::Database;
+use framework_db::DbConfig;
 use serde::Deserialize;
 
 use crate::job::demo_job;
 
 mod job;
-pub mod web;
+pub mod user;
+mod web;
 
-pub struct AppState {}
+pub struct AppState {
+    db: Database,
+}
 
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
@@ -37,37 +39,37 @@ pub struct AppConfig {
 #[inline]
 pub async fn run() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
+    load_env!(".env")?;
 
-    let _config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
     let shutdown = Shutdown::new();
     let signal = shutdown.subscribe();
     let scheduler_signal = shutdown.subscribe();
     shutdown.listen();
 
-    let state: &'static AppState = Box::leak(Box::new(AppState {}));
+    let db = Database::new(DbConfig {
+        uri: config.db_url,
+        user: config.db_user,
+        password: config.db_password.into(),
+        client: env!("CARGO_PKG_NAME"),
+    })?;
+
+    let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
     task::spawn_task(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).unwrap());
+        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
         scheduler.schedule_fixed_rate("demo_job", demo_job, Duration::from_hours(1));
         scheduler.start(state, scheduler_signal).await
     });
 
     let app = Router::new();
     let app = app.merge(job::routes(state));
-    let app = app.merge(web::routes(state));
-    let app = app.merge(Router::new().route("/503", get(http_503)));
-    let app = app
-        .route_service("/", ServeFile::new(asset_path!("assets/web/index.html")?))
-        .route_service("/static/{*path}", ServeDir::new(asset_path!("assets/web/")?));
-    //     .fallback_service(ServeFile::new(asset_path!("assets/web/index.html")?));
+    let app = app.merge(user::web::routes(state));
+    let app = app.merge(web::routes()?);
     start_http_server(app, signal, HttpServerConfig::default()).await?;
 
     task::shutdown().await;
 
     Ok(())
-}
-
-async fn http_503() -> StatusCode {
-    StatusCode::SERVICE_UNAVAILABLE
 }

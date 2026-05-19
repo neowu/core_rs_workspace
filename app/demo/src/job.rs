@@ -11,7 +11,7 @@ use tracing::warn;
 
 use crate::AppState;
 
-pub fn routes(state: &'static AppState) -> Router {
+pub(crate) fn routes(state: &'static AppState) -> Router {
     Router::new().route("/job/demo_job", post(run_demo_job)).with_state(state)
 }
 
@@ -21,7 +21,7 @@ async fn run_demo_job(State(state): State<&'static AppState>) -> HttpResult<Stat
     Ok(StatusCode::ACCEPTED)
 }
 
-pub async fn demo_job(_state: &AppState, context: JobContext) -> Result<(), Exception> {
+pub(crate) async fn demo_job(_state: &AppState, context: JobContext) -> Result<(), Exception> {
     println!("run demo job, scheduled_time={}", context.scheduled_time);
     warn!("trigger");
     Ok(())

@@ -3,9 +3,9 @@ use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpMethod;
 use framework::http::HttpRequest;
+use framework::http::StreamExt;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
-use tokio_stream::StreamExt;
 use tracing::debug;
 use tracing::warn;
 

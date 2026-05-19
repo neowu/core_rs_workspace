@@ -1,8 +1,7 @@
 use std::str::FromStr;
 
-use chrono::DateTime;
-use chrono::Utc;
 use demo::AppConfig;
+use demo::user::User;
 use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
@@ -13,50 +12,9 @@ use framework_db::DbConfig;
 use framework_db::Field;
 use framework_db::database;
 use framework_db::repository;
-use framework_macro::Entity;
 use tracing::debug;
 use tracing::warn;
 use uuid::Uuid;
-
-#[allow(unused)]
-#[derive(Entity, Debug)]
-#[table(name = "user")]
-pub(crate) struct User {
-    #[primary_key]
-    #[column(name = "id")]
-    id: i32,
-    #[column(name = "name")]
-    name: String,
-    #[column(name = "col1")]
-    col1: Option<String>,
-}
-
-#[allow(unused)]
-#[derive(Entity, Debug)]
-#[table(name = "user_profile")]
-pub(crate) struct UserProfile {
-    #[primary_key]
-    #[column(name = "id1")]
-    id1: String,
-    #[primary_key]
-    #[column(name = "id2")]
-    id2: Uuid,
-    #[column(name = "name")]
-    name: String,
-    #[column(name = "rating")]
-    rating: Option<i32>,
-}
-
-#[allow(unused)]
-#[derive(Entity, Debug)]
-#[table(name = "orders")]
-pub(crate) struct Order {
-    #[primary_key(auto_increment)]
-    #[column(name = "id")]
-    id: Option<i64>,
-    #[column(name = "date")]
-    date: Option<DateTime<Utc>>,
-}
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
@@ -77,35 +35,24 @@ pub async fn main() -> Result<(), Exception> {
 
         // let profile = UserProfile { id1: "id1".to_string(), id2: Uuid::now_v7(), name: "neo".to_string() };
         // db::repository::insert(&db, &profile).await?;
-        let profile = repository::get::<UserProfile>(
-            &db,
-            &("id1".to_string(), Uuid::from_str("019dd6c2-3fe8-7501-a1a0-e69dc7c60346")?),
-        )
-        .await?;
-        debug!("{profile:?}");
+        let user = repository::get::<User>(&db, &Uuid::from_str("019dd6c2-3fe8-7501-a1a0-e69dc7c60346")?).await?;
+        debug!("{user:?}");
 
-        let profiles = repository::select_all::<UserProfile>(
+        let users = repository::select_all::<User>(
             &db,
             vec![
-                UserProfile::FIELDS.name.is_in(vec![&"neo".to_owned(), &"neo2".to_owned()]),
-                UserProfile::FIELDS.name.eq(&"neo".to_owned()),
-                UserProfile::FIELDS.name.not_null(),
+                User::FIELDS.name.is_in(vec![&"neo".to_owned(), &"neo2".to_owned()]),
+                User::FIELDS.name.eq(&"neo".to_owned()),
+                User::FIELDS.name.not_null(),
             ],
         )
         .await?;
-        debug!("{profiles:?}");
-
-        repository::update(
-            &db,
-            &(profiles[0].id1.clone(), profiles[0].id2),
-            vec![UserProfile::FIELDS.rating.update(&Some(5))],
-        )
-        .await?;
+        debug!("{users:?}");
 
         repository::update_all(
             &db,
-            vec![UserProfile::FIELDS.rating.update(&Some(3))],
-            vec![UserProfile::FIELDS.name.eq(&"neo".to_owned())],
+            vec![User::FIELDS.rating.update(Some(3))],
+            vec![User::FIELDS.name.eq(&"neo".to_owned())],
         )
         .await?;
 

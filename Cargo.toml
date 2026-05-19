@@ -14,6 +14,7 @@ framework_macro = { path = "lib/framework_macro" }
 tracing = { version = "*", features = ["max_level_debug"] }
 serde = { version = "*", features = ["derive"] }
 chrono = { version = "*", features = ["serde"] }
+uuid = { version = "*", features = ["v7", "serde"] }
 
 tokio = { version = "*", features = ["full"] }
 axum = { version = "*", features = ["macros", "http2"] }

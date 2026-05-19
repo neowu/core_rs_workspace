@@ -392,18 +392,13 @@ name = "demo"
 version = "0.5.5"
 dependencies = [
  "axum",
- "bytes",
  "chrono",
  "framework",
  "framework_db",
  "framework_kafka",
  "framework_macro",
- "futures",
  "serde",
- "serde_html_form",
  "tokio",
- "tokio-stream",
- "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -527,6 +522,7 @@ dependencies = [
  "serde_html_form",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tower-http",
  "tracing",
@@ -1460,6 +1456,8 @@ dependencies = [
  "chrono",
  "fallible-iterator",
  "postgres-protocol",
+ "serde_core",
+ "serde_json",
  "uuid",
 ]
 
@@ -2535,6 +2533,7 @@ checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

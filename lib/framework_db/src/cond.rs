@@ -106,7 +106,8 @@ mod tests {
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
-        build_update::<E>(vec![Update::new("col1", &99)], &mut sql, &mut params, &mut index);
+        let updates = vec![Update::<E>::new("col1", 99)];
+        build_update(&updates, &mut sql, &mut params, &mut index);
         build_conditions(vec![Cond::<E>::eq("id", &10)], &mut sql, &mut params, &mut index);
         assert_eq!(sql, "UPDATE t SET col1 = $1 WHERE id = $2");
         assert_eq!(params.len(), 2);

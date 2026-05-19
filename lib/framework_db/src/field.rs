@@ -7,10 +7,10 @@ use crate::update::Update;
 pub trait Field {
     const COLUMN: &'static str;
     type Entity;
-    type Value: ToSql + Sync + 'static;
+    type Value: ToSql + Sync + Send + 'static;
 
     #[inline]
-    fn update<'a>(&self, value: &'a Self::Value) -> Update<'a, Self::Entity> {
+    fn update(&self, value: Self::Value) -> Update<Self::Entity> {
         Update::new(Self::COLUMN, value)
     }
 

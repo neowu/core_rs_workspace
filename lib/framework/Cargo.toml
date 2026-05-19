@@ -13,6 +13,7 @@ serde_html_form = "*"
 
 tokio.workspace = true
 tokio-util = { version = "*", features = ["rt"] }
+tokio-stream = "*"
 
 http = "*"
 axum.workspace = true
@@ -22,7 +23,7 @@ tower-http = {version ="*", features = ["fs"]}
 reqwest = { version = "0", features = ["stream"] }
 
 chrono.workspace = true
-uuid = { version = "*", features = ["v7"] }
+uuid.workspace = true
 
 futures = "*"
 bytes = "*"

@@ -130,7 +130,7 @@ where
 pub async fn update_with_condition<T: Entity<Type = T>>(
     database: &Database,
     id: &T::Id,
-    updates: Vec<Update<'_, T>>,
+    updates: Vec<Update<T>>,
     mut conditions: Vec<Cond<'_, T>>,
 ) -> Result<bool, Exception> {
     async {
@@ -138,7 +138,7 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
         let mut sql = format!("UPDATE \"{}\"", T::__table_name());
         let mut params: Vec<&QueryParam> = vec![];
         let mut param_index = 1;
-        build_update(updates, &mut sql, &mut params, &mut param_index);
+        build_update(&updates, &mut sql, &mut params, &mut param_index);
         conditions.extend(T::__id_conditions(id));
         build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update, sql={sql}, params={params:?}");
@@ -154,14 +154,14 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
 pub async fn update<T: Entity<Type = T>>(
     database: &Database,
     id: &T::Id,
-    updates: Vec<Update<'_, T>>,
+    updates: Vec<Update<T>>,
 ) -> Result<bool, Exception> {
     update_with_condition(database, id, updates, vec![]).await
 }
 
 pub async fn update_all<T: Entity>(
     database: &Database,
-    updates: Vec<Update<'_, T>>,
+    updates: Vec<Update<T>>,
     conditions: Vec<Cond<'_, T>>,
 ) -> Result<u64, Exception> {
     async {
@@ -169,7 +169,7 @@ pub async fn update_all<T: Entity>(
         let mut sql = format!("UPDATE \"{}\"", T::__table_name());
         let mut params: Vec<&QueryParam> = vec![];
         let mut param_index = 1;
-        build_update(updates, &mut sql, &mut params, &mut param_index);
+        build_update(&updates, &mut sql, &mut params, &mut param_index);
         build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;

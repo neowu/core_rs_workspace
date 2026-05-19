@@ -11,6 +11,7 @@ pub use tokio_postgres::Config;
 pub use tokio_postgres::Error as PgError;
 pub use tokio_postgres::Row;
 use tokio_postgres::types::FromSqlOwned;
+pub use tokio_postgres::types::Json;
 pub use tokio_postgres::types::ToSql;
 pub use update::Update;
 
@@ -70,7 +71,7 @@ pub struct DbConfig {
     pub uri: String,
     pub user: String,
     pub password: String,
-    pub client: &'static str, // pass as env!("CARGO_BIN_NAME")
+    pub client: &'static str, // pass as env!("CARGO_BIN_NAME") or env!("CARGO_PKG_NAME")
 }
 
 impl Database {

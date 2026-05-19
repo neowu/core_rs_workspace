@@ -1,5 +1,5 @@
 use framework::exception::Exception;
-use framework::validate::Validator;
+use framework::validate::Validator as _;
 use framework_macro::Validate;
 
 #[derive(Validate, Debug)]

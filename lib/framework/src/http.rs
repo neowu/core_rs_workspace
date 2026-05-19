@@ -18,6 +18,7 @@ use reqwest::Method;
 use reqwest::Request;
 use reqwest::Url;
 use tokio::time::sleep;
+pub use tokio_stream::StreamExt;
 use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
