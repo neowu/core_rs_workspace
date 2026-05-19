@@ -13,9 +13,9 @@ pub async fn execute(database: &Database, statement: &str, params: &[&QueryParam
     async {
         let conn = database.pool.get_with_timeout().await?;
         debug!("execute, sql={statement}, params={params:?}");
-        let db_write_rows = conn.with_timeout(conn.client.execute(statement, params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows)
+        let rows = conn.with_timeout(conn.client.execute(statement, params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows)
     }
     .instrument(debug_span!("db"))
     .await

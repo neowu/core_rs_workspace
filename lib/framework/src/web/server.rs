@@ -65,9 +65,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
     // TODO: get ref_id from header?
 
     log::start_action("http", None, async {
-        let method = request.method().clone();
-        let uri = request.uri();
-        context!(uri = ?uri, method = ?method);
+        context!(uri = request.uri().to_string(), method = request.method().as_str());
 
         for (name, value) in request.headers() {
             if name != header::COOKIE {
@@ -82,7 +80,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         let client_info = client_info(&request, 2);
         context!(client_ip = client_info.client_ip);
         if let Some(ref user_agent) = client_info.user_agent {
-            context!(user_agent);
+            context!(user_agent = user_agent);
         }
         request.extensions_mut().insert(Arc::new(client_info));
 
@@ -91,20 +89,20 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
             context!(matched_path = matched_path);
         }
 
-        if let Some(request_content_length) = request
+        if let Some(length) = request
             .headers()
             .get(header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| str::parse::<usize>(v).ok())
         {
-            stats!(request_content_length);
+            stats!(request_content_length = length);
         }
 
         let http_response = next.run(request).await;
 
-        let response_status = http_response.status().as_u16();
+        let status = http_response.status().as_u16();
         // TODO: warn on 404, 405?
-        context!(response_status);
+        context!(response_status = status);
         for (name, value) in http_response.headers() {
             debug!("[header] {name}={value:?}");
         }

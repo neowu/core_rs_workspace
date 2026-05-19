@@ -98,22 +98,22 @@ pub const STATS: &str = "__stats";
 
 #[macro_export]
 macro_rules! context {
-    ($($fields:tt)+) => {
+    ($($key:ident = $value:expr),+ $(,)?) => {
         ::tracing::event!(
             name: $crate::log::CONTEXT,
             ::tracing::Level::DEBUG,
-            $($fields)+
+            $($key = $value),+
         )
     };
 }
 
 #[macro_export]
 macro_rules! stats {
-    ($($fields:tt)+) => {
+    ($($key:ident = $value:expr),+ $(,)?) => {
         ::tracing::event!(
             name: $crate::log::STATS,
             ::tracing::Level::DEBUG,
-            $($fields)+
+            $($key = $value as u128),+
         )
     };
 }

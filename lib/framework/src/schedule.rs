@@ -118,9 +118,10 @@ where
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
     Box::pin(log::start_action("job", None, async move {
-        let name = context.name;
-        let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true);
-        context!(job = name, scheduled_time);
+        context!(
+            job = context.name,
+            scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true)
+        );
         job(state, context).await
     }))
 }

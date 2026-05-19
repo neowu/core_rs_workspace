@@ -22,8 +22,8 @@ pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Ex
         let sql = T::__insert_sql();
         let params = entity.__insert_params();
         debug!("insert, sql={sql}, params={params:?}");
-        let db_write_rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
+        let rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
         Ok(())
     }
     .instrument(debug_span!("db"))
@@ -37,9 +37,9 @@ pub async fn insert_ignore<T: Insert>(database: &Database, entity: &T) -> Result
         let sql = T::__insert_ignore_sql();
         let params = entity.__insert_params();
         debug!("insert_ignore, sql={sql}, params={params:?}");
-        let db_write_rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows != 0)
+        let rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows != 0)
     }
     .instrument(debug_span!("db"))
     .await
@@ -144,9 +144,9 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
         build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows == 1)
+        let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows == 1)
     }
     .instrument(debug_span!("db"))
     .await
@@ -174,9 +174,9 @@ pub async fn update_all<T: Entity>(
         build_conditions(conditions, &mut sql, &mut params, &mut param_index);
         debug!("update_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows)
+        let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows)
     }
     .instrument(debug_span!("db"))
     .await
@@ -190,9 +190,9 @@ pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, 
         build_conditions(T::__id_conditions(id), &mut sql, &mut params, &mut 1);
         debug!("delete, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows != 0)
+        let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows != 0)
     }
     .instrument(debug_span!("db"))
     .await
@@ -206,9 +206,9 @@ pub async fn delete_all<T: Entity>(database: &Database, conditions: Vec<Cond<'_,
         build_conditions(conditions, &mut sql, &mut params, &mut 1);
         debug!("delete_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
-        let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        stats!(db_write_rows);
-        Ok(db_write_rows)
+        let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
+        stats!(db_write_rows = rows);
+        Ok(rows)
     }
     .instrument(debug_span!("db"))
     .await
