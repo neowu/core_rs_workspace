@@ -298,26 +298,6 @@ struct ContextVisitor<'a> {
 }
 
 impl Visit for ContextVisitor<'_> {
-    fn record_f64(&mut self, field: &Field, value: f64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_i64(&mut self, field: &Field, value: i64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_i128(&mut self, field: &Field, value: i128) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_u128(&mut self, field: &Field, value: u128) {
-        self.action_log.context.insert(field.name(), format!("{value}"));
-    }
-
     fn record_str(&mut self, field: &Field, value: &str) {
         let value = value.to_owned();
         self.action_log.context.insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
