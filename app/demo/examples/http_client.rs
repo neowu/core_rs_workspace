@@ -6,7 +6,7 @@ use framework::http::HttpRequest;
 use framework::http::StreamExt;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
-use tracing::debug;
+use framework::stats;
 use tracing::warn;
 
 #[tokio::main]
@@ -34,7 +34,7 @@ async fn test_http() -> Result<(), Exception> {
     //     let line = line?;
     //     println!("line={line}");
     // }
-    debug!(http_client_hello = 1, "stats");
+    stats!(http_client_hello = 1);
     warn!("test");
     Ok(())
 }

@@ -5,6 +5,7 @@ pub mod config;
 pub mod fs;
 pub mod http;
 pub mod json;
+#[macro_use]
 pub mod log;
 pub mod number;
 pub mod pool;

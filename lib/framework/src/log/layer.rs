@@ -23,6 +23,8 @@ use tracing_subscriber::registry::SpanRef;
 use super::ActionLogAppender;
 use super::ActionLogMessage;
 use super::ActionResult;
+use crate::log::CONTEXT;
+use crate::log::STATS;
 use crate::write_str;
 
 pub(super) struct ActionLogLayer<T>
@@ -168,13 +170,20 @@ thread={:?}",
                 }
             }
 
+            let name = event.metadata().name();
+            if name == CONTEXT {
+                let mut context_visitor = ContextVisitor { action_log };
+                event.record(&mut context_visitor);
+                write_str!(log, "[context] ");
+            } else if name == STATS {
+                let mut stats_visitor = StatsVisitor { action_log };
+                event.record(&mut stats_visitor);
+                write_str!(log, "[stats] ");
+            }
+
             let mut log_visitor = LogVisitor(&mut log);
             event.record(&mut log_visitor);
             action_log.logs.push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
-
-            // handle "context" and "stats" event
-            let mut context_visitor = ContextVisitor { action_log, context_type: None };
-            event.record(&mut context_visitor);
         }
     }
 }
@@ -284,14 +293,8 @@ impl Visit for LogVisitor<'_> {
     }
 }
 
-enum ContextType {
-    Context,
-    Stats,
-}
-
 struct ContextVisitor<'a> {
     action_log: &'a mut ActionLog,
-    context_type: Option<ContextType>,
 }
 
 impl Visit for ContextVisitor<'_> {
@@ -312,35 +315,46 @@ impl Visit for ContextVisitor<'_> {
     }
 
     fn record_u128(&mut self, field: &Field, value: u128) {
-        if let Some(ContextType::Stats) = self.context_type {
-            let stats_value = self.action_log.stats.entry(field.name().to_owned()).or_default();
-            *stats_value += value;
-        } else if let Some(ContextType::Context) = self.context_type {
-            self.action_log.context.insert(field.name(), format!("{value}"));
-        }
+        self.action_log.context.insert(field.name(), format!("{value}"));
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        if let Some(ContextType::Context) = self.context_type {
-            let value = value.to_owned();
-            self.action_log
-                .context
-                .insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
-        }
+        let value = value.to_owned();
+        self.action_log.context.insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-        if field.name() == "message" {
-            let value = format!("{value:?}");
-            if value == "context" {
-                self.context_type = Some(ContextType::Context);
-            } else if value == "stats" {
-                self.context_type = Some(ContextType::Stats);
-            }
-        } else if let Some(ContextType::Context) = self.context_type {
-            self.action_log.context.insert(field.name(), format!("{value:?}"));
-        }
+        self.action_log.context.insert(field.name(), format!("{value:?}"));
     }
+}
+
+struct StatsVisitor<'a> {
+    action_log: &'a mut ActionLog,
+}
+
+impl Visit for StatsVisitor<'_> {
+    fn record_f64(&mut self, field: &Field, value: f64) {
+        self.record_u128(field, value as u128);
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.record_u128(field, value as u128);
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.record_u128(field, value as u128);
+    }
+
+    fn record_i128(&mut self, field: &Field, value: i128) {
+        self.record_u128(field, value as u128);
+    }
+
+    fn record_u128(&mut self, field: &Field, value: u128) {
+        let stats_value = self.action_log.stats.entry(field.name().to_owned()).or_default();
+        *stats_value += value;
+    }
+
+    fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
 }
 
 struct ErrorVisitor {

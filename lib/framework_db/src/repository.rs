@@ -1,5 +1,6 @@
 use framework::exception;
 use framework::exception::Exception;
+use framework::stats;
 use tracing::Instrument as _;
 use tracing::debug;
 use tracing::debug_span;
@@ -22,7 +23,7 @@ pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Ex
         let params = entity.__insert_params();
         debug!("insert, sql={sql}, params={params:?}");
         let db_write_rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(())
     }
     .instrument(debug_span!("db"))
@@ -37,7 +38,7 @@ pub async fn insert_ignore<T: Insert>(database: &Database, entity: &T) -> Result
         let params = entity.__insert_params();
         debug!("insert_ignore, sql={sql}, params={params:?}");
         let db_write_rows = conn.with_timeout(conn.client.execute(sql, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(db_write_rows != 0)
     }
     .instrument(debug_span!("db"))
@@ -54,7 +55,7 @@ pub async fn upsert<T: Insert>(database: &Database, entity: &T) -> Result<bool, 
         let row = conn.with_timeout(conn.client.query_one(sql, &params), database.query_timeout).await?;
         let inserted: bool = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
         debug!("inserted={inserted}");
-        debug!(db_write_rows = 1, "stats"); // postgres upsert always affects row
+        stats!(db_write_rows = 1); // postgres upsert always affects row
         Ok(inserted)
     }
     .instrument(debug_span!("db"))
@@ -72,7 +73,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
         debug!("insert, sql={sql}, params={params:?}");
         let row = conn.with_timeout(conn.client.query_one(sql, &params), database.query_timeout).await?;
         let id: i64 = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
-        debug!(db_write_rows = 1, "stats");
+        stats!(db_write_rows = 1);
         Ok(id)
     }
     .instrument(debug_span!("db"))
@@ -98,7 +99,7 @@ where
         debug!("select_one, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
-        debug!(db_read_rows = if row.is_some() { 1 } else { 0 }, "stats");
+        stats!(db_read_rows = if row.is_some() { 1 } else { 0 });
         row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
     }
     .instrument(debug_span!("db"))
@@ -117,7 +118,7 @@ where
         debug!("select, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let rows = conn.with_timeout(conn.client.query(&statement, &params), database.query_timeout).await?;
-        debug!(db_read_rows = rows.len(), "stats");
+        stats!(db_read_rows = rows.len());
         rows.into_iter()
             .map(T::try_from)
             .collect::<Result<Vec<_>, _>>()
@@ -144,7 +145,7 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
         debug!("update, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(db_write_rows == 1)
     }
     .instrument(debug_span!("db"))
@@ -174,7 +175,7 @@ pub async fn update_all<T: Entity>(
         debug!("update_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(db_write_rows)
     }
     .instrument(debug_span!("db"))
@@ -190,7 +191,7 @@ pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, 
         debug!("delete, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(db_write_rows != 0)
     }
     .instrument(debug_span!("db"))
@@ -206,7 +207,7 @@ pub async fn delete_all<T: Entity>(database: &Database, conditions: Vec<Cond<'_,
         debug!("delete_all, sql={sql}, params={params:?}");
         let statement = conn.prepared_statement(&sql).await?;
         let db_write_rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-        debug!(db_write_rows, "stats");
+        stats!(db_write_rows);
         Ok(db_write_rows)
     }
     .instrument(debug_span!("db"))

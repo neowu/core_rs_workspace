@@ -4,6 +4,7 @@ use chrono::Utc;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log::current_action_id;
+use framework::stats;
 use rdkafka::ClientConfig;
 use rdkafka::message::Header;
 use rdkafka::message::OwnedHeaders;
@@ -41,7 +42,7 @@ impl Producer {
         async {
             let payload = to_json(message)?;
 
-            debug!(kafka_write_messages = 1, kafka_write_bytes = payload.len(), "stats");
+            stats!(kafka_write_messages = 1, kafka_write_bytes = payload.len());
 
             let mut record = FutureRecord::<String, String>::to(topic.name)
                 .timestamp(Utc::now().timestamp_millis())

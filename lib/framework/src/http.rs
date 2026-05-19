@@ -26,6 +26,7 @@ use tracing::warn;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
+use crate::stats;
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -195,7 +196,7 @@ impl HttpClient {
             {
                 debug!("[response] body={body}");
             }
-            debug!(http_read_bytes = body.len(), "stats");
+            stats!(http_read_bytes = body.len());
 
             Ok(HttpResponse { status, headers, body })
         }
@@ -254,7 +255,7 @@ fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
     }
     if let Some(ref body) = request.body {
         debug!("[request] body={body}");
-        debug!(http_write_bytes = body.len(), "stats");
+        stats!(http_write_bytes = body.len());
         *http_request.body_mut() = Some(Body::from(body.to_owned()));
     }
     Ok(http_request)
@@ -296,12 +297,11 @@ impl EventSource {
 
 impl Drop for EventSource {
     fn drop(&mut self) {
-        debug!(
+        stats!(
             sse_read_entries = self.read_entries,
             sse_read_bytes = self.read_bytes,
             sse_elapsed = self.start_time.elapsed().as_nanos(),
-            sse_count = 1,
-            "stats"
+            sse_count = 1
         );
     }
 }

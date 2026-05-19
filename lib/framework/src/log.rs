@@ -93,6 +93,31 @@ pub fn current_action_id() -> Option<String> {
     CURRENT_ACTION_ID.try_with(|current_action_id| Some(current_action_id.clone())).unwrap_or(None)
 }
 
+pub const CONTEXT: &str = "__context";
+pub const STATS: &str = "__stats";
+
+#[macro_export]
+macro_rules! context {
+    ($($fields:tt)+) => {
+        ::tracing::event!(
+            name: $crate::log::CONTEXT,
+            ::tracing::Level::DEBUG,
+            $($fields)+
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! stats {
+    ($($fields:tt)+) => {
+        ::tracing::event!(
+            name: $crate::log::STATS,
+            ::tracing::Level::DEBUG,
+            $($fields)+
+        )
+    };
+}
+
 #[derive(Serialize, Debug)]
 pub struct ActionLogMessage {
     pub id: String,

@@ -11,6 +11,7 @@ use framework::http::HttpMethod::Post;
 use framework::http::HttpMethod::Put;
 use framework::http::HttpRequest;
 use framework::json;
+use framework::stats;
 use framework::write_str;
 use serde::Deserialize;
 use serde::Serialize;
@@ -62,7 +63,7 @@ impl Elasticsearch {
                 body.push_str(&json::to_json(&doc)?);
                 body.push('\n');
             }
-            debug!(es_write_entries = documents.len(), es_write_bytes = body.len(), "stats");
+            stats!(es_write_entries = documents.len(), es_write_bytes = body.len());
             request.body(body, "application/json");
 
             let response = self.client.execute(request).await?;

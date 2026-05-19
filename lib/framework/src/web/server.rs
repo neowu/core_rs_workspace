@@ -67,8 +67,8 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
     log::start_action("http", None, async {
         let method = request.method().clone();
         let uri = request.uri();
-        debug!(method = ?method, "[request]");
-        debug!(uri = ?uri, "[request]");
+        context!(uri = ?uri, method = ?method);
+
         for (name, value) in request.headers() {
             if name != header::COOKIE {
                 debug!("[header] {name}={value:?}");
@@ -79,35 +79,32 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
             debug!("[cookie] {}={}", cookie.name(), cookie.value());
         }
 
-        debug!(uri = ?uri, method = ?method, "context");
-
         let client_info = client_info(&request, 2);
-        debug!(client_ip = client_info.client_ip, "context");
+        context!(client_ip = client_info.client_ip);
         if let Some(ref user_agent) = client_info.user_agent {
-            debug!(user_agent, "context");
+            context!(user_agent);
         }
         request.extensions_mut().insert(Arc::new(client_info));
 
         let matched_path = request.extensions().get::<MatchedPath>().map(MatchedPath::as_str);
         if let Some(matched_path) = matched_path {
-            debug!(matched_path = matched_path, "context");
+            context!(matched_path = matched_path);
         }
 
-        if let Some(length) = request
+        if let Some(request_content_length) = request
             .headers()
             .get(header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| str::parse::<usize>(v).ok())
         {
-            debug!(request_content_length = length, "stats");
+            stats!(request_content_length);
         }
 
         let http_response = next.run(request).await;
 
-        let status = http_response.status().as_u16();
+        let response_status = http_response.status().as_u16();
         // TODO: warn on 404, 405?
-        debug!(status, "[response]");
-        debug!(response_status = status, "context");
+        context!(response_status);
         for (name, value) in http_response.headers() {
             debug!("[header] {name}={value:?}");
         }

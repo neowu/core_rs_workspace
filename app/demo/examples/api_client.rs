@@ -18,7 +18,7 @@ async fn main() -> Result<(), Exception> {
     let client = user_service::client(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080");
 
     task::spawn_action("client", async move {
-        let user_id = client.create(CreateUserRequest { name: "user_2".to_owned(), rating: None }).await?;
+        let user_id = client.create(CreateUserRequest { name: "".to_owned(), rating: None }).await?;
 
         client.update(UpdateUserRequest { id: user_id, rating: Some(1), tags: Some(vec!["tag1".to_owned()]) }).await?;
 

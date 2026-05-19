@@ -8,7 +8,6 @@ use chrono::SecondsFormat;
 use chrono::Utc;
 use tokio::sync::broadcast;
 use tokio::time;
-use tracing::debug;
 use tracing::info;
 
 use crate::exception::Exception;
@@ -121,7 +120,7 @@ where
     Box::pin(log::start_action("job", None, async move {
         let name = context.name;
         let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true);
-        debug!(job = name, scheduled_time, "context");
+        context!(job = name, scheduled_time);
         job(state, context).await
     }))
 }

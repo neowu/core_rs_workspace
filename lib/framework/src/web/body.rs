@@ -105,7 +105,7 @@ where
             Ok(body) => {
                 debug!("[response] body={body}");
                 let length = body.len();
-                debug!(response_content_length = length, "stats");
+                stats!(response_content_length = length);
                 (
                     [
                         (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),

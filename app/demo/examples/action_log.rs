@@ -1,12 +1,14 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use framework::context;
 use framework::exception;
 use framework::exception::Exception;
 use framework::exception::Severity;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::shell;
+use framework::stats;
 use framework::task;
 use tokio::task::yield_now;
 use tracing::Instrument as _;
@@ -34,7 +36,9 @@ async fn test_action() {
         let x = Arc::new(Mutex::new(1));
         let y = x.clone();
 
-        debug!(key = "value1", key2 = "value2", "context");
+        context!(key = "value1", key2 = "value2");
+
+        stats!(write_bytes = 23);
 
         task::spawn_action("some-task", async move {
             *y.lock().unwrap() = 2;
@@ -43,8 +47,7 @@ async fn test_action() {
             Ok(())
         });
 
-        debug!(key3 = "value3", "context");
-
+        context!(key3 = "value3");
         warn!("after task, {}", x.lock().unwrap());
         handle_request(false).await?;
         Ok(())

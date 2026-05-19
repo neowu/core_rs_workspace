@@ -23,7 +23,7 @@ pub fn routes(state: &'static AppState) -> Router {
     user_service::route(Arc::new(service))
 }
 
-pub struct UserServiceImpl {
+struct UserServiceImpl {
     state: &'static AppState,
 }
 

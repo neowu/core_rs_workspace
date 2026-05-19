@@ -1,4 +1,5 @@
 words = [
     "duckdb",
     "kibana",
+    "serde",
 ]

@@ -5,7 +5,6 @@ use tokio::task::JoinHandle;
 use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 use tracing::Span;
-use tracing::debug;
 use tracing::info;
 
 use crate::exception::Exception;
@@ -21,7 +20,7 @@ where
     let ref_id = current_action_id();
     TASK_TRACKER.spawn(async move {
         log::start_action("task", ref_id, async {
-            debug!(task = name, "context");
+            context!(task = name);
             task.await
         })
         .await;

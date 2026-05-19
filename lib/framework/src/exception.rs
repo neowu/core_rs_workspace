@@ -132,19 +132,6 @@ macro_rules! exception {
     }};
 }
 
-#[macro_export]
-macro_rules! validation_error {
-    ($message:expr $(, severity = $severity:expr)?) => {{
-        let result = $crate::exception::Exception::__new(
-            $message,
-            concat!(file!(), ":", line!(), ":", column!()),
-        );
-        let result = result.__with_code($crate::exception::error_code::VALIDATION_ERROR);
-        $( let result = result.__with_severity($severity); )?
-        result
-    }};
-}
-
 fn source(error: Option<&(dyn Error + 'static)>) -> Option<Box<Exception>> {
     error.map(|e| {
         Box::new(Exception {

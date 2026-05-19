@@ -8,9 +8,11 @@ use std::time::Instant;
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
+use framework::context;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
+use framework::stats;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
 use rdkafka::Message as _;
@@ -216,13 +218,13 @@ where
     M: DeserializeOwned + Send + 'static,
 {
     Box::pin(log::start_action("message", None, async move {
-        debug!(topic, "context");
+        context!(topic);
         let mut kafka_read_bytes = 0;
         for message in &messages {
             debug!(key = message.key, payload = message.payload, "[message]");
             kafka_read_bytes += message.payload.len();
         }
-        debug!(kafka_read_messages = messages.len(), kafka_read_bytes, "stats");
+        stats!(kafka_read_messages = messages.len(), kafka_read_bytes);
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");
@@ -295,13 +297,13 @@ where
 {
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
     log::start_action("message", ref_id, async {
-        debug!(topic, key = message.key, "context");
+        context!(topic, key = message.key);
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
         for (key, value) in &message.headers {
             debug!("[header] {}={}", key, value);
         }
-        debug!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len(), "stats");
+        stats!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len());
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;
             debug!("lag={lag}");
