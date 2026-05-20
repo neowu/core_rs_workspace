@@ -3,7 +3,7 @@ resolver = "3"
 members = ["app/*", "lib/*"]
 
 [workspace.package]
-version = "0.5.6"
+version = "0.5.7"
 
 [workspace.dependencies]
 framework = { path = "lib/framework" }

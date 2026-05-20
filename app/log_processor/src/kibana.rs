@@ -8,7 +8,7 @@ use framework::http::HttpRequest;
 use tracing::info;
 
 pub(crate) async fn import(kibana_uri: &str, objects: String) -> Result<(), Exception> {
-    let http_client = HttpClient::new(HttpClientConfig::internal_only());
+    let http_client = HttpClient::new(HttpClientConfig::default());
     let mut request = HttpRequest::new(Post, format!("{kibana_uri}/api/saved_objects/_bulk_create?overwrite=true"));
     request.headers.insert(HeaderName::from_static("kbn-xsrf"), "true".to_owned());
     // request.headers.insert(HeaderName::from_static("osd-xsrf"), "true".to_string());

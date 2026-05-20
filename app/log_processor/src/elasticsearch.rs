@@ -26,7 +26,7 @@ pub(crate) struct Elasticsearch {
 
 impl Elasticsearch {
     pub(crate) fn new(uri: String) -> Self {
-        Self { uri, client: HttpClient::new(HttpClientConfig::internal_only()) }
+        Self { uri, client: HttpClient::new(HttpClientConfig::default()) }
     }
 
     pub(crate) async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {

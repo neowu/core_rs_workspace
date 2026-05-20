@@ -47,6 +47,7 @@ pub struct HttpClientConfig {
     pub accept_certs: Option<Vec<Certificate>>,
     pub timeout: Duration,
     pub retry: RetryConfig,
+    pub prefer_http2: bool,
 }
 
 impl Default for HttpClientConfig {
@@ -57,18 +58,20 @@ impl Default for HttpClientConfig {
             accept_certs: None,
             timeout: Duration::from_secs(30),
             retry: RetryConfig { max_attempts: 1, interval: Duration::from_millis(500) },
+            prefer_http2: false,
         }
     }
 }
 
 impl HttpClientConfig {
-    // use to call internal services with self signed certs
+    // use to call internal services with self signed certs and http2
     pub const fn internal_only() -> Self {
         Self {
             accept_invalid_cert: true,
             accept_certs: Some(vec![]),
             timeout: Duration::from_secs(30),
             retry: RetryConfig { max_attempts: 3, interval: Duration::from_millis(500) },
+            prefer_http2: true,
         }
     }
 }
@@ -133,8 +136,11 @@ impl HttpClient {
             .timeout(config.timeout)
             .tls_danger_accept_invalid_certs(config.accept_invalid_cert)
             .pool_idle_timeout(Duration::from_mins(5))
-            .http2_prior_knowledge()
             .connection_verbose(false);
+
+        if config.prefer_http2 {
+            builder = builder.http2_prior_knowledge();
+        }
 
         if let Some(certs) = config.accept_certs {
             builder = builder.tls_certs_only(certs);
