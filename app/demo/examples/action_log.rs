@@ -8,6 +8,7 @@ use framework::exception::Severity;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::shell;
+use framework::spawn_action;
 use framework::stats;
 use framework::task;
 use tokio::task::yield_now;
@@ -40,10 +41,11 @@ async fn test_action() {
 
         stats!(write_bytes = 23);
 
-        task::spawn_action("some-task", async move {
+        spawn_action!("some-task", async move {
+            context!(location = concat!(file!(), ":", line!()));
             *y.lock().unwrap() = 2;
-            warn!(error_code = "TEST", "y = {y:?}");
-            shell::run("echo1 'Hello, World!'").await?;
+            warn!(error_code = "TEST", "trigger");
+            shell::run("echo 'Hello, World!'").await?;
             Ok(())
         });
 

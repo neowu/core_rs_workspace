@@ -1,3 +1,4 @@
+use std::any::type_name;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -218,7 +219,7 @@ where
     M: DeserializeOwned + Send + 'static,
 {
     Box::pin(log::start_action("message", None, async move {
-        context!(topic = topic);
+        context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
         for message in &messages {
             debug!(key = message.key, payload = message.payload, "[message]");
@@ -297,7 +298,7 @@ where
 {
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
     log::start_action("message", ref_id, async {
-        context!(topic = topic, key = message.key);
+        context!(topic = topic, key = message.key, fn = type_name::<H>());
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
         for (key, value) in &message.headers {

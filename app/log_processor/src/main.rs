@@ -10,6 +10,7 @@ use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::Shutdown;
+use framework::spawn_action;
 use framework::task;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
@@ -52,7 +53,7 @@ async fn main() -> Result<(), Exception> {
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;
-    task::spawn_action("import_kibana_objects", async move {
+    spawn_action!("import_kibana_objects", async move {
         let objects = fs::read_to_string(&asset_path!("assets/kibana_objects.json")?)?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
         kibana::import(&kibana_uri, objects).await?;

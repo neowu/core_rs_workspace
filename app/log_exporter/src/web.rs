@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::Router;
 use chrono::NaiveDate;
 use framework::exception::Exception;
-use framework::task;
+use framework::spawn_action;
 use framework_macro::api;
 use serde::Deserialize;
 use serde::Serialize;
@@ -35,7 +35,7 @@ struct OperationWebServiceImpl {
 impl OperationWebService for OperationWebServiceImpl {
     async fn upload(&self, request: UploadRequest) -> Result<(), Exception> {
         let state = Arc::clone(&self.state);
-        task::spawn_action("upload", async move { upload_archive(request.date, state).await });
+        spawn_action!("upload", async move { upload_archive(request.date, state).await });
         Ok(())
     }
 }

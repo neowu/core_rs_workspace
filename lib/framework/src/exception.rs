@@ -17,8 +17,8 @@ pub struct Exception {
     pub severity: Severity,
     pub code: Option<String>,
     pub message: String,
-    pub location: Option<&'static str>,
-    pub source: Option<Box<Exception>>,
+    location: Option<&'static str>,
+    source: Option<Box<Exception>>,
 }
 
 // used by HttpErrorBody to serialize/deserialize
@@ -123,7 +123,7 @@ macro_rules! exception {
     ($message:expr $(, severity = $severity:expr)? $(, code = $code:expr)? $(, source = $source:expr)?) => {{
         let result = $crate::exception::Exception::__new(
             $message,
-            concat!(file!(), ":", line!(), ":", column!()),
+            concat!(file!(), ":", line!()),
         );
         $( let result = result.__with_severity($severity); )?
         $( let result = result.__with_code($code); )?
@@ -170,10 +170,10 @@ mod tests {
             severity: Severity::Error,
             code: Some("E001".to_owned()),
             message: "bad input".to_owned(),
-            location: Some("src/foo.rs:10:5"),
+            location: Some("src/foo.rs:10"),
             source: None,
         };
-        assert_eq!(exception.backtrace(), "0: ERROR [E001] bad input at src/foo.rs:10:5");
+        assert_eq!(exception.backtrace(), "0: ERROR [E001] bad input at src/foo.rs:10");
     }
 
     #[test]
@@ -182,7 +182,7 @@ mod tests {
             severity: Severity::Error,
             code: None,
             message: "root cause".to_owned(),
-            location: Some("src/root.rs:1:1"),
+            location: Some("src/root.rs:1"),
             source: None,
         };
         let middle = Exception {
@@ -196,14 +196,14 @@ mod tests {
             severity: Severity::Warn,
             code: Some("TOP".to_owned()),
             message: "top".to_owned(),
-            location: Some("src/top.rs:5:5"),
+            location: Some("src/top.rs:5"),
             source: Some(Box::new(middle)),
         };
         assert_eq!(
             top.backtrace(),
-            "0: WARN [TOP] top at src/top.rs:5:5
+            "0: WARN [TOP] top at src/top.rs:5
 1: ERROR [MID] middle
-2: ERROR root cause at src/root.rs:1:1"
+2: ERROR root cause at src/root.rs:1"
         );
     }
 }

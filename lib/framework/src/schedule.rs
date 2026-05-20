@@ -1,3 +1,4 @@
+use std::any::type_name;
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -120,7 +121,8 @@ where
     Box::pin(log::start_action("job", None, async move {
         context!(
             job = context.name,
-            scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true)
+            scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
+            fn = type_name::<J>()
         );
         job(state, context).await
     }))

@@ -52,6 +52,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             use axum::Router;
             use axum::routing::MethodFilter;
             use axum::routing::on;
+            use framework::context;
             use framework::http::HttpClient;
             use framework::web::api::ApiClient;
             use framework::web::api::__into_response;
@@ -151,11 +152,13 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     let method_ident = &model.method_ident;
     let filter = &model.filter;
     let path = &model.path;
+    let fn_format = format!("{{}}::{method_ident}");
 
     let handler = if let Some(request_type) = &model.request_type {
         let extractor = &model.extractor;
         quote! {
             async move |#extractor(req): #extractor<#request_type>| {
+                context!(fn = format!(#fn_format, std::any::type_name::<T>()));
                 let result = svc.#method_ident(req).await;
                 __into_response(result)
             }
@@ -163,6 +166,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     } else {
         quote! {
             async move || {
+                context!(fn = format!(#fn_format, std::any::type_name::<T>()));
                 let result = svc.#method_ident().await;
                 __into_response(result)
             }
@@ -242,6 +246,7 @@ mod tests {
                     use axum::Router;
                     use axum::routing::MethodFilter;
                     use axum::routing::on;
+                    use framework::context;
                     use framework::http::HttpClient;
                     use framework::web::api::ApiClient;
                     use framework::web::api::__into_response;
@@ -259,6 +264,7 @@ mod tests {
                         let router = router.route(
                             "/user/search",
                             on(MethodFilter::GET, async move |Query(req): Query<SearchUserRequest>| {
+                                context!(fn = format!("{}::search", std::any::type_name::<T>()));
                                 let result = svc.search(req).await;
                                 __into_response(result)
                             }),
@@ -267,6 +273,7 @@ mod tests {
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
+                                context!(fn = format!("{}::create", std::any::type_name::<T>()));
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
@@ -275,6 +282,7 @@ mod tests {
                         let router = router.route(
                             "/user/update",
                             on(MethodFilter::PUT, async move |Json(req): Json<UpdateUserRequest>| {
+                                context!(fn = format!("{}::update", std::any::type_name::<T>()));
                                 let result = svc.update(req).await;
                                 __into_response(result)
                             }),
@@ -337,6 +345,7 @@ mod tests {
                     use axum::Router;
                     use axum::routing::MethodFilter;
                     use axum::routing::on;
+                    use framework::context;
                     use framework::http::HttpClient;
                     use framework::web::api::ApiClient;
                     use framework::web::api::__into_response;
@@ -354,6 +363,7 @@ mod tests {
                         let router = router.route(
                             "/user/get_all",
                             on(MethodFilter::GET, async move || {
+                                context!(fn = format!("{}::get_all", std::any::type_name::<T>()));
                                 let result = svc.get_all().await;
                                 __into_response(result)
                             }),
@@ -362,6 +372,7 @@ mod tests {
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
+                                context!(fn = format!("{}::create", std::any::type_name::<T>()));
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
