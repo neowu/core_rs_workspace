@@ -27,8 +27,8 @@ use rdkafka::message::BorrowedMessage;
 use rdkafka::message::Headers as _;
 use rdkafka::util::Timeout;
 use serde::de::DeserializeOwned;
-use tokio::sync::broadcast;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -118,7 +118,7 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, mut shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception> {
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception> {
         let handlers = self.handlers;
         let consumer: BaseConsumer = self.config.create()?;
         let topics: Vec<&str> = handlers.keys().copied().collect();
@@ -146,7 +146,7 @@ where
                 }
             }
 
-            if shutdown_signal.try_recv().is_ok() {
+            if shutdown_signal.is_cancelled() {
                 info!("kafka consumer stopped, topics={:?}", topics);
                 return Ok(());
             }

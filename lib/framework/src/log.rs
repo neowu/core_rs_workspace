@@ -21,14 +21,6 @@ pub mod appender;
 pub mod id_generator;
 mod layer;
 
-pub trait ActionLogAppender {
-    fn append(&self, action_log: ActionLogMessage);
-}
-
-task_local! {
-    static CURRENT_ACTION_ID: String
-}
-
 #[inline]
 pub fn init() {
     tracing_subscriber::registry()
@@ -88,6 +80,10 @@ where
         .await;
 }
 
+task_local! {
+    static CURRENT_ACTION_ID: String
+}
+
 #[inline]
 pub fn current_action_id() -> Option<String> {
     CURRENT_ACTION_ID.try_with(|current_action_id| Some(current_action_id.clone())).unwrap_or(None)
@@ -116,6 +112,10 @@ macro_rules! stats {
             $($key = $value as u128),+
         )
     };
+}
+
+pub trait ActionLogAppender {
+    fn append(&self, action_log: ActionLogMessage);
 }
 
 #[derive(Serialize, Debug)]

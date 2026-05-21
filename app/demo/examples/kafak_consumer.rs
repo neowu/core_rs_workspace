@@ -3,7 +3,7 @@ use std::sync::Arc;
 use framework::exception::Exception;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
-use framework::shutdown::Shutdown;
+use framework::shutdown::listen_shutdown_signal;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
 use framework_kafka::consumer::Message;
@@ -42,9 +42,7 @@ pub async fn main() -> Result<(), Exception> {
         tx,
     });
 
-    let shutdown = Shutdown::new();
-    let signal = shutdown.subscribe();
-    shutdown.listen();
+    let shutdown_signal = listen_shutdown_signal();
 
     let handle = tokio::spawn(process_message(rx));
 
@@ -56,7 +54,7 @@ pub async fn main() -> Result<(), Exception> {
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
-    consumer.start(state, signal).await?;
+    consumer.start(state, shutdown_signal).await?;
 
     handle.await?;
 

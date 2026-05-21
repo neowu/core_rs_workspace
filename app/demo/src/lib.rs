@@ -11,7 +11,7 @@ use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::schedule::controller::SystemRoute as _;
-use framework::shutdown::Shutdown;
+use framework::shutdown::listen_shutdown_signal;
 use framework::task;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
@@ -44,10 +44,7 @@ pub async fn run() -> Result<(), Exception> {
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
-    let shutdown = Shutdown::new();
-    let signal = shutdown.subscribe();
-    let scheduler_signal = shutdown.subscribe();
-    shutdown.listen();
+    let shutdown_signal = listen_shutdown_signal();
 
     let db = Database::new(DbConfig {
         uri: config.db_url,
@@ -58,16 +55,17 @@ pub async fn run() -> Result<(), Exception> {
 
     let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
+    let scheduler_signal = shutdown_signal.clone();
     let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
     scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
-    let routes = scheduler.routes(state);
+    let scheduler_routes = scheduler.routes(state);
     task::spawn_task(async move { scheduler.start(state, scheduler_signal).await });
 
     let app = Router::new();
-    let app = app.merge(routes);
+    let app = app.merge(scheduler_routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes()?);
-    start_http_server(app, signal, HttpServerConfig::default()).await?;
+    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await?;
 
     task::shutdown().await;
 

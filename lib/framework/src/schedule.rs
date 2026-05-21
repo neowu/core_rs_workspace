@@ -8,8 +8,8 @@ use chrono::FixedOffset;
 use chrono::NaiveTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
-use tokio::sync::broadcast;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 use tracing::warn;
 
@@ -72,14 +72,14 @@ where
         self.schedules.push(Arc::new(Schedule { name, job, trigger }));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception>
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception>
     where
         S: Clone,
     {
         let mut handles = vec![];
         for schedule in self.schedules {
             let state = state.clone();
-            let mut shutdown_signal = shutdown_signal.resubscribe();
+            let shutdown_signal = shutdown_signal.clone();
             handles.push(tokio::spawn(async move {
                 time::sleep(Duration::from_secs(3)).await; // initial delay
                 let mut previous = Utc::now();
@@ -96,7 +96,7 @@ where
                     let waiting_time = (context.scheduled_time - previous).to_std().unwrap_or(Duration::ZERO);
                     previous = context.scheduled_time;
                     tokio::select! {
-                        _ = shutdown_signal.recv() => {
+                        () = shutdown_signal.cancelled() => {
                             return;
                         }
                         () = time::sleep(waiting_time) => {

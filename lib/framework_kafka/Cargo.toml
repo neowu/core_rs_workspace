@@ -9,6 +9,7 @@ tracing.workspace = true
 serde.workspace = true
 chrono.workspace = true
 tokio.workspace = true
+tokio-util = "*"
 
 futures = "*"
 rdkafka = { version = "*", default-features = false, features = [

@@ -550,6 +550,7 @@ dependencies = [
  "rdkafka",
  "serde",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

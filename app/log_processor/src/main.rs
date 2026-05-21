@@ -9,7 +9,7 @@ use framework::json;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
-use framework::shutdown::Shutdown;
+use framework::shutdown::listen_shutdown_signal;
 use framework::spawn_action;
 use framework::task;
 use framework_kafka::Topic;
@@ -46,10 +46,7 @@ async fn main() -> Result<(), Exception> {
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
-    let shutdown = Shutdown::new();
-    let consumer_signal = shutdown.subscribe();
-    let scheduler_signal = shutdown.subscribe();
-    shutdown.listen();
+    let shutdown_signal = listen_shutdown_signal();
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;
@@ -63,6 +60,7 @@ async fn main() -> Result<(), Exception> {
     let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri) });
 
     let scheduler_state = Arc::clone(&state);
+    let scheduler_signal = shutdown_signal.clone();
     task::spawn_task(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
         scheduler.schedule_daily(
@@ -80,7 +78,7 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
-    consumer.start(state, consumer_signal).await?;
+    consumer.start(state, shutdown_signal).await?;
 
     task::shutdown().await;
 

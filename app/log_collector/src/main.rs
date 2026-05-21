@@ -6,7 +6,7 @@ use framework::exception::Exception;
 use framework::json;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
-use framework::shutdown::Shutdown;
+use framework::shutdown::listen_shutdown_signal;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
 use framework_kafka::Topic;
@@ -37,9 +37,7 @@ async fn main() -> Result<(), Exception> {
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
-    let shutdown = Shutdown::new();
-    let signal = shutdown.subscribe();
-    shutdown.listen();
+    let shutdown_signal = listen_shutdown_signal();
 
     let state = Arc::new(AppState {
         topics: Topics { event: Topic::new("event") },
@@ -48,5 +46,5 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(state));
-    start_http_server(app, signal, HttpServerConfig::default()).await
+    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await
 }

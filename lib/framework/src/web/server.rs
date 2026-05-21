@@ -12,7 +12,7 @@ use axum::response::IntoResponse as _;
 use axum::response::Response;
 use axum_extra::extract::CookieJar;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
 use tracing::debug;
@@ -35,7 +35,7 @@ impl Default for HttpServerConfig {
 
 pub async fn start_http_server(
     router: Router,
-    mut shutdown_signal: broadcast::Receiver<()>,
+    shutdown_signal: CancellationToken,
     config: HttpServerConfig,
 ) -> Result<(), Exception> {
     let app = Router::new();
@@ -46,7 +46,7 @@ pub async fn start_http_server(
     info!("http server stated, bind={}", config.bind_address);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            shutdown_signal.recv().await.expect("shutdown signal cannot fail");
+            shutdown_signal.cancelled().await;
         })
         .await?;
     info!("http server stopped");

@@ -12,7 +12,7 @@ use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::number::parse_u32;
 use framework::schedule::Scheduler;
-use framework::shutdown::Shutdown;
+use framework::shutdown::listen_shutdown_signal;
 use framework::task;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
@@ -78,11 +78,7 @@ async fn main() -> Result<(), Exception> {
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
-    let shutdown = Shutdown::new();
-    let http_signal = shutdown.subscribe();
-    let scheduler_signal = shutdown.subscribe();
-    let consumer_signal = shutdown.subscribe();
-    shutdown.listen();
+    let shutdown_signal = listen_shutdown_signal();
 
     let state = Arc::new({
         let hostname = hostname::get()?.to_string_lossy().to_string();
@@ -96,9 +92,9 @@ async fn main() -> Result<(), Exception> {
             duckdb_memory_limit: duckdb_memory_limit()?,
         }
     });
-    let scheduler_state = Arc::clone(&state);
-    let consumer_state = Arc::clone(&state);
 
+    let scheduler_state = Arc::clone(&state);
+    let scheduler_signal = shutdown_signal.clone();
     task::spawn_task(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
         scheduler.schedule_daily(
@@ -109,6 +105,8 @@ async fn main() -> Result<(), Exception> {
         scheduler.start(scheduler_state, scheduler_signal).await
     });
 
+    let consumer_state = Arc::clone(&state);
+    let consumer_signal = shutdown_signal.clone();
     task::spawn_task(async move {
         let mut consumer =
             MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
@@ -119,7 +117,7 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(Arc::clone(&state)));
-    start_http_server(app, http_signal, HttpServerConfig::default()).await?;
+    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await?;
 
     task::shutdown().await;
 

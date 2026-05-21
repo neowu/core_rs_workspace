@@ -1,7 +1,6 @@
-* refactor shutdown with CancellationToken
 * always make state with Box::leak()?
 * log_collector supports collect cookies?
-* optimize ActionLog
+* optimize ActionLog / current_action_id
 
 # Thoughts on AI era
 1. require more streamlined build server? no ui, drive by api / slack?, which can dynamically create new kube deployment?
