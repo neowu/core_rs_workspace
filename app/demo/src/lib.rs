@@ -10,6 +10,7 @@ use framework::load_env;
 use framework::log;
 use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
+use framework::schedule::controller::SystemRoute as _;
 use framework::shutdown::Shutdown;
 use framework::task;
 use framework::web::server::HttpServerConfig;
@@ -57,14 +58,13 @@ pub async fn run() -> Result<(), Exception> {
 
     let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
-    task::spawn_task(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
-        scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
-        scheduler.start(state, scheduler_signal).await
-    });
+    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
+    scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
+    let routes = scheduler.routes(state);
+    task::spawn_task(async move { scheduler.start(state, scheduler_signal).await });
 
     let app = Router::new();
-    let app = app.merge(job::routes(state));
+    let app = app.merge(routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes()?);
     start_http_server(app, signal, HttpServerConfig::default()).await?;

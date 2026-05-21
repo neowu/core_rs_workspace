@@ -53,8 +53,8 @@ impl Producer {
             }
 
             let mut headers = insert_header(OwnedHeaders::new(), "client", &self.client);
-            if let Some(ref ref_id) = current_action_id() {
-                headers = insert_header(headers, "ref_id", ref_id);
+            if let Some(ref_id) = current_action_id() {
+                headers = headers.insert(Header { key: "ref_id", value: Some(ref_id.as_bytes()) });
             }
             record = record.headers(headers);
 

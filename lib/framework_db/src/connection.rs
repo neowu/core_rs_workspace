@@ -4,7 +4,6 @@ use std::time::Duration;
 use framework::exception;
 use framework::exception::Exception;
 use framework::pool::ResourceManager;
-use tokio::task;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
 use tokio_postgres::Client;
@@ -68,7 +67,7 @@ impl ResourceManager for ConnectionManager {
         let (client, connection) = self.config.connect(NoTls).await?;
 
         // use native tokio spawn, not wire current span
-        task::spawn(async {
+        tokio::spawn(async {
             if let Err(e) = connection.await {
                 error!("connection error: {e}");
             }

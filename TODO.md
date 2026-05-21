@@ -1,7 +1,6 @@
 * refactor shutdown with CancellationToken
 * always make state with Box::leak()?
 * log_collector supports collect cookies?
-* scheduler: impl web trigger?
 * optimize ActionLog
 
 # Thoughts on AI era

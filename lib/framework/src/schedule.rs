@@ -1,5 +1,6 @@
 use std::any::type_name;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -10,11 +11,14 @@ use chrono::Utc;
 use tokio::sync::broadcast;
 use tokio::time;
 use tracing::info;
+use tracing::warn;
 
 use crate::exception::Exception;
 use crate::log;
+use crate::log::current_action_id;
 use crate::schedule::trigger::Trigger;
 
+pub mod controller;
 mod trigger;
 
 pub struct JobContext {
@@ -22,7 +26,7 @@ pub struct JobContext {
     pub scheduled_time: DateTime<Utc>,
 }
 
-type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 struct Schedule<S> {
     name: &'static str,
@@ -32,7 +36,7 @@ struct Schedule<S> {
 
 pub struct Scheduler<S> {
     timezone: FixedOffset,
-    schedules: Vec<Schedule<S>>,
+    schedules: Vec<Arc<Schedule<S>>>,
 }
 
 impl<S> Scheduler<S>
@@ -45,7 +49,7 @@ where
 
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: Duration)
     where
-        J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
+        J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
         self.add_job(name, job, Trigger::FixedRate(interval));
@@ -53,7 +57,7 @@ where
 
     pub fn schedule_daily<J, Fut>(&mut self, name: &'static str, job: J, time: NaiveTime)
     where
-        J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
+        J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
         self.add_job(name, job, Trigger::Daily { time_zone: self.timezone, time });
@@ -61,11 +65,11 @@ where
 
     fn add_job<J, Fut>(&mut self, name: &'static str, job: J, trigger: Trigger)
     where
-        J: Fn(S, JobContext) -> Fut + Copy + Send + 'static,
+        J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
         let job = Box::new(move |state: S, context| process_job(job, state, context));
-        self.schedules.push(Schedule { name, job, trigger });
+        self.schedules.push(Arc::new(Schedule { name, job, trigger }));
     }
 
     pub async fn start(self, state: S, shutdown_signal: broadcast::Receiver<()>) -> Result<(), Exception>
@@ -118,12 +122,17 @@ where
     J: Fn(S, JobContext) -> Fut + Send + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    Box::pin(log::start_action("job", None, async move {
+    let ref_id = current_action_id();
+    let triggered = ref_id.is_some();
+    Box::pin(log::start_action("job", ref_id, async move {
         context!(
             job = context.name,
             scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
             fn = type_name::<J>()
         );
+        if triggered {
+            warn!(error_code = "MANUAL_OPERATION", "trigger job manually");
+        }
         job(state, context).await
     }))
 }
