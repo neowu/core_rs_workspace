@@ -304,6 +304,9 @@ where
         for (key, value) in &message.headers {
             debug!("[header] {}={}", key, value);
         }
+        if let Some(client) = message.headers.get("client") {
+            context!(client = client);
+        }
         stats!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len());
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;

@@ -53,7 +53,7 @@ impl Producer {
                 record = record.key(key);
             }
 
-            let mut headers = insert_header(OwnedHeaders::new(), "client", self.client);
+            let mut headers = OwnedHeaders::new().insert(Header { key: "client", value: Some(self.client) });
             if let Some(ref_id) = current_action_id() {
                 headers = headers.insert(Header { key: "ref_id", value: Some(&ref_id) });
             }
@@ -69,8 +69,4 @@ impl Producer {
         .instrument(span)
         .await
     }
-}
-
-fn insert_header(headers: OwnedHeaders, key: &str, value: &str) -> OwnedHeaders {
-    headers.insert(Header { key, value: Some(value.as_bytes()) })
 }
