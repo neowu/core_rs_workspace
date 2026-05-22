@@ -10,12 +10,15 @@ use std::time::Instant;
 use bytes::Bytes;
 use futures::Stream;
 use futures::TryStreamExt as _;
+use http::HeaderMap;
 pub use http::HeaderName;
+use http::HeaderValue;
 pub use http::header;
 use reqwest::Body;
 use reqwest::Certificate;
-use reqwest::Method;
+pub use reqwest::Method;
 use reqwest::Request;
+use reqwest::Response;
 use reqwest::Url;
 use tokio::time::sleep;
 pub use tokio_stream::StreamExt;
@@ -77,50 +80,29 @@ impl HttpClientConfig {
 }
 
 pub struct HttpRequest {
-    pub method: HttpMethod,
+    pub method: Method,
     pub url: String,
-    pub headers: HashMap<HeaderName, String>,
+    headers: HeaderMap,
     body: Option<String>,
 }
 
 impl HttpRequest {
-    pub fn new(method: HttpMethod, url: impl Into<String>) -> Self {
-        HttpRequest { method, url: url.into(), headers: HashMap::new(), body: None }
+    pub fn new(method: Method, url: impl Into<String>) -> Self {
+        HttpRequest { method, url: url.into(), headers: HeaderMap::new(), body: None }
     }
 
-    pub fn body(&mut self, body: String, content_type: impl Into<String>) {
+    pub fn header(&mut self, name: HeaderName, value: &str) -> Result<(), Exception> {
+        self.headers.insert(
+            name,
+            HeaderValue::from_str(value)
+                .map_err(|err| exception!(format!("invalid header value, value={value}"), source = err))?,
+        );
+        Ok(())
+    }
+
+    pub fn body(&mut self, body: String, content_type: &'static str) {
         self.body = Some(body);
-        self.headers.insert(header::CONTENT_TYPE, content_type.into());
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum HttpMethod {
-    Get,
-    Post,
-    Put,
-    Delete,
-}
-
-impl HttpMethod {
-    const fn to_str(&self) -> &'static str {
-        match self {
-            HttpMethod::Get => "GET",
-            HttpMethod::Post => "POST",
-            HttpMethod::Put => "PUT",
-            HttpMethod::Delete => "DELETE",
-        }
-    }
-}
-
-impl From<HttpMethod> for Method {
-    fn from(method: HttpMethod) -> Self {
-        match method {
-            HttpMethod::Get => Method::GET,
-            HttpMethod::Post => Method::POST,
-            HttpMethod::Put => Method::PUT,
-            HttpMethod::Delete => Method::DELETE,
-        }
+        self.headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     }
 }
 
@@ -155,7 +137,6 @@ impl HttpClient {
         async {
             let max_attempts = self.retry.max_attempts.max(1);
             let interval = self.retry.interval;
-            let idempotent = matches!(request.method, HttpMethod::Get | HttpMethod::Put | HttpMethod::Delete);
 
             let mut attempt: u32 = 0;
             let response = loop {
@@ -175,7 +156,7 @@ impl HttpClient {
                         break response;
                     }
                     Err(err) => {
-                        if idempotent && attempt < max_attempts {
+                        if request.method.is_idempotent() && attempt < max_attempts {
                             exception!(
                                 "http request failed, retry soon",
                                 severity = Severity::Warn,
@@ -213,7 +194,7 @@ impl HttpClient {
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
         let span = debug_span!("sse");
         async {
-            request.headers.insert(header::ACCEPT, "text/event-stream".to_owned());
+            request.headers.insert(header::ACCEPT, HeaderValue::from_static("text/event-stream"));
             let http_request = create_request(&request)?;
 
             let response = self.client.execute(http_request).await?;
@@ -240,7 +221,7 @@ impl HttpClient {
     }
 }
 
-fn parse_headers(response: &reqwest::Response) -> Result<HashMap<HeaderName, String>, Exception> {
+fn parse_headers(response: &Response) -> Result<HashMap<HeaderName, String>, Exception> {
     let mut headers = HashMap::new();
     for (key, value) in response.headers() {
         let value = value.to_str()?;
@@ -251,13 +232,13 @@ fn parse_headers(response: &reqwest::Response) -> Result<HashMap<HeaderName, Str
 }
 
 fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
-    debug!(method = request.method.to_str(), "[request]");
+    debug!(method = request.method.as_str(), "[request]");
     debug!(url = request.url, "[request]");
     let url = Url::parse(&request.url)?;
-    let mut http_request = Request::new(request.method.clone().into(), url);
-    for (key, value) in &request.headers {
-        debug!("[header] {}={}", key, value);
-        http_request.headers_mut().insert(key, value.parse()?);
+    let mut http_request = Request::new(request.method.clone(), url);
+    http_request.headers_mut().extend(request.headers.clone());
+    for (key, value) in http_request.headers() {
+        debug!("[header] {}={}", key, value.to_str()?);
     }
     if let Some(ref body) = request.body {
         debug!("[request] body={body}");

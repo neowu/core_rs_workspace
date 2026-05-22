@@ -70,14 +70,14 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
                 router
             }
 
-            pub fn client(http_client: HttpClient, api_url: &'static str) -> impl #trait_ident {
+            pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl #trait_ident {
                 struct Client {
                     client: ApiClient,
                 }
                 impl #trait_ident for Client {
                     #(#client_methods)*
                 }
-                Client { client: ApiClient::new(http_client, api_url) }
+                Client { client: ApiClient::new(http_client, api_url, client) }
             }
         }
     })
@@ -290,7 +290,7 @@ mod tests {
                         router
                     }
 
-                    pub fn client(http_client: HttpClient, api_url: &'static str) -> impl UserService {
+                    pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl UserService {
                         struct Client {
                             client: ApiClient,
                         }
@@ -305,7 +305,7 @@ mod tests {
                                 self.client.put("/user/update", request).await
                             }
                         }
-                        Client { client: ApiClient::new(http_client, api_url) }
+                        Client { client: ApiClient::new(http_client, api_url, client) }
                     }
                 }
             }
@@ -380,7 +380,7 @@ mod tests {
                         router
                     }
 
-                    pub fn client(http_client: HttpClient, api_url: &'static str) -> impl UserService {
+                    pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl UserService {
                         struct Client {
                             client: ApiClient,
                         }
@@ -392,7 +392,7 @@ mod tests {
                                 self.client.post("/user/create", request).await
                             }
                         }
-                        Client { client: ApiClient::new(http_client, api_url) }
+                        Client { client: ApiClient::new(http_client, api_url, client) }
                     }
                 }
             }

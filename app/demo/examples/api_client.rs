@@ -16,7 +16,11 @@ use tracing::warn;
 async fn main() -> Result<(), Exception> {
     log::init_with_action(ConsoleAppender);
 
-    let client = user_service::client(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080");
+    let client = user_service::client(
+        HttpClient::new(HttpClientConfig::internal_only()),
+        "http://localhost:8080".to_owned(),
+        env!("CARGO_BIN_NAME"),
+    );
 
     spawn_action!("client", async move {
         let user_id = client.create(CreateUserRequest { name: "".to_owned(), rating: None }).await?;

@@ -5,11 +5,8 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
-use framework::http::HttpMethod::Delete;
-use framework::http::HttpMethod::Get;
-use framework::http::HttpMethod::Post;
-use framework::http::HttpMethod::Put;
 use framework::http::HttpRequest;
+use framework::http::Method;
 use framework::json;
 use framework::stats;
 use framework::write_str;
@@ -34,7 +31,7 @@ impl Elasticsearch {
         async {
             debug!(name, "put index template");
             let uri = &self.uri;
-            let mut request = HttpRequest::new(Put, format!("{uri}/_index_template/{name}"));
+            let mut request = HttpRequest::new(Method::PUT, format!("{uri}/_index_template/{name}"));
             request.body(template, "application/json");
             let response = self.client.execute(request).await?;
             if response.status != 200 {
@@ -54,7 +51,7 @@ impl Elasticsearch {
         async {
             debug!(index, "bulk index");
             let uri = &self.uri;
-            let mut request = HttpRequest::new(Post, format!("{uri}/_bulk"));
+            let mut request = HttpRequest::new(Method::POST, format!("{uri}/_bulk"));
 
             let mut body = String::new();
             for (id, doc) in &documents {
@@ -80,7 +77,7 @@ impl Elasticsearch {
         let span = debug_span!("es");
         async {
             let uri = &self.uri;
-            let request = HttpRequest::new(Get, format!("{uri}/_cluster/state"));
+            let request = HttpRequest::new(Method::GET, format!("{uri}/_cluster/state"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
                 return Err(exception!(format!("failed to get state")));
@@ -96,7 +93,7 @@ impl Elasticsearch {
         async {
             debug!(index, "close index");
             let uri = &self.uri;
-            let request = HttpRequest::new(Post, format!("{uri}/{index}/_close"));
+            let request = HttpRequest::new(Method::POST, format!("{uri}/{index}/_close"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
                 return Err(exception!(format!("failed to close index, index={index}")));
@@ -112,7 +109,7 @@ impl Elasticsearch {
         async {
             debug!(index, "delete index");
             let uri = &self.uri;
-            let request = HttpRequest::new(Delete, format!("{uri}/{index}"));
+            let request = HttpRequest::new(Method::DELETE, format!("{uri}/{index}"));
             let response = self.client.execute(request).await?;
             if response.status != 200 {
                 return Err(exception!(format!("failed to delete index, index={index}")));

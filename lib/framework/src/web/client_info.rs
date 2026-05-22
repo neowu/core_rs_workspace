@@ -6,7 +6,7 @@ use axum::http::HeaderName;
 use axum::http::header;
 use tracing::warn;
 
-pub(crate) const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
+const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
 
 #[derive(Debug)]
 pub struct ClientInfo {

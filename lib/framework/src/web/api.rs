@@ -4,6 +4,7 @@ use std::mem::transmute_copy;
 
 use axum::response::IntoResponse as _;
 use axum::response::Response;
+use http::Method;
 use http::StatusCode;
 use http::header;
 use serde::Serialize;
@@ -11,10 +12,12 @@ use serde::de::DeserializeOwned;
 
 use crate::exception::Exception;
 use crate::http::HttpClient;
-use crate::http::HttpMethod;
 use crate::http::HttpRequest;
 use crate::http::HttpResponse;
 use crate::json;
+use crate::log::current_action_id;
+use crate::web::CLIENT;
+use crate::web::REF_ID;
 use crate::web::body::Json;
 use crate::web::error::HttpError;
 use crate::web::error::HttpErrorBody;
@@ -39,13 +42,14 @@ where
 
 pub struct ApiClient {
     http_client: HttpClient,
-    api_url: &'static str,
+    api_url: String,
+    client: &'static str,
 }
 
 impl ApiClient {
     #[inline]
-    pub const fn new(http_client: HttpClient, api_url: &'static str) -> Self {
-        Self { http_client, api_url }
+    pub const fn new(http_client: HttpClient, api_url: String, client: &'static str) -> Self {
+        Self { http_client, api_url, client }
     }
 
     // TODO: add current action id
@@ -61,7 +65,8 @@ impl ApiClient {
         } else {
             format!("{}{path}?{query_string}", self.api_url)
         };
-        let http_request = HttpRequest::new(HttpMethod::Get, url);
+        let mut http_request = HttpRequest::new(Method::GET, url);
+        self.link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
@@ -72,8 +77,9 @@ impl ApiClient {
         Req: Serialize + Debug,
         Res: DeserializeOwned + 'static,
     {
-        let mut http_request = HttpRequest::new(HttpMethod::Post, format!("{}{path}", self.api_url));
-        http_request.body(json::to_json(&request)?, "application/json".to_owned());
+        let mut http_request = HttpRequest::new(Method::POST, format!("{}{path}", self.api_url));
+        http_request.body(json::to_json(&request)?, "application/json");
+        self.link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
@@ -84,10 +90,19 @@ impl ApiClient {
         Req: Serialize + Debug,
         Res: DeserializeOwned + 'static,
     {
-        let mut http_request = HttpRequest::new(HttpMethod::Put, format!("{}{path}", self.api_url));
-        http_request.body(json::to_json(&request)?, "application/json".to_owned());
+        let mut http_request = HttpRequest::new(Method::PUT, format!("{}{path}", self.api_url));
+        http_request.body(json::to_json(&request)?, "application/json");
+        self.link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
+    }
+
+    fn link_context(&self, http_request: &mut HttpRequest) -> Result<(), Exception> {
+        if let Some(action_id) = current_action_id() {
+            http_request.header(REF_ID, &action_id)?;
+        }
+        http_request.header(CLIENT, self.client)?;
+        Ok(())
     }
 }
 

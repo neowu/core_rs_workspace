@@ -20,6 +20,8 @@ use tracing::info;
 
 use crate::exception::Exception;
 use crate::log;
+use crate::web::CLIENT;
+use crate::web::REF_ID;
 use crate::web::client_info::client_info;
 
 pub struct HttpServerConfig {
@@ -62,9 +64,9 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
 
     let mut response = None;
 
-    // TODO: get ref_id from header?
+    let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(str::to_owned);
 
-    log::start_action("http", None, async {
+    log::start_action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());
 
         for (name, value) in request.headers() {
@@ -83,6 +85,10 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
             context!(user_agent = user_agent);
         }
         request.extensions_mut().insert(Arc::new(client_info));
+
+        if let Some(client) = request.headers().get(CLIENT) {
+            context!(client = client.to_str()?);
+        }
 
         let matched_path = request.extensions().get::<MatchedPath>().map(MatchedPath::as_str);
         if let Some(matched_path) = matched_path {

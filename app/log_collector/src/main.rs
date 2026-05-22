@@ -41,7 +41,7 @@ async fn main() -> Result<(), Exception> {
 
     let state = Arc::new(AppState {
         topics: Topics { event: Topic::new("event") },
-        producer: Producer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned()),
+        producer: Producer::new(config.kafka_uri, env!("CARGO_BIN_NAME")),
     });
 
     let app = Router::new();

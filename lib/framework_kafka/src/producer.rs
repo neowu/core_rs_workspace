@@ -20,11 +20,12 @@ use crate::Topic;
 
 pub struct Producer {
     producer: FutureProducer,
-    client: String,
+    client: &'static str,
 }
 
 impl Producer {
-    pub fn new(bootstrap_servers: String, client: String) -> Self {
+    // client usually be env!("CARGO_BIN_NAME")
+    pub fn new(bootstrap_servers: String, client: &'static str) -> Self {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_servers)
             .set("message.timeout.ms", "5000")
@@ -52,9 +53,9 @@ impl Producer {
                 record = record.key(key);
             }
 
-            let mut headers = insert_header(OwnedHeaders::new(), "client", &self.client);
+            let mut headers = insert_header(OwnedHeaders::new(), "client", self.client);
             if let Some(ref_id) = current_action_id() {
-                headers = headers.insert(Header { key: "ref_id", value: Some(ref_id.as_bytes()) });
+                headers = headers.insert(Header { key: "ref_id", value: Some(&ref_id) });
             }
             record = record.headers(headers);
 

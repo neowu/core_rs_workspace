@@ -11,7 +11,7 @@ struct TestMessage {
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    let producer = Producer::new("dev.internal:9092".to_owned(), env!("CARGO_BIN_NAME").to_owned());
+    let producer = Producer::new("dev.internal:9092".to_owned(), env!("CARGO_BIN_NAME"));
 
     let topic = Topic::new("test");
 
