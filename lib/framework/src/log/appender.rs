@@ -8,55 +8,53 @@ use chrono::Utc;
 use indexmap::IndexMap;
 use serde::Serialize;
 
-use super::ActionResult;
+use crate::exception::Severity;
 use crate::json;
-use crate::log::ActionLog;
+use crate::log::Action;
 use crate::write_str;
 
-pub(crate) static APPENDER: OnceLock<ActionLogAppender> = OnceLock::new();
+pub(crate) static APPENDER: OnceLock<ActionAppender> = OnceLock::new();
 
-pub enum ActionLogAppender {
+pub enum ActionAppender {
     Console,
     GoogleCloud,
 }
 
-impl ActionLogAppender {
-    pub(super) fn append(&self, action_log: ActionLog) {
+impl ActionAppender {
+    pub(super) fn append(&self, action: &Action) {
         match self {
-            ActionLogAppender::Console => append_console(action_log),
-            ActionLogAppender::GoogleCloud => append_gcloud(&action_log),
+            ActionAppender::Console => append_console(action),
+            ActionAppender::GoogleCloud => append_gcloud(action),
         }
     }
 }
 
-fn append_console(action_log: ActionLog) {
-    let mut log = format!(
-        "{} | {} | {} | id={}",
-        action_log.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        json::to_json_value(&action_log.result),
-        action_log.action,
-        action_log.id
-    );
+fn append_console(action: &Action) {
+    let date = action.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let severity = severity(action);
+    let kind = action.kind;
+    let id = &action.id;
+    let mut log = format!("{date} | {severity} | {kind} | id={id}");
 
-    if let Some(error_code) = action_log.error_code {
+    if let Some(ref error_code) = action.error_code {
         write_str!(&mut log, " | error_code={error_code}");
     }
 
-    if let Some(error_message) = action_log.error_message {
+    if let Some(ref error_message) = action.error_message {
         write_str!(&mut log, " | error_message={error_message}");
     }
 
-    if let Some(ref_id) = action_log.ref_id {
+    if let Some(ref ref_id) = action.ref_id {
         write_str!(&mut log, " | ref_id={ref_id}");
     }
 
-    for (key, value) in action_log.context {
+    for (key, value) in &action.context {
         write_str!(&mut log, " | {key}={value}");
     }
 
-    for (key, value) in action_log.stats {
+    for (key, value) in &action.stats {
         if key.ends_with("elapsed") {
-            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(u64::try_from(value).unwrap_or(0)));
+            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(u64::try_from(*value).unwrap_or(0)));
         } else {
             write_str!(&mut log, " | {key}={value}");
         }
@@ -64,64 +62,71 @@ fn append_console(action_log: ActionLog) {
 
     writeln!(io::stdout(), "{log}").expect("write to stdout cannot fail");
 
-    if action_log.result != ActionResult::Ok {
-        writeln!(io::stderr(), "{}", action_log.logs.join("\n")).expect("write to stderr cannot fail");
+    if action.severity.is_some() {
+        writeln!(io::stderr(), "{}", action.logs.join("\n")).expect("write to stderr cannot fail");
     }
 }
 
-fn append_gcloud(action_log: &ActionLog) {
-    let severity = severity(&action_log.result);
-    let action_entry = ActionLogEntry {
-        id: &action_log.id,
-        time: action_log.date,
-        app: action_log.app,
-        action: &action_log.action,
-        severity,
-        ref_id: action_log.ref_id.as_deref(),
-        error_code: action_log.error_code.as_deref(),
-        error_message: action_log.error_message.as_deref(),
-        context: &action_log.context,
-        stats: &action_log.stats,
-        labels: Labels { log: "action" },
-        trace_id: &action_log.id,
-    };
-    let json = serde_json::to_string(&action_entry).expect("serialize action log cannot fail");
-    writeln!(io::stdout(), "{json}").expect("write to stdout cannot fail");
+fn append_gcloud(action: &Action) {
+    let id = &action.id;
+    let time = action.date;
+    let severity = severity(action);
 
-    if action_log.result != ActionResult::Ok {
-        for line in &action_log.logs {
-            let trace_entry = TraceEntry {
-                message: line,
+    match json::to_json(&ActionEntry {
+        id,
+        time,
+        app: action.app,
+        kind: action.kind,
+        severity,
+        ref_id: action.ref_id.as_deref(),
+        error_code: action.error_code.as_deref(),
+        error_message: action.error_message.as_deref(),
+        context: &action.context,
+        stats: &action.stats,
+        label: LogLabel { log: "action" },
+        trace_id: id,
+    }) {
+        Ok(json) => writeln!(io::stdout(), "{json}").expect("write to stdout cannot fail"),
+        Err(err) => err.log(),
+    }
+
+    if action.severity.is_some() {
+        for line in &action.logs {
+            match json::to_json(&TraceEntry {
+                id,
+                time,
+                app: action.app,
                 severity,
-                id: &action_log.id,
-                labels: Labels { log: "trace" },
-                trace_id: &action_log.id,
-            };
-            let trace_json = serde_json::to_string(&trace_entry).expect("serialize trace log cannot fail");
-            writeln!(io::stdout(), "{trace_json}").expect("write to stdout cannot fail");
+                message: line,
+                label: LogLabel { log: "trace" },
+                trace_id: id,
+            }) {
+                Ok(json) => writeln!(io::stdout(), "{json}").expect("write to stdout cannot fail"),
+                Err(err) => err.log(),
+            }
         }
     }
 }
 
-const fn severity(result: &ActionResult) -> &'static str {
-    match *result {
-        ActionResult::Ok => "INFO",
-        ActionResult::Warn => "WARNING",
-        ActionResult::Error => "ERROR",
+const fn severity(action: &Action) -> &'static str {
+    match action.severity {
+        Some(Severity::Warn) => "WARN",
+        Some(Severity::Error) => "ERROR",
+        None => "INFO",
     }
 }
 
-#[derive(Serialize)]
-struct Labels {
+#[derive(Debug, Serialize)]
+struct LogLabel {
     log: &'static str,
 }
 
-#[derive(Serialize)]
-struct ActionLogEntry<'a> {
+#[derive(Debug, Serialize)]
+struct ActionEntry<'a> {
     id: &'a str,
     time: DateTime<Utc>,
     app: &'static str,
-    action: &'a str,
+    kind: &'a str,
     severity: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     ref_id: Option<&'a str>,
@@ -132,18 +137,20 @@ struct ActionLogEntry<'a> {
     context: &'a IndexMap<&'static str, String>,
     stats: &'a IndexMap<String, u128>,
     #[serde(rename = "logging.googleapis.com/labels")]
-    labels: Labels,
+    label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
     trace_id: &'a str,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct TraceEntry<'a> {
+    id: &'a str,
+    time: DateTime<Utc>,
+    app: &'static str,
     message: &'a str,
     severity: &'static str,
-    id: &'a str,
     #[serde(rename = "logging.googleapis.com/labels")]
-    labels: Labels,
+    label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
     trace_id: &'a str,
 }

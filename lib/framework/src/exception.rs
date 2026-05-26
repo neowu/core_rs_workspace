@@ -22,12 +22,12 @@ pub struct Exception {
 }
 
 // used by HttpErrorBody to serialize/deserialize
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Severity {
     #[serde(rename = "WARN")]
-    Warn,
+    Warn = 1,
     #[serde(rename = "ERROR")]
-    Error,
+    Error = 0,
 }
 
 impl Exception {
@@ -205,5 +205,10 @@ mod tests {
 1: ERROR [MID] middle
 2: ERROR root cause at src/root.rs:1"
         );
+    }
+
+    #[test]
+    fn severity_compare() {
+        assert!(Severity::Warn > Severity::Error);
     }
 }

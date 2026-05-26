@@ -13,7 +13,7 @@ async fn main() -> Result<(), Exception> {
     log::init();
     log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
-    log::start_action("test_http_client", None, async {
+    let _ = log::start_action("test_http_client", None, async {
         test_http().await
         // test_sse().await
     })

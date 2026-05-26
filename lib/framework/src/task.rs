@@ -3,8 +3,6 @@ use std::sync::LazyLock;
 
 use tokio::task::JoinHandle;
 use tokio_util::task::TaskTracker;
-use tracing::Instrument as _;
-use tracing::Span;
 use tracing::info;
 
 use crate::exception::Exception;
@@ -21,9 +19,10 @@ macro_rules! spawn_action {
 }
 
 #[doc(hidden)]
-pub fn __spawn_action<T>(name: &'static str, location: &'static str, task: T)
+pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T) -> JoinHandle<Result<R, Exception>>
 where
-    T: Future<Output = Result<(), Exception>> + Send + 'static,
+    T: Future<Output = Result<R, Exception>> + Send + 'static,
+    R: Send + Sync + 'static,
 {
     let ref_id = current_action_id();
     TASK_TRACKER.spawn(async move {
@@ -31,16 +30,17 @@ where
             context!(task = name, location = location);
             task.await
         })
-        .await;
-    });
+        .await
+    })
 }
 
-pub fn spawn_task<T>(task: T) -> JoinHandle<Result<(), Exception>>
+// spawn infallible task, for starting multi threading tasks on startup,
+#[inline]
+pub fn spawn<T>(task: T)
 where
-    T: Future<Output = Result<(), Exception>> + Send + 'static,
+    T: Future<Output = ()> + Send + 'static,
 {
-    let span = Span::current();
-    TASK_TRACKER.spawn(task.instrument(span))
+    TASK_TRACKER.spawn(task);
 }
 
 pub async fn shutdown() {

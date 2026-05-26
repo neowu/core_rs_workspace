@@ -1515,15 +1515,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prototype"
-version = "0.5.9"
-dependencies = [
- "axum",
- "framework",
- "tokio",
-]
-
-[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

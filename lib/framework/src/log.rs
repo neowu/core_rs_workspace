@@ -1,14 +1,13 @@
+use std::cell::RefCell;
 use std::env;
-use std::fmt::Debug;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::thread;
 use std::time::Instant;
 
 use chrono::DateTime;
+use chrono::SecondsFormat;
 use chrono::Utc;
 use indexmap::IndexMap;
-use serde::Serialize;
 use tokio::task_local;
 use tracing::Instrument as _;
 use tracing::info_span;
@@ -19,8 +18,9 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::log::appender::APPENDER;
-use crate::log::appender::ActionLogAppender;
+use crate::log::appender::ActionAppender;
 use crate::log::layer::ActionLogLayer;
 
 pub mod appender;
@@ -51,8 +51,8 @@ static APP: OnceLock<&'static str> = OnceLock::new();
 
 pub fn init_action_log_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
     let value = match appender {
-        "console" => ActionLogAppender::Console,
-        "gcloud" => ActionLogAppender::GoogleCloud,
+        "console" => ActionAppender::Console,
+        "gcloud" => ActionAppender::GoogleCloud,
         _ => return Err(exception!("unknown appender, value={appender}")),
     };
     APPENDER.set(value).map_err(|_err| exception!("appender was already initialized"))?;
@@ -60,35 +60,63 @@ pub fn init_action_log_appender(appender: &str, app: &'static str) -> Result<(),
 }
 
 #[inline]
-pub async fn start_action<T>(action: &str, ref_id: Option<String>, task: T)
+pub async fn start_action<T, R>(kind: &'static str, ref_id: Option<String>, task: T) -> Result<R, Exception>
 where
-    T: Future<Output = Result<(), Exception>>,
+    T: Future<Output = Result<R, Exception>>,
 {
     let action_id = id_generator::random_id();
-    let action_span = info_span!("action", action, action_id, ref_id);
-    CURRENT_ACTION_ID
-        .scope(
-            action_id,
-            async {
-                let result = task.await;
-                if let Err(e) = result {
-                    e.log();
-                }
+    let action_span = info_span!("action", kind, action_id, ref_id);
+    let mut action = Action {
+        start_time: Instant::now(),
+        id: action_id,
+        app: APP.get().unwrap_or(&"unknown"),
+        kind,
+        date: Utc::now(),
+        ref_id,
+        severity: None,
+        error_code: None,
+        error_message: None,
+        context: IndexMap::new(),
+        stats: IndexMap::new(),
+        logs: Vec::with_capacity(32),
+    };
+    action.logs.push(format!(
+        "# action begin, kind={}, id={}, date={}, thread={:?}, ref_id={:?}",
+        &action.kind,
+        &action.id,
+        &action.date.to_rfc3339_opts(SecondsFormat::Nanos, true),
+        thread::current().id(),
+        &action.ref_id
+    ));
+    CURRENT_ACTION
+        .scope(RefCell::new(action), async move {
+            let result = task.instrument(action_span).await;
+            if let Err(e) = &result {
+                e.log();
             }
-            .instrument(action_span),
-        )
-        .await;
+            CURRENT_ACTION.with(|current_action| {
+                let mut current_action = current_action.borrow_mut();
+                let elapsed = current_action.start_time.elapsed();
+                current_action.stats.insert("elapsed".to_owned(), elapsed.as_nanos());
+                if current_action.severity.is_some() {
+                    current_action.logs.push(format!("# action end, elapsed={elapsed:?}"));
+                }
+                if let Some(appender) = APPENDER.get() {
+                    appender.append(&current_action);
+                }
+            });
+            result
+        })
+        .await
 }
 
 task_local! {
-    static CURRENT_ACTION_ID: String;
-
-    static CURRENT_ACTION_LOG: Arc<Mutex<ActionLog>>;
+    static CURRENT_ACTION: RefCell<Action>;
 }
 
 #[inline]
 pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION_ID.try_with(|current_action_id| Some(current_action_id.clone())).unwrap_or(None)
+    CURRENT_ACTION.try_with(|action| Some(action.borrow().id.clone())).unwrap_or(None)
 }
 
 pub const CONTEXT: &str = "__context";
@@ -116,39 +144,17 @@ macro_rules! stats {
     };
 }
 
-// TODO: rethink fields, like result
-
-struct ActionLog {
+struct Action {
+    start_time: Instant,
     id: String,
     app: &'static str,
-    action: String,
+    kind: &'static str,
     date: DateTime<Utc>,
-    start_time: Instant,
-    result: ActionResult,
     ref_id: Option<String>,
+    severity: Option<Severity>,
     error_code: Option<String>,
     error_message: Option<String>,
     context: IndexMap<&'static str, String>,
     stats: IndexMap<String, u128>,
     logs: Vec<String>,
-}
-
-#[derive(PartialEq, Serialize, Debug)]
-pub enum ActionResult {
-    #[serde(rename = "OK")]
-    Ok,
-    #[serde(rename = "WARN")]
-    Warn,
-    #[serde(rename = "ERROR")]
-    Error,
-}
-
-impl ActionResult {
-    const fn level(&self) -> u32 {
-        match *self {
-            ActionResult::Ok => 0,
-            ActionResult::Warn => 1,
-            ActionResult::Error => 2,
-        }
-    }
 }

@@ -26,7 +26,7 @@ pub struct JobContext {
     pub scheduled_time: DateTime<Utc>,
 }
 
-type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>> + Send + Sync>;
 
 struct Schedule<S> {
     name: &'static str,
@@ -72,7 +72,7 @@ where
         self.schedules.push(Arc::new(Schedule { name, job, trigger }));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception>
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken)
     where
         S: Clone,
     {
@@ -112,11 +112,14 @@ where
             handle.await.expect("handle cannot panic");
         }
         info!("scheduler stopped");
-        Ok(())
     }
 }
 
-fn process_job<S, J, Fut>(job: J, state: S, context: JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>>
+fn process_job<S, J, Fut>(
+    job: J,
+    state: S,
+    context: JobContext,
+) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
 where
     S: Send + 'static,
     J: Fn(S, JobContext) -> Fut + Send + 'static,

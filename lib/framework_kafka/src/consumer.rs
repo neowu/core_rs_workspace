@@ -49,7 +49,8 @@ impl<T: DeserializeOwned> Message<T> {
     }
 }
 
-type MessageHandler<S> = Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+type MessageHandler<S> =
+    Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>> + Send>;
 
 pub struct ConsumerConfig {
     pub poll_max_wait_time: Duration,
@@ -119,11 +120,12 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception> {
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
         let handlers = self.handlers;
-        let consumer: BaseConsumer = self.config.create()?;
+        // TODO: review those 2 expect
+        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer");
         let topics: Vec<&str> = handlers.keys().copied().collect();
-        consumer.subscribe(&topics)?;
+        consumer.subscribe(&topics).expect("failed to subscribe topic");
 
         info!("kafka consumer started, topics={:?}", topics);
 
@@ -149,7 +151,7 @@ where
 
             if shutdown_signal.is_cancelled() {
                 info!("kafka consumer stopped, topics={:?}", topics);
-                return Ok(());
+                return;
             }
         }
     }
@@ -212,7 +214,7 @@ fn handle_bulk_messages<H, S, M, Fut>(
     messages: Vec<Message<M>>,
     handler: H,
     state: S,
-) -> Pin<Box<dyn Future<Output = ()> + Send>>
+) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
 where
     S: Send + 'static,
     H: Fn(S, Vec<Message<M>>) -> Fut + Send + 'static,
@@ -248,7 +250,7 @@ fn handle_messages<H, S, M, Fut>(
     messages: Vec<Message<M>>,
     handler: H,
     state: &S,
-) -> Pin<Box<dyn Future<Output = ()> + Send>>
+) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
 where
     S: Clone + Send + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
@@ -288,6 +290,7 @@ where
 
     Box::pin(async move {
         join_all(handles).await;
+        Ok(())
     })
 }
 
@@ -298,7 +301,7 @@ where
     M: DeserializeOwned,
 {
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
-    log::start_action("message", ref_id, async {
+    let _result = log::start_action("message", ref_id, async {
         context!(topic = topic, key = message.key, fn = type_name::<H>());
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");

@@ -12,7 +12,7 @@ pub async fn main() {
     log::init();
     log::init_action_log_appender("console", env!("CARGO_BIN_NAME")).unwrap();
 
-    log::start_action("migration", None, async {
+    let _ = log::start_action("migration", None, async {
         load_env!(".env")?;
         let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 

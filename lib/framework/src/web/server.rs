@@ -62,11 +62,9 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         return StatusCode::OK.into_response(); // gce lb health check requires to return 200
     }
 
-    let mut response = None;
-
     let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(str::to_owned);
 
-    log::start_action("http", ref_id, async {
+    let response = log::start_action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());
 
         for (name, value) in request.headers() {
@@ -112,9 +110,8 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         for (name, value) in http_response.headers() {
             debug!("[header] {name}={value:?}");
         }
-        response = Some(http_response);
-        Ok(())
+        Ok(http_response)
     })
     .await;
-    if let Some(response) = response { response } else { StatusCode::INTERNAL_SERVER_ERROR.into_response() }
+    if let Ok(response) = response { response } else { StatusCode::INTERNAL_SERVER_ERROR.into_response() }
 }

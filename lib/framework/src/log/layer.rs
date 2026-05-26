@@ -1,10 +1,6 @@
 use std::fmt::Debug;
-use std::thread;
 use std::time::Instant;
 
-use chrono::SecondsFormat;
-use chrono::Utc;
-use indexmap::IndexMap;
 use tracing::Event;
 use tracing::Level;
 use tracing::Subscriber;
@@ -16,15 +12,12 @@ use tracing::span::Record;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::registry::Scope;
-use tracing_subscriber::registry::SpanRef;
 
-use super::ActionResult;
 use super::CONTEXT;
 use super::STATS;
-use crate::log::APP;
-use crate::log::ActionLog;
-use crate::log::appender::APPENDER;
+use crate::exception::Severity;
+use crate::log::Action;
+use crate::log::CURRENT_ACTION;
 use crate::write_str;
 
 pub(crate) struct ActionLogLayer;
@@ -39,200 +32,124 @@ where
 {
     fn on_new_span(&self, attrs: &Attributes, id: &Id, context: Context<S>) {
         let span = context.span(id).expect("span must exist");
-        let mut extensions = span.extensions_mut();
+        let span_name = span.name();
 
-        if span.name() == "action" {
-            let mut action_visitor = ActionVisitor::new();
-            attrs.record(&mut action_visitor);
-            if let Some(mut action_log) = action_visitor.action_log()
-                && extensions.get_mut::<ActionLog>().is_none()
-            {
-                action_log.logs.push(format!(
-                    "=== action begin ===
-type={}
-id={}
-date={}
-thread={:?}",
-                    action_log.action,
-                    action_log.id,
-                    action_log.date.to_rfc3339_opts(SecondsFormat::Nanos, true),
-                    thread::current().id()
-                ));
+        if span_name != "action" {
+            let _result = CURRENT_ACTION.try_with(|action| {
+                let mut extensions = span.extensions_mut();
+                extensions.insert(SpanExtension { start_time: Instant::now() });
+                let mut action = action.borrow_mut();
 
-                if let Some(ref ref_id) = action_log.ref_id {
-                    action_log.logs.push(format!("ref_id={ref_id}"));
+                let (minutes, seconds, nanos) = elapsed(action.start_time);
+                let mut log = format!("[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} ");
+
+                let level = span.metadata().level();
+                if level <= &Level::INFO {
+                    write_str!(log, "{level} ");
                 }
 
-                extensions.insert(action_log);
-            }
-        } else if let Some(action_span) = action_span(context.span_scope(id))
-            && let Some(action_log) = action_span.extensions_mut().get_mut::<ActionLog>()
-        {
-            extensions.insert(SpanExtension { start_time: Instant::now() });
+                let target = span.metadata().target();
+                let line = span.metadata().line().unwrap_or(0);
+                write_str!(log, "{target}:{line} ");
 
-            let mut log_string =
-                format!("[span:{}] {}:{} ", span.name(), span.metadata().target(), span.metadata().line().unwrap_or(0));
-            attrs.record(&mut LogVisitor(&mut log_string));
-            log_string.push_str(">>>");
-            action_log.logs.push(log_string);
+                attrs.record(&mut LogVisitor(&mut log));
+                log.push('>');
+                action.logs.push(log);
+            });
         }
     }
 
     fn on_close(&self, id: Id, context: Context<S>) {
         let span = context.span(&id).expect("span must exist");
-        if let Some(mut action_log) = span.extensions_mut().remove::<ActionLog>() {
-            let elapsed = action_log.start_time.elapsed();
-            action_log.stats.insert("elapsed".to_owned(), elapsed.as_nanos());
-            if action_log.result.level() > ActionResult::Ok.level() {
-                action_log.logs.push(format!(
-                    "elapsed={elapsed:?}
-        === action end ==="
-                ));
-            }
-            if let Some(appender) = APPENDER.get() {
-                appender.append(action_log);
-            }
-        } else if let Some(action_span) = action_span(context.span_scope(&id))
-            && let Some(action_log) = action_span.extensions_mut().get_mut::<ActionLog>()
-            && let Some(span_extension) = span.extensions_mut().remove::<SpanExtension>()
-        {
-            let elapsed = span_extension.start_time.elapsed();
-            action_log.logs.push(format!("[span:{}] elapsed={:?} <<<", span.name(), elapsed));
+        if let Some(span_extension) = span.extensions_mut().remove::<SpanExtension>() {
+            let _result = CURRENT_ACTION.try_with(|action| {
+                let mut action = action.borrow_mut();
 
-            let total_elapsed = action_log.stats.entry(format!("{}_elapsed", span.name())).or_default();
-            *total_elapsed += elapsed.as_nanos();
+                let span_name = span.name();
+                let (minutes, seconds, nanos) = elapsed(action.start_time);
+                let mut log = format!("[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} ");
+                let span_elapsed = span_extension.start_time.elapsed();
+                write_str!(log, "elapsed={span_elapsed:?} <");
+                action.logs.push(log);
 
-            let count = action_log.stats.entry(format!("{}_count", span.name())).or_default();
-            *count += 1;
+                let total_elapsed = action.stats.entry(format!("{span_name}_elapsed")).or_default();
+                *total_elapsed += span_elapsed.as_nanos();
+
+                let count = action.stats.entry(format!("{span_name}_count")).or_default();
+                *count += 1;
+            });
         }
     }
 
     fn on_record(&self, id: &Id, values: &Record, context: Context<S>) {
-        if let Some(action_span) = action_span(context.span_scope(id))
-            && let Some(action_log) = action_span.extensions_mut().get_mut::<ActionLog>()
-        {
+        let _result = CURRENT_ACTION.try_with(|action| {
             let span = context.span(id).expect("span must exist");
-            let mut log_string = format!("[span:{}] ", span.name());
-            values.record(&mut LogVisitor(&mut log_string));
-            action_log.logs.push(log_string);
-        }
+            let span_name = span.name();
+            let mut action = action.borrow_mut();
+            let (minutes, seconds, nanos) = elapsed(action.start_time);
+            let mut log = format!("[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} ");
+            values.record(&mut LogVisitor(&mut log));
+            action.logs.push(log);
+        });
     }
 
-    fn on_event(&self, event: &Event, context: Context<S>) {
+    fn on_event(&self, event: &Event, _context: Context<S>) {
         if event.metadata().level() == &Level::TRACE {
             return;
         }
 
-        if let Some(span) = action_span(context.event_scope(event))
-            && let Some(action_log) = span.extensions_mut().get_mut::<ActionLog>()
-        {
-            let elapsed = action_log.start_time.elapsed();
-            let total_seconds = elapsed.as_secs();
-            let minutes = total_seconds / 60;
-            let seconds = total_seconds % 60;
-            let nanos = elapsed.subsec_nanos();
+        let _result = CURRENT_ACTION.try_with(|action| {
+            let mut action = action.borrow_mut();
 
             let mut log = String::with_capacity(128);
+
+            let (minutes, seconds, nanos) = elapsed(action.start_time);
             write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} ");
 
-            let metadata = event.metadata();
-            let level = metadata.level();
+            let level = event.metadata().level();
             if level <= &Level::INFO {
                 write_str!(log, "{level} ");
             }
 
-            write_str!(log, "{}:{} ", metadata.target(), metadata.line().unwrap_or(0));
+            let target = event.metadata().target();
+            let line = event.metadata().line().unwrap_or(0);
+            write_str!(log, "{target}:{line} ");
 
-            if level == &Level::ERROR || level == &Level::WARN {
+            if level <= &Level::WARN {
                 let mut visitor = ErrorVisitor { message: None, code: None };
                 event.record(&mut visitor);
                 if let Some(ref error_code) = visitor.code {
                     write_str!(log, "[{error_code}] ");
                 }
 
-                let result = if level == &Level::ERROR { ActionResult::Error } else { ActionResult::Warn };
-
-                if action_log.result.level() < result.level() {
-                    action_log.result = result;
-                    action_log.error_code = visitor.code;
-                    action_log.error_message = visitor.message;
+                let target_severity = if level == &Level::ERROR { Severity::Error } else { Severity::Warn };
+                if action.severity.is_none_or(|severity| severity > target_severity) {
+                    action.severity = Some(target_severity);
+                    action.error_code = visitor.code;
+                    action.error_message = visitor.message;
                 }
             }
 
             let name = event.metadata().name();
             if name == CONTEXT {
-                let mut context_visitor = ContextVisitor { action_log };
+                let mut context_visitor = ContextVisitor { action: &mut action };
                 event.record(&mut context_visitor);
                 write_str!(log, "[context] ");
             } else if name == STATS {
-                let mut stats_visitor = StatsVisitor { action_log };
+                let mut stats_visitor = StatsVisitor { action: &mut action };
                 event.record(&mut stats_visitor);
                 write_str!(log, "[stats] ");
             }
 
             let mut log_visitor = LogVisitor(&mut log);
             event.record(&mut log_visitor);
-            action_log.logs.push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
-        }
+            action.logs.push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
+        });
     }
 }
 
 struct SpanExtension {
     start_time: Instant,
-}
-
-struct ActionVisitor {
-    action: Option<String>,
-    action_id: Option<String>,
-    ref_id: Option<String>,
-}
-
-impl ActionVisitor {
-    const fn new() -> Self {
-        Self { action: None, action_id: None, ref_id: None }
-    }
-
-    fn action_log(self) -> Option<ActionLog> {
-        if let (Some(action), Some(action_id)) = (self.action, self.action_id) {
-            Some(ActionLog {
-                id: action_id,
-                app: APP.get().unwrap_or(&"unknown"),
-                action,
-                date: Utc::now(),
-                start_time: Instant::now(),
-                result: ActionResult::Ok,
-                ref_id: self.ref_id,
-                error_code: None,
-                error_message: None,
-                context: IndexMap::new(),
-                stats: IndexMap::new(),
-                logs: Vec::with_capacity(32),
-            })
-        } else {
-            None
-        }
-    }
-}
-
-impl Visit for ActionVisitor {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        match field.name() {
-            "action" => self.action = Some(value.to_owned()),
-            "action_id" => self.action_id = Some(value.to_owned()),
-            "ref_id" => self.ref_id = Some(value.to_owned()),
-            _ => {}
-        }
-    }
-
-    fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
-}
-
-fn action_span<'a, S>(scope: Option<Scope<'a, S>>) -> Option<SpanRef<'a, S>>
-where
-    S: for<'lookup> LookupSpan<'lookup>,
-{
-    let mut scope = scope?;
-    scope.find(|span| span.name() == "action" && span.extensions().get::<ActionLog>().is_some())
 }
 
 struct LogVisitor<'a>(&'a mut String);
@@ -258,22 +175,22 @@ impl Visit for LogVisitor<'_> {
 }
 
 struct ContextVisitor<'a> {
-    action_log: &'a mut ActionLog,
+    action: &'a mut Action,
 }
 
 impl Visit for ContextVisitor<'_> {
     fn record_str(&mut self, field: &Field, value: &str) {
         let value = value.to_owned();
-        self.action_log.context.insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
+        self.action.context.insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-        self.action_log.context.insert(field.name(), format!("{value:?}"));
+        self.action.context.insert(field.name(), format!("{value:?}"));
     }
 }
 
 struct StatsVisitor<'a> {
-    action_log: &'a mut ActionLog,
+    action: &'a mut Action,
 }
 
 impl Visit for StatsVisitor<'_> {
@@ -294,7 +211,7 @@ impl Visit for StatsVisitor<'_> {
     }
 
     fn record_u128(&mut self, field: &Field, value: u128) {
-        let stats_value = self.action_log.stats.entry(field.name().to_owned()).or_default();
+        let stats_value = self.action.stats.entry(field.name().to_owned()).or_default();
         *stats_value += value;
     }
 
@@ -336,6 +253,15 @@ fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
         value.push_str(suffix);
     }
     value
+}
+
+fn elapsed(start: Instant) -> (u64, u64, u32) {
+    let elapsed = start.elapsed();
+    let total_seconds = elapsed.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    let nanos = elapsed.subsec_nanos();
+    (minutes, seconds, nanos)
 }
 
 #[cfg(test)]
