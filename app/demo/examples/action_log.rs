@@ -6,7 +6,6 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::exception::Severity;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::shell;
 use framework::spawn_action;
 use framework::stats;
@@ -25,7 +24,8 @@ use tracing::warn;
 
 #[tokio::main]
 async fn main() {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME")).unwrap();
 
     test_action().await;
 

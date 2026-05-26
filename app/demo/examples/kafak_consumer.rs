@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use framework::exception::Exception;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::shutdown::listen_shutdown_signal;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
@@ -33,7 +32,8 @@ struct Topics {
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
@@ -46,11 +46,8 @@ pub async fn main() -> Result<(), Exception> {
 
     let handle = tokio::spawn(process_message(rx));
 
-    let mut consumer = MessageConsumer::new(
-        "dev.internal:9092".to_owned(),
-        env!("CARGO_BIN_NAME").to_owned(),
-        &ConsumerConfig::default(),
-    );
+    let mut consumer =
+        MessageConsumer::new("dev.internal:9092".to_owned(), env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);

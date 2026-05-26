@@ -8,7 +8,6 @@ use framework::exception::Exception;
 use framework::json;
 use framework::load_env;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::schedule::controller::SystemRoute as _;
 use framework::shutdown::listen_shutdown_signal;
@@ -39,7 +38,8 @@ pub struct AppConfig {
 
 #[inline]
 pub async fn run() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("gcloud", env!("CARGO_PKG_NAME"))?;
     load_env!(".env")?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;

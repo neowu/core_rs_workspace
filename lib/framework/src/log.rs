@@ -1,10 +1,13 @@
 use std::env;
 use std::fmt::Debug;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use chrono::DateTime;
 use chrono::Utc;
 use indexmap::IndexMap;
-use layer::ActionLogLayer;
 use serde::Serialize;
 use tokio::task_local;
 use tracing::Instrument as _;
@@ -16,30 +19,15 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::exception::Exception;
+use crate::log::appender::APPENDER;
+use crate::log::appender::ActionLogAppender;
+use crate::log::layer::ActionLogLayer;
 
 pub mod appender;
 pub mod id_generator;
 mod layer;
 
-#[inline]
 pub fn init() {
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .compact()
-                .with_ansi(false) // generally cloud log console doesn't support color
-                .with_line_number(true)
-                .with_thread_ids(true)
-                .with_filter(LevelFilter::INFO),
-        )
-        .init();
-}
-
-#[inline]
-pub fn init_with_action<T>(appender: T)
-where
-    T: ActionLogAppender + Send + Sync + 'static,
-{
     // SAFETY:
     // init only be called once on startup, no threading issue
     unsafe {
@@ -55,8 +43,20 @@ where
                 .with_thread_ids(true)
                 .with_filter(LevelFilter::INFO),
         )
-        .with(ActionLogLayer { appender })
+        .with(ActionLogLayer)
         .init();
+}
+
+static APP: OnceLock<&'static str> = OnceLock::new();
+
+pub fn init_action_log_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
+    let value = match appender {
+        "console" => ActionLogAppender::Console,
+        "gcloud" => ActionLogAppender::GoogleCloud,
+        _ => return Err(exception!("unknown appender, value={appender}")),
+    };
+    APPENDER.set(value).map_err(|_err| exception!("appender was already initialized"))?;
+    APP.set(app).map_err(|_err| exception!("appender was already initialized"))
 }
 
 #[inline]
@@ -81,7 +81,9 @@ where
 }
 
 task_local! {
-    static CURRENT_ACTION_ID: String
+    static CURRENT_ACTION_ID: String;
+
+    static CURRENT_ACTION_LOG: Arc<Mutex<ActionLog>>;
 }
 
 #[inline]
@@ -114,22 +116,21 @@ macro_rules! stats {
     };
 }
 
-pub trait ActionLogAppender {
-    fn append(&self, action_log: ActionLogMessage);
-}
+// TODO: rethink fields, like result
 
-#[derive(Serialize, Debug)]
-pub struct ActionLogMessage {
-    pub id: String,
-    pub date: DateTime<Utc>,
-    pub action: String,
-    pub result: ActionResult,
-    pub ref_id: Option<String>,
-    pub error_code: Option<String>,
-    pub error_message: Option<String>,
-    pub context: IndexMap<&'static str, String>,
-    pub stats: IndexMap<String, u128>,
-    pub trace: Option<String>,
+struct ActionLog {
+    id: String,
+    app: &'static str,
+    action: String,
+    date: DateTime<Utc>,
+    start_time: Instant,
+    result: ActionResult,
+    ref_id: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    context: IndexMap<&'static str, String>,
+    stats: IndexMap<String, u128>,
+    logs: Vec<String>,
 }
 
 #[derive(PartialEq, Serialize, Debug)]

@@ -5,19 +5,21 @@ use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::http::StreamExt;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::stats;
 use tracing::warn;
 
 #[tokio::main]
-async fn main() {
-    log::init_with_action(ConsoleAppender);
+async fn main() -> Result<(), Exception> {
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     log::start_action("test_http_client", None, async {
         test_http().await
         // test_sse().await
     })
     .await;
+
+    Ok(())
 }
 
 #[allow(unused)]

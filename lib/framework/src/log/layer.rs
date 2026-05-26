@@ -2,7 +2,6 @@ use std::fmt::Debug;
 use std::thread;
 use std::time::Instant;
 
-use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
 use indexmap::IndexMap;
@@ -20,42 +19,23 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::registry::Scope;
 use tracing_subscriber::registry::SpanRef;
 
-use super::ActionLogAppender;
-use super::ActionLogMessage;
 use super::ActionResult;
-use crate::log::CONTEXT;
-use crate::log::STATS;
+use super::CONTEXT;
+use super::STATS;
+use crate::log::APP;
+use crate::log::ActionLog;
+use crate::log::appender::APPENDER;
 use crate::write_str;
 
-pub(super) struct ActionLogLayer<T>
-where
-    T: ActionLogAppender,
-{
-    pub(super) appender: T,
-}
-
-struct ActionLog {
-    id: String,
-    action: String,
-    date: DateTime<Utc>,
-    start_time: Instant,
-    result: ActionResult,
-    ref_id: Option<String>,
-    error_code: Option<String>,
-    error_message: Option<String>,
-    context: IndexMap<&'static str, String>,
-    stats: IndexMap<String, u128>,
-    logs: Vec<String>,
-}
+pub(crate) struct ActionLogLayer;
 
 const MAX_LOG_MESSAGE_LEN: usize = 10_000;
 const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 const MAX_ERROR_MESSAGE_LEN: usize = 200;
 
-impl<T, S> Layer<S> for ActionLogLayer<T>
+impl<S> Layer<S> for ActionLogLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
-    T: ActionLogAppender + 'static,
 {
     fn on_new_span(&self, attrs: &Attributes, id: &Id, context: Context<S>) {
         let span = context.span(id).expect("span must exist");
@@ -100,9 +80,18 @@ thread={:?}",
 
     fn on_close(&self, id: Id, context: Context<S>) {
         let span = context.span(&id).expect("span must exist");
-        if let Some(action_log) = span.extensions_mut().remove::<ActionLog>() {
-            let action_log_message = close_action(action_log);
-            self.appender.append(action_log_message);
+        if let Some(mut action_log) = span.extensions_mut().remove::<ActionLog>() {
+            let elapsed = action_log.start_time.elapsed();
+            action_log.stats.insert("elapsed".to_owned(), elapsed.as_nanos());
+            if action_log.result.level() > ActionResult::Ok.level() {
+                action_log.logs.push(format!(
+                    "elapsed={elapsed:?}
+        === action end ==="
+                ));
+            }
+            if let Some(appender) = APPENDER.get() {
+                appender.append(action_log);
+            }
         } else if let Some(action_span) = action_span(context.span_scope(&id))
             && let Some(action_log) = action_span.extensions_mut().get_mut::<ActionLog>()
             && let Some(span_extension) = span.extensions_mut().remove::<SpanExtension>()
@@ -207,6 +196,7 @@ impl ActionVisitor {
         if let (Some(action), Some(action_id)) = (self.action, self.action_id) {
             Some(ActionLog {
                 id: action_id,
+                app: APP.get().unwrap_or(&"unknown"),
                 action,
                 date: Utc::now(),
                 start_time: Instant::now(),
@@ -243,32 +233,6 @@ where
 {
     let mut scope = scope?;
     scope.find(|span| span.name() == "action" && span.extensions().get::<ActionLog>().is_some())
-}
-
-fn close_action(mut action_log: ActionLog) -> ActionLogMessage {
-    let elapsed = action_log.start_time.elapsed();
-    action_log.stats.insert("elapsed".to_owned(), elapsed.as_nanos());
-    let mut trace = None;
-    if action_log.result.level() > ActionResult::Ok.level() {
-        action_log.logs.push(format!(
-            "elapsed={elapsed:?}
-=== action end ==="
-        ));
-        trace = Some(action_log.logs.join("\n"));
-    }
-
-    ActionLogMessage {
-        id: action_log.id,
-        date: action_log.date,
-        action: action_log.action,
-        result: action_log.result,
-        ref_id: action_log.ref_id,
-        error_code: action_log.error_code,
-        error_message: action_log.error_message,
-        context: action_log.context,
-        stats: action_log.stats,
-        trace,
-    }
 }
 
 struct LogVisitor<'a>(&'a mut String);

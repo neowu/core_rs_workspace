@@ -5,7 +5,6 @@ use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::shutdown::listen_shutdown_signal;
@@ -15,7 +14,8 @@ struct State {}
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let shutdown_signal = listen_shutdown_signal();
 

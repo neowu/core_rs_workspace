@@ -5,7 +5,6 @@ use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::shutdown::listen_shutdown_signal;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
@@ -33,7 +32,8 @@ struct Topics {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 

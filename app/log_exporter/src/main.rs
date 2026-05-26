@@ -9,7 +9,6 @@ use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::number::parse_u32;
 use framework::schedule::Scheduler;
 use framework::shutdown::listen_shutdown_signal;
@@ -74,7 +73,8 @@ struct Topics {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
@@ -108,8 +108,7 @@ async fn main() -> Result<(), Exception> {
     let consumer_state = Arc::clone(&state);
     let consumer_signal = shutdown_signal.clone();
     task::spawn_task(async move {
-        let mut consumer =
-            MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
+        let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
         consumer.start(consumer_state, consumer_signal).await

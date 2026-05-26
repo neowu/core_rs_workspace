@@ -7,7 +7,6 @@ use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
 use framework::schedule::Scheduler;
 use framework::shutdown::listen_shutdown_signal;
 use framework::spawn_action;
@@ -42,7 +41,8 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init_with_action(ConsoleAppender);
+    log::init();
+    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
@@ -73,8 +73,7 @@ async fn main() -> Result<(), Exception> {
 
     put_index_templates(&state.elasticsearch).await?;
 
-    let mut consumer =
-        MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME").to_owned(), &ConsumerConfig::default());
+    let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
