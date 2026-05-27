@@ -120,12 +120,11 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception> {
         let handlers = self.handlers;
-        // TODO: review those 2 expect
-        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer");
+        let consumer: BaseConsumer = self.config.create()?;
         let topics: Vec<&str> = handlers.keys().copied().collect();
-        consumer.subscribe(&topics).expect("failed to subscribe topic");
+        consumer.subscribe(&topics)?;
 
         info!("kafka consumer started, topics={:?}", topics);
 
@@ -151,7 +150,7 @@ where
 
             if shutdown_signal.is_cancelled() {
                 info!("kafka consumer stopped, topics={:?}", topics);
-                return;
+                return Ok(());
             }
         }
     }

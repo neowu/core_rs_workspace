@@ -8,6 +8,7 @@ use chrono::Utc;
 use indexmap::IndexMap;
 use serde::Serialize;
 
+use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
@@ -24,7 +25,11 @@ impl ActionAppender {
     pub(super) fn append(&self, action: &Action) {
         match self {
             ActionAppender::Console => append_console(action),
-            ActionAppender::GoogleCloud => append_gcloud(action),
+            ActionAppender::GoogleCloud => {
+                if let Err(err) = append_gcloud(action) {
+                    err.log();
+                }
+            }
         }
     }
 }
@@ -67,45 +72,48 @@ fn append_console(action: &Action) {
     }
 }
 
-fn append_gcloud(action: &Action) {
+fn append_gcloud(action: &Action) -> Result<(), Exception> {
     let id = &action.id;
     let time = action.date;
     let severity = severity(action);
 
-    match json::to_json(&ActionEntry {
-        id,
-        time,
-        app: action.app,
-        kind: action.kind,
-        severity,
-        ref_id: action.ref_id.as_deref(),
-        error_code: action.error_code.as_deref(),
-        error_message: action.error_message.as_deref(),
-        context: &action.context,
-        stats: &action.stats,
-        label: LogLabel { log: "action" },
-        trace_id: id,
-    }) {
-        Ok(json) => writeln!(io::stdout(), "{json}").expect("write to stdout cannot fail"),
-        Err(err) => err.log(),
-    }
+    writeln!(
+        io::stdout(),
+        "{}",
+        json::to_json(&ActionEntry {
+            id,
+            time,
+            app: action.app,
+            kind: action.kind,
+            severity,
+            ref_id: action.ref_id.as_deref(),
+            error_code: action.error_code.as_deref(),
+            error_message: action.error_message.as_deref(),
+            context: &action.context,
+            stats: &action.stats,
+            label: LogLabel { log: "action" },
+            trace_id: id,
+        })?
+    )?;
 
     if action.severity.is_some() {
         for line in &action.logs {
-            match json::to_json(&TraceEntry {
-                id,
-                time,
-                app: action.app,
-                severity,
-                message: line,
-                label: LogLabel { log: "trace" },
-                trace_id: id,
-            }) {
-                Ok(json) => writeln!(io::stdout(), "{json}").expect("write to stdout cannot fail"),
-                Err(err) => err.log(),
-            }
+            writeln!(
+                io::stdout(),
+                "{}",
+                json::to_json(&TraceEntry {
+                    id,
+                    time,
+                    app: action.app,
+                    severity,
+                    message: line,
+                    label: LogLabel { log: "trace" },
+                    trace_id: id,
+                })?
+            )?;
         }
     }
+    Ok(())
 }
 
 const fn severity(action: &Action) -> &'static str {

@@ -72,7 +72,7 @@ where
         self.schedules.push(Arc::new(Schedule { name, job, trigger }));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: CancellationToken)
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception>
     where
         S: Clone,
     {
@@ -109,9 +109,10 @@ where
         }
         info!("scheduler started");
         for handle in handles {
-            handle.await.expect("handle cannot panic");
+            handle.await?;
         }
         info!("scheduler stopped");
+        Ok(())
     }
 }
 

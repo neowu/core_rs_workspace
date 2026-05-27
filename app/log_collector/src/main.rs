@@ -18,6 +18,7 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
+    log_appender: String,
     kafka_uri: String,
 }
 
@@ -33,9 +34,8 @@ struct Topics {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
-
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    log::init_action_log_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
 
     let shutdown_signal = listen_shutdown_signal();
 

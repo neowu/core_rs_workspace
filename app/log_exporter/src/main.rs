@@ -35,6 +35,7 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
+    log_appender: String,
     kafka_uri: String,
     log_dir: String,
     bucket: String,
@@ -74,9 +75,8 @@ struct Topics {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
-
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    log::init_action_log_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
 
     let shutdown_signal = listen_shutdown_signal();
 
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Exception> {
             process_log_job,
             NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
         );
-        scheduler.start(scheduler_state, scheduler_signal).await;
+        scheduler.start(scheduler_state, scheduler_signal).await
     });
 
     let consumer_state = Arc::clone(&state);
@@ -111,7 +111,7 @@ async fn main() -> Result<(), Exception> {
         let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
-        consumer.start(consumer_state, consumer_signal).await;
+        consumer.start(consumer_state, consumer_signal).await
     });
 
     let app = Router::new();

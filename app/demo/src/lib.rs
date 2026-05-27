@@ -59,7 +59,7 @@ pub async fn run() -> Result<(), Exception> {
     let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
     scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
     let scheduler_routes = scheduler.routes(state);
-    tokio::spawn(async move { scheduler.start(state, scheduler_signal).await });
+    task::spawn(async move { scheduler.start(state, scheduler_signal).await });
 
     let app = Router::new();
     let app = app.merge(scheduler_routes);

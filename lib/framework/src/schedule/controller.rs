@@ -13,6 +13,7 @@ use crate::exception::error_code;
 use crate::schedule::JobContext;
 use crate::schedule::Schedule;
 use crate::schedule::Scheduler;
+use crate::task;
 use crate::web::error::HttpResult;
 
 #[derive(Clone)]
@@ -29,7 +30,7 @@ where
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
     let context = JobContext { name: schedule.name, scheduled_time: Utc::now() };
-    tokio::spawn((schedule.job)(state.state.clone(), context));
+    task::spawn((schedule.job)(state.state.clone(), context));
     Ok(StatusCode::ACCEPTED)
 }
 

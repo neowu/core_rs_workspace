@@ -25,7 +25,7 @@ use tracing::warn;
 #[tokio::main]
 async fn main() {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME")).unwrap();
+    log::init_action_log_appender("gcloud", env!("CARGO_BIN_NAME")).unwrap();
 
     test_action().await;
 

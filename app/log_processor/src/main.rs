@@ -29,6 +29,7 @@ mod kibana;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
+    log_appender: String,
     kafka_uri: String,
     elasticsearch_uri: String,
     kibana_uri: String,
@@ -42,9 +43,8 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
-
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    log::init_action_log_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
 
     let shutdown_signal = listen_shutdown_signal();
 
@@ -53,8 +53,7 @@ async fn main() -> Result<(), Exception> {
     spawn_action!("import_kibana_objects", async move {
         let objects = fs::read_to_string(&asset_path!("assets/kibana_objects.json")?)?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
-        kibana::import(&kibana_uri, objects).await?;
-        Ok(())
+        kibana::import(&kibana_uri, objects).await
     });
 
     let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri) });
@@ -68,7 +67,7 @@ async fn main() -> Result<(), Exception> {
             cleanup_old_index_job,
             NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
         );
-        scheduler.start(scheduler_state, scheduler_signal).await;
+        scheduler.start(scheduler_state, scheduler_signal).await
     });
 
     put_index_templates(&state.elasticsearch).await?;
@@ -77,7 +76,7 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
-    consumer.start(state, shutdown_signal).await;
+    consumer.start(state, shutdown_signal).await?;
 
     task::shutdown().await;
 

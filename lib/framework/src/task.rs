@@ -19,6 +19,7 @@ macro_rules! spawn_action {
 }
 
 #[doc(hidden)]
+#[inline]
 pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T) -> JoinHandle<Result<R, Exception>>
 where
     T: Future<Output = Result<R, Exception>> + Send + 'static,
@@ -34,13 +35,16 @@ where
     })
 }
 
-// spawn infallible task, for starting multi threading tasks on startup,
 #[inline]
 pub fn spawn<T>(task: T)
 where
-    T: Future<Output = ()> + Send + 'static,
+    T: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    TASK_TRACKER.spawn(task);
+    TASK_TRACKER.spawn(async {
+        if let Err(err) = task.await {
+            err.log();
+        }
+    });
 }
 
 pub async fn shutdown() {

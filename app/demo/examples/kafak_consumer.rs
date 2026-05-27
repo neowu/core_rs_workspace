@@ -51,7 +51,7 @@ pub async fn main() -> Result<(), Exception> {
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
-    consumer.start(state, shutdown_signal).await;
+    consumer.start(state, shutdown_signal).await?;
 
     handle.await?;
 
