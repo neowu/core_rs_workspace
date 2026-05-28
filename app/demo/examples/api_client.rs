@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use demo::user::CreateUserRequest;
 use demo::user::GetUserByNameRequest;
 use demo::user::UpdateUserRequest;
@@ -14,7 +16,7 @@ use tracing::warn;
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let client = user_service::client(
         HttpClient::new(HttpClientConfig::internal_only()),
@@ -34,7 +36,7 @@ async fn main() -> Result<(), Exception> {
         Ok(())
     });
 
-    task::shutdown().await;
+    task::shutdown(Duration::from_secs(15)).await;
 
     Ok(())
 }

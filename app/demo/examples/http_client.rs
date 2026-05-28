@@ -11,7 +11,7 @@ use tracing::warn;
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let _ = log::start_action("test_http_client", None, async {
         test_http().await

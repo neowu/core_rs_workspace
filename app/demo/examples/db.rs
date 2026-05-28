@@ -18,7 +18,7 @@ use uuid::Uuid;
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
     load_env!(".env")?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;

@@ -10,6 +10,7 @@ use chrono::Utc;
 use indexmap::IndexMap;
 use tokio::task_local;
 use tracing::Instrument as _;
+use tracing::info;
 use tracing::info_span;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
@@ -49,20 +50,22 @@ pub fn init() {
 
 static APP: OnceLock<&'static str> = OnceLock::new();
 
-pub fn init_action_log_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
+pub fn init_action_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
     let value = match appender {
         "console" => ActionAppender::Console,
         "gcloud" => ActionAppender::GoogleCloud,
         _ => return Err(exception!("unknown appender, value={appender}")),
     };
     APPENDER.set(value).map_err(|_err| exception!("appender was already initialized"))?;
-    APP.set(app).map_err(|_err| exception!("appender was already initialized"))
+    APP.set(app).map_err(|_err| exception!("appender was already initialized"))?;
+    info!("init action appender, appender={appender}");
+    Ok(())
 }
 
 #[inline]
-pub async fn start_action<T, R>(kind: &'static str, ref_id: Option<String>, task: T) -> Result<R, Exception>
+pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<String>, task: F) -> F::Output
 where
-    T: Future<Output = Result<R, Exception>>,
+    F: Future<Output = Result<R, Exception>>,
 {
     let action_id = id_generator::random_id();
     let action_span = info_span!("action", kind, action_id, ref_id);

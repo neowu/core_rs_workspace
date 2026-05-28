@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use framework::exception::Exception;
 use framework::log;
-use framework::shutdown::listen_shutdown_signal;
+use framework::system::System;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
 use framework_kafka::consumer::Message;
@@ -33,7 +33,7 @@ struct Topics {
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
@@ -42,7 +42,7 @@ pub async fn main() -> Result<(), Exception> {
         tx,
     });
 
-    let shutdown_signal = listen_shutdown_signal();
+    let mut system = System::new();
 
     let handle = tokio::spawn(process_message(rx));
 
@@ -51,10 +51,12 @@ pub async fn main() -> Result<(), Exception> {
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
-    consumer.start(state, shutdown_signal).await?;
+
+    system.spawn(consumer.start(state, system.shutdown_signal()));
 
     handle.await?;
 
+    system.wait().await;
     Ok(())
 }
 

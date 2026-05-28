@@ -5,6 +5,7 @@ use axum::Router;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::routing::put;
+use chrono::SecondsFormat;
 use chrono::Utc;
 use http::StatusCode;
 
@@ -30,7 +31,10 @@ where
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
     let context = JobContext { name: schedule.name, scheduled_time: Utc::now() };
-    task::spawn((schedule.job)(state.state.clone(), context));
+    task::__spawn(
+        format!("job:{job}@{}", context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true)),
+        (schedule.job)(state.state.clone(), context),
+    );
     Ok(StatusCode::ACCEPTED)
 }
 

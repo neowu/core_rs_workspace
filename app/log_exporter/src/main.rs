@@ -1,6 +1,7 @@
 use std::fs;
 use std::fs::read_to_string;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use chrono::FixedOffset;
@@ -11,7 +12,7 @@ use framework::json;
 use framework::log;
 use framework::number::parse_u32;
 use framework::schedule::Scheduler;
-use framework::shutdown::listen_shutdown_signal;
+use framework::system::System;
 use framework::task;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
@@ -35,7 +36,7 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    log_appender: String,
+    action_appender: String,
     kafka_uri: String,
     log_dir: String,
     bucket: String,
@@ -76,9 +77,9 @@ struct Topics {
 async fn main() -> Result<(), Exception> {
     log::init();
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
-    log::init_action_log_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender(&config.action_appender, env!("CARGO_BIN_NAME"))?;
 
-    let shutdown_signal = listen_shutdown_signal();
+    let mut system = System::new();
 
     let state = Arc::new({
         let hostname = hostname::get()?.to_string_lossy().to_string();
@@ -94,31 +95,35 @@ async fn main() -> Result<(), Exception> {
     });
 
     let scheduler_state = Arc::clone(&state);
-    let scheduler_signal = shutdown_signal.clone();
-    task::spawn(async move {
+    let scheduler_shutdown_signal = system.shutdown_signal();
+    system.spawn(async move {
         let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
         scheduler.schedule_daily(
             "process_log_job",
             process_log_job,
             NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
         );
-        scheduler.start(scheduler_state, scheduler_signal).await
+        scheduler.start(scheduler_state, scheduler_shutdown_signal).await;
     });
 
     let consumer_state = Arc::clone(&state);
-    let consumer_signal = shutdown_signal.clone();
-    task::spawn(async move {
+    let consumer_signal = system.shutdown_signal();
+    system.spawn(async move {
         let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
         consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
         consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
-        consumer.start(consumer_state, consumer_signal).await
+        consumer.start(consumer_state, consumer_signal).await;
     });
 
-    let app = Router::new();
-    let app = app.merge(web::routes(Arc::clone(&state)));
-    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await?;
+    let http_server_signal = system.shutdown_signal();
+    system.spawn(async move {
+        let app = Router::new();
+        let app = app.merge(web::routes(Arc::clone(&state)));
+        start_http_server(app, http_server_signal, HttpServerConfig::default()).await;
+    });
 
-    task::shutdown().await;
+    system.wait().await;
+    task::shutdown(Duration::from_secs(15)).await;
 
     Ok(())
 }

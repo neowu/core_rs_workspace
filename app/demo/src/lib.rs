@@ -10,7 +10,7 @@ use framework::load_env;
 use framework::log;
 use framework::schedule::Scheduler;
 use framework::schedule::controller::SystemRoute as _;
-use framework::shutdown::listen_shutdown_signal;
+use framework::system::System;
 use framework::task;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
@@ -39,12 +39,12 @@ pub struct AppConfig {
 #[inline]
 pub async fn run() -> Result<(), Exception> {
     log::init();
-    log::init_action_log_appender("gcloud", env!("CARGO_PKG_NAME"))?;
+    log::init_action_appender("console", env!("CARGO_PKG_NAME"))?;
     load_env!(".env")?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
 
-    let shutdown_signal = listen_shutdown_signal();
+    let mut system = System::new();
 
     let db = Database::new(DbConfig {
         uri: config.db_url,
@@ -55,19 +55,19 @@ pub async fn run() -> Result<(), Exception> {
 
     let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
-    let scheduler_signal = shutdown_signal.clone();
     let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
     scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
     let scheduler_routes = scheduler.routes(state);
-    task::spawn(async move { scheduler.start(state, scheduler_signal).await });
+    system.spawn(scheduler.start(state, system.shutdown_signal()));
 
     let app = Router::new();
     let app = app.merge(scheduler_routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes()?);
-    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await?;
+    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
 
-    task::shutdown().await;
+    system.wait().await;
+    task::shutdown(Duration::from_secs(15)).await;
 
     Ok(())
 }

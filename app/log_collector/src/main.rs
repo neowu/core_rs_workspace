@@ -1,11 +1,13 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use framework::asset_path;
 use framework::exception::Exception;
 use framework::json;
 use framework::log;
-use framework::shutdown::listen_shutdown_signal;
+use framework::system::System;
+use framework::task;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
 use framework_kafka::Topic;
@@ -18,7 +20,7 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    log_appender: String,
+    action_appender: String,
     kafka_uri: String,
 }
 
@@ -35,9 +37,9 @@ struct Topics {
 async fn main() -> Result<(), Exception> {
     log::init();
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
-    log::init_action_log_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
+    log::init_action_appender(&config.action_appender, env!("CARGO_BIN_NAME"))?;
 
-    let shutdown_signal = listen_shutdown_signal();
+    let mut system = System::new();
 
     let state = Arc::new(AppState {
         topics: Topics { event: Topic::new("event") },
@@ -46,5 +48,9 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(state));
-    start_http_server(app, shutdown_signal, HttpServerConfig::default()).await
+    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
+
+    system.wait().await;
+    task::shutdown(Duration::from_secs(15)).await;
+    Ok(())
 }

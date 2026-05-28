@@ -18,7 +18,6 @@ pub use tower_http::services::ServeFile;
 use tracing::debug;
 use tracing::info;
 
-use crate::exception::Exception;
 use crate::log;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
@@ -35,25 +34,21 @@ impl Default for HttpServerConfig {
     }
 }
 
-pub async fn start_http_server(
-    router: Router,
-    shutdown_signal: CancellationToken,
-    config: HttpServerConfig,
-) -> Result<(), Exception> {
+pub async fn start_http_server(router: Router, shutdown_signal: CancellationToken, config: HttpServerConfig) {
     let app = Router::new();
     let app = app.merge(router);
     let app = app.layer(middleware::from_fn(http_server_layer));
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
-    let listener = TcpListener::bind(&config.bind_address).await?;
+    let listener = TcpListener::bind(&config.bind_address).await.expect("failed to bind address");
     info!("http server stated, bind={}", config.bind_address);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal.cancelled().await;
+            // TODO: sleep GracePeriod for cloud update routing like 10s
         })
-        .await?;
+        .await
+        .expect("failed to start http server");
     info!("http server stopped");
-
-    Ok(())
 }
 
 async fn http_server_layer(mut request: Request, next: Next) -> Response {

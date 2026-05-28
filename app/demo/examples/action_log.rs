@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use framework::context;
 use framework::exception;
@@ -25,11 +26,11 @@ use tracing::warn;
 #[tokio::main]
 async fn main() {
     log::init();
-    log::init_action_log_appender("gcloud", env!("CARGO_BIN_NAME")).unwrap();
+    log::init_action_appender("gcloud", env!("CARGO_BIN_NAME")).unwrap();
 
     test_action().await;
 
-    task::shutdown().await;
+    task::shutdown(Duration::from_secs(15)).await;
 }
 
 async fn test_action() {

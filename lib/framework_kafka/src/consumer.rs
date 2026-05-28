@@ -27,6 +27,7 @@ use rdkafka::message::BorrowedMessage;
 use rdkafka::message::Headers as _;
 use rdkafka::util::Timeout;
 use serde::de::DeserializeOwned;
+use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
@@ -80,7 +81,7 @@ where
             config: ClientConfig::new()
                 .set("group.id", group_id)
                 .set("bootstrap.servers", bootstrap_servers)
-                .set("enable.auto.commit", "false")
+                .set("enable.auto.commit", "123")
                 .set_log_level(RDKafkaLogLevel::Info)
                 .to_owned(),
             handlers: HashMap::new(),
@@ -120,11 +121,11 @@ where
         self.handlers.insert(topic, Box::new(handler));
     }
 
-    pub async fn start(self, state: S, shutdown_signal: CancellationToken) -> Result<(), Exception> {
+    pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
         let handlers = self.handlers;
-        let consumer: BaseConsumer = self.config.create()?;
+        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer"); // fail fast on startup
         let topics: Vec<&str> = handlers.keys().copied().collect();
-        consumer.subscribe(&topics)?;
+        consumer.subscribe(&topics).expect("failed to subscribe topic"); // fail fast on startup
 
         info!("kafka consumer started, topics={:?}", topics);
 
@@ -150,7 +151,7 @@ where
 
             if shutdown_signal.is_cancelled() {
                 info!("kafka consumer stopped, topics={:?}", topics);
-                return Ok(());
+                return;
             }
         }
     }
@@ -256,7 +257,7 @@ where
     Fut: Future<Output = Result<(), Exception>> + Send,
     M: DeserializeOwned + Send + 'static,
 {
-    let mut handles = Vec::with_capacity(messages.len());
+    let mut handles = JoinSet::new();
     let mut nodes: HashMap<String, MessageNode<M>> = HashMap::new();
     for message in messages {
         if let Some(ref key) = message.key {
@@ -271,24 +272,24 @@ where
             }
         } else {
             let state = state.clone();
-            handles.push(tokio::spawn(async move { handle_message(topic, message, handler, state).await }));
+            handles.spawn(async move { handle_message(topic, message, handler, state).await });
         }
     }
 
     for node in nodes.into_values() {
         let state = state.clone();
-        handles.push(tokio::spawn(async move {
+        handles.spawn(async move {
             handle_message(topic, node.message, handler, state.clone()).await;
             if let Some(next) = node.next {
                 for next_node in next {
                     handle_message(topic, next_node.message, handler, state.clone()).await;
                 }
             }
-        }));
+        });
     }
 
     Box::pin(async move {
-        join_all(handles).await;
+        handles.join_all().await;
         Ok(())
     })
 }
