@@ -70,7 +70,7 @@ where
 
         let item = loop {
             let candidate = {
-                let mut storage = self.storage.lock().expect("only if lock if poisoned");
+                let mut storage = self.storage.lock().unwrap();
                 storage.pop_front()
             };
 
@@ -138,7 +138,7 @@ where
             && resource.created_time.elapsed() < self.pool.max_life_time
         {
             resource.return_time = Instant::now();
-            let mut storage = self.pool.storage.lock().expect("only if lock if poisoned");
+            let mut storage = self.pool.storage.lock().unwrap();
             storage.push_back(resource);
         }
     }

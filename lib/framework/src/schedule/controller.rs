@@ -15,6 +15,7 @@ use crate::schedule::JobContext;
 use crate::schedule::Schedule;
 use crate::schedule::Scheduler;
 use crate::task;
+use crate::web::SystemRoute;
 use crate::web::error::HttpResult;
 
 #[derive(Clone)]
@@ -36,10 +37,6 @@ where
         (schedule.job)(state.state.clone(), context),
     );
     Ok(StatusCode::ACCEPTED)
-}
-
-pub trait SystemRoute<S> {
-    fn routes(&self, state: S) -> Router;
 }
 
 impl<S> SystemRoute<S> for Scheduler<S>

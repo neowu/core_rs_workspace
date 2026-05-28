@@ -302,7 +302,7 @@ where
 {
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
     let _result = log::start_action("message", ref_id, async {
-        context!(topic = topic, key = message.key, fn = type_name::<H>());
+        context!(topic = topic, key = format!("{:?}", message.key), fn = type_name::<H>());
         debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
         debug!(payload = message.payload, "[message]");
         for (key, value) in &message.headers {

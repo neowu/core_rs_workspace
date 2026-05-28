@@ -33,7 +33,7 @@ impl TaskExecutor {
         loop {
             // register the waiter BEFORE checking, to avoid missing a wakeup
             let notified = self.empty.notified();
-            if self.running_tasks.lock().expect("lock cannot fail").is_empty() {
+            if self.running_tasks.lock().unwrap().is_empty() {
                 break;
             }
             notified.await;
@@ -47,7 +47,7 @@ struct TaskGuard {
 
 impl Drop for TaskGuard {
     fn drop(&mut self) {
-        let mut tasks = EXECUTOR.running_tasks.lock().expect("lock cannot fail");
+        let mut tasks = EXECUTOR.running_tasks.lock().unwrap();
         if let Some(pos) = tasks.iter().position(|name| name == &self.task_name) {
             tasks.swap_remove(pos);
         }
@@ -65,7 +65,7 @@ where
     R: Send + Sync + 'static,
 {
     let task_name = format!("task:{name}@{location}");
-    EXECUTOR.running_tasks.lock().expect("lock cannot fail").push(task_name.clone());
+    EXECUTOR.running_tasks.lock().unwrap().push(task_name.clone());
     let guard = TaskGuard { task_name };
 
     let ref_id = current_action_id();
@@ -86,7 +86,7 @@ pub fn __spawn<T>(task_name: String, task: T)
 where
     T: Future<Output = ()> + Send + 'static,
 {
-    EXECUTOR.running_tasks.lock().expect("lock cannot fail").push(task_name.clone());
+    EXECUTOR.running_tasks.lock().unwrap().push(task_name.clone());
     let guard = TaskGuard { task_name };
 
     tokio::spawn(async {
@@ -99,7 +99,7 @@ pub async fn shutdown(timeout: Duration) {
     if time::timeout(timeout, EXECUTOR.wait()).await.is_ok() {
         info!("tasks finished");
     } else {
-        let tasks = EXECUTOR.running_tasks.lock().expect("lock cannot fail");
+        let tasks = EXECUTOR.running_tasks.lock().unwrap();
         warn!(running_tasks = ?tasks.iter(), "some of tasks failed to finish");
     }
 }

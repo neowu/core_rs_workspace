@@ -2,3 +2,4 @@ allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
 allow-unwrap-in-tests = true
 allow-dbg-in-tests = true
+allow-unwrap-types = ["std::sync::LockResult"]  # This allows .unwrap() on Mutex lock results without triggering clippy::unwrap_used

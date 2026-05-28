@@ -60,27 +60,21 @@ async fn main() -> Result<(), Exception> {
     let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri) });
 
     let scheduler_state = Arc::clone(&state);
-    let scheduler_signal = system.shutdown_signal();
-    system.spawn(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
-        scheduler.schedule_daily(
-            "cleanup_old_index_job",
-            cleanup_old_index_job,
-            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
-        );
-        scheduler.start(scheduler_state, scheduler_signal).await;
-    });
+    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+    scheduler.schedule_daily(
+        "cleanup_old_index_job",
+        cleanup_old_index_job,
+        NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+    );
+    system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 
     put_index_templates(&state.elasticsearch).await?;
 
-    let consumer_signal = system.shutdown_signal();
-    system.spawn(async move {
-        let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
-        consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
-        consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
-        consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
-        consumer.start(state, consumer_signal).await;
-    });
+    let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
+    consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
+    consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
+    consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
+    system.spawn(consumer.start(state, system.shutdown_signal()));
 
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;

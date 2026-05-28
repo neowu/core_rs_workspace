@@ -23,6 +23,7 @@ use crate::exception::Severity;
 use crate::log::appender::APPENDER;
 use crate::log::appender::ActionAppender;
 use crate::log::layer::ActionLogLayer;
+use crate::write_str;
 
 pub mod appender;
 pub mod id_generator;
@@ -122,29 +123,64 @@ pub fn current_action_id() -> Option<String> {
     CURRENT_ACTION.try_with(|action| Some(action.borrow().id.clone())).unwrap_or(None)
 }
 
-pub const CONTEXT: &str = "__context";
-pub const STATS: &str = "__stats";
-
 #[macro_export]
 macro_rules! context {
     ($($key:ident = $value:expr),+ $(,)?) => {
-        ::tracing::event!(
-            name: $crate::log::CONTEXT,
-            ::tracing::Level::DEBUG,
-            $($key = $value),+
-        )
+        $(
+            $crate::log::__context(
+                stringify!($key),
+                $value,
+                concat!(module_path!(), ":", line!()),
+            );
+        )+
     };
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn __context(key: &'static str, value: impl Into<String>, location: &'static str) {
+    const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
+
+    let _result = CURRENT_ACTION.try_with(|action| {
+        let mut action = action.borrow_mut();
+
+        let (minutes, seconds, nanos) = elapsed(action.start_time);
+        let mut log = format!("{minutes:02}:{seconds:02}.{nanos:09} ");
+        let value = truncate(value.into(), MAX_CONTEXT_VALUE_LEN, Some("...(truncated)"));
+        write_str!(log, "{location} [content] {key}={value}");
+
+        action.context.insert(key, value);
+        action.logs.push(log);
+    });
 }
 
 #[macro_export]
 macro_rules! stats {
     ($($key:ident = $value:expr),+ $(,)?) => {
-        ::tracing::event!(
-            name: $crate::log::STATS,
-            ::tracing::Level::DEBUG,
-            $($key = $value as u128),+
-        )
+        $(
+            $crate::log::__stats(
+                stringify!($key),
+                $value as u128,
+                concat!(module_path!(), ":", line!()),
+            );
+        )+
     };
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn __stats(key: &'static str, value: u128, location: &'static str) {
+    let _result = CURRENT_ACTION.try_with(|action| {
+        let mut action = action.borrow_mut();
+
+        let (minutes, seconds, nanos) = elapsed(action.start_time);
+        let mut log = format!("{minutes:02}:{seconds:02}.{nanos:09} ");
+        write_str!(log, "{location} [stats] {key}={value}");
+
+        let stats_value = action.stats.entry(key.to_owned()).or_default();
+        *stats_value += value;
+        action.logs.push(log);
+    });
 }
 
 struct Action {
@@ -160,4 +196,48 @@ struct Action {
     context: IndexMap<&'static str, String>,
     stats: IndexMap<String, u128>,
     logs: Vec<String>,
+}
+
+fn elapsed(start: Instant) -> (u64, u64, u32) {
+    let elapsed = start.elapsed();
+    let total_seconds = elapsed.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    let nanos = elapsed.subsec_nanos();
+    (minutes, seconds, nanos)
+}
+
+fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
+    if len >= value.len() {
+        return value;
+    }
+
+    let mut new_len = len;
+    while new_len > 0 && !value.is_char_boundary(new_len) {
+        new_len -= 1;
+    }
+
+    value.truncate(new_len);
+    if let Some(suffix) = suffix {
+        value.push_str(suffix);
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::log::truncate;
+
+    #[test]
+    fn truncate_with_unicode() {
+        let value = "123老虎456".to_owned();
+        assert_eq!(truncate(value.clone(), 3, None), "123".to_owned());
+        assert_eq!(truncate(value.clone(), 4, None), "123".to_owned());
+        assert_eq!(truncate(value.clone(), 5, None), "123".to_owned());
+        assert_eq!(truncate(value.clone(), 6, Some("...(truncated)")), "123老...(truncated)".to_owned());
+        assert_eq!(truncate(value.clone(), 7, None), "123老".to_owned());
+        assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
+        assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
+        assert_eq!(truncate(value.clone(), 10, Some("...(truncated)")), "123老虎4...(truncated)".to_owned());
+    }
 }

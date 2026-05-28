@@ -26,7 +26,7 @@ use tracing::warn;
 #[tokio::main]
 async fn main() {
     log::init();
-    log::init_action_appender("gcloud", env!("CARGO_BIN_NAME")).unwrap();
+    log::init_action_appender("console", env!("CARGO_BIN_NAME")).unwrap();
 
     test_action().await;
 
@@ -50,7 +50,7 @@ async fn test_action() {
             Ok(())
         });
 
-        context!(key3 = "value3");
+        context!(key4 = "value4");
         warn!("after task, {}", x.lock().unwrap());
         handle_request(false).await?;
         Ok(())

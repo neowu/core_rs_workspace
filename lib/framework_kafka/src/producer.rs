@@ -31,7 +31,7 @@ impl Producer {
             .set("message.timeout.ms", "5000")
             .set("compression.codec", "zstd")
             .create()
-            .expect("Producer creation error");
+            .expect("failed to create producer");
         Self { producer, client }
     }
 

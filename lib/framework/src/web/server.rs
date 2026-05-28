@@ -73,7 +73,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         }
 
         let client_info = client_info(&request, 2);
-        context!(client_ip = client_info.client_ip);
+        context!(client_ip = &client_info.client_ip);
         if let Some(ref user_agent) = client_info.user_agent {
             context!(user_agent = user_agent);
         }
@@ -101,7 +101,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
 
         let status = http_response.status().as_u16();
         // TODO: warn on 404, 405?
-        context!(response_status = status);
+        context!(response_status = status.to_string());
         for (name, value) in http_response.headers() {
             debug!("[header] {name}={value:?}");
         }

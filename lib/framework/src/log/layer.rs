@@ -13,18 +13,15 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 
-use super::CONTEXT;
-use super::STATS;
 use crate::exception::Severity;
-use crate::log::Action;
 use crate::log::CURRENT_ACTION;
+use crate::log::elapsed;
+use crate::log::truncate;
 use crate::write_str;
 
 pub(crate) struct ActionLogLayer;
 
 const MAX_LOG_MESSAGE_LEN: usize = 10_000;
-const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
-const MAX_ERROR_MESSAGE_LEN: usize = 200;
 
 impl<S> Layer<S> for ActionLogLayer
 where
@@ -130,17 +127,6 @@ where
                 }
             }
 
-            let name = event.metadata().name();
-            if name == CONTEXT {
-                let mut context_visitor = ContextVisitor { action: &mut action };
-                event.record(&mut context_visitor);
-                write_str!(log, "[context] ");
-            } else if name == STATS {
-                let mut stats_visitor = StatsVisitor { action: &mut action };
-                event.record(&mut stats_visitor);
-                write_str!(log, "[stats] ");
-            }
-
             let mut log_visitor = LogVisitor(&mut log);
             event.record(&mut log_visitor);
             action.logs.push(truncate(log, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")));
@@ -174,50 +160,6 @@ impl Visit for LogVisitor<'_> {
     }
 }
 
-struct ContextVisitor<'a> {
-    action: &'a mut Action,
-}
-
-impl Visit for ContextVisitor<'_> {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        let value = value.to_owned();
-        self.action.context.insert(field.name(), truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")));
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-        self.action.context.insert(field.name(), format!("{value:?}"));
-    }
-}
-
-struct StatsVisitor<'a> {
-    action: &'a mut Action,
-}
-
-impl Visit for StatsVisitor<'_> {
-    fn record_f64(&mut self, field: &Field, value: f64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_i64(&mut self, field: &Field, value: i64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_i128(&mut self, field: &Field, value: i128) {
-        self.record_u128(field, value as u128);
-    }
-
-    fn record_u128(&mut self, field: &Field, value: u128) {
-        let stats_value = self.action.stats.entry(field.name().to_owned()).or_default();
-        *stats_value += value;
-    }
-
-    fn record_debug(&mut self, _field: &Field, _value: &dyn Debug) {}
-}
-
 struct ErrorVisitor {
     code: Option<String>,
     message: Option<String>,
@@ -231,53 +173,10 @@ impl Visit for ErrorVisitor {
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+        const MAX_ERROR_MESSAGE_LEN: usize = 200;
         if field.name() == "message" {
             let message = format!("{value:?}");
             self.message = Some(truncate(message, MAX_ERROR_MESSAGE_LEN, None));
         }
-    }
-}
-
-fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
-    if len >= value.len() {
-        return value;
-    }
-
-    let mut new_len = len;
-    while new_len > 0 && !value.is_char_boundary(new_len) {
-        new_len -= 1;
-    }
-
-    value.truncate(new_len);
-    if let Some(suffix) = suffix {
-        value.push_str(suffix);
-    }
-    value
-}
-
-fn elapsed(start: Instant) -> (u64, u64, u32) {
-    let elapsed = start.elapsed();
-    let total_seconds = elapsed.as_secs();
-    let minutes = total_seconds / 60;
-    let seconds = total_seconds % 60;
-    let nanos = elapsed.subsec_nanos();
-    (minutes, seconds, nanos)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::log::layer::truncate;
-
-    #[test]
-    fn truncate_with_unicode() {
-        let value = "123老虎456".to_owned();
-        assert_eq!(truncate(value.clone(), 3, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 4, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 5, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 6, Some("...(truncated)")), "123老...(truncated)".to_owned());
-        assert_eq!(truncate(value.clone(), 7, None), "123老".to_owned());
-        assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
-        assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
-        assert_eq!(truncate(value.clone(), 10, Some("...(truncated)")), "123老虎4...(truncated)".to_owned());
     }
 }
