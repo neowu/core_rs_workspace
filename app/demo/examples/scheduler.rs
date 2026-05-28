@@ -21,7 +21,7 @@ struct State {}
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let mut system = System::new();
 

@@ -1,4 +1,4 @@
 {
-  "action_appender": "console",
+  "log_appender": "console",
   "kafka_uri": "dev.internal:9092"
 }

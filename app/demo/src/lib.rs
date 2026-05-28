@@ -39,7 +39,7 @@ pub struct AppConfig {
 #[inline]
 pub async fn run() -> Result<(), Exception> {
     log::init();
-    log::init_action_appender("console", env!("CARGO_PKG_NAME"))?;
+    log::init_appender("console", env!("CARGO_PKG_NAME"))?;
     load_env!(".env")?;
 
     let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;

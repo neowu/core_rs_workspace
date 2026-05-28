@@ -33,7 +33,7 @@ struct Topics {
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     log::init();
-    log::init_action_appender("console", env!("CARGO_BIN_NAME"))?;
+    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {

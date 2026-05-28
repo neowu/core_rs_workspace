@@ -14,18 +14,18 @@ use crate::json;
 use crate::log::Action;
 use crate::write_str;
 
-pub(crate) static APPENDER: OnceLock<ActionAppender> = OnceLock::new();
+pub(crate) static APPENDER: OnceLock<Appender> = OnceLock::new();
 
-pub enum ActionAppender {
+pub enum Appender {
     Console,
     GoogleCloud,
 }
 
-impl ActionAppender {
-    pub(super) fn append(&self, action: &Action) {
+impl Appender {
+    pub(super) fn append_action(&self, action: &Action) {
         match self {
-            ActionAppender::Console => append_console(action),
-            ActionAppender::GoogleCloud => {
+            Appender::Console => append_console(action),
+            Appender::GoogleCloud => {
                 if let Err(err) = append_gcloud(action) {
                     err.log();
                 }

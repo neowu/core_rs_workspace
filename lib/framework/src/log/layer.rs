@@ -64,10 +64,10 @@ where
 
                 let span_name = span.name();
                 let (minutes, seconds, nanos) = elapsed(action.start_time);
-                let mut log = format!("[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} ");
                 let span_elapsed = span_extension.start_time.elapsed();
-                write_str!(log, "elapsed={span_elapsed:?} <");
-                action.logs.push(log);
+                action.logs.push(format!(
+                    "[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} elapsed={span_elapsed:?} <"
+                ));
 
                 let total_elapsed = action.stats.entry(format!("{span_name}_elapsed")).or_default();
                 *total_elapsed += span_elapsed.as_nanos();
@@ -79,9 +79,9 @@ where
     }
 
     fn on_record(&self, id: &Id, values: &Record, context: Context<S>) {
+        let span = context.span(id).expect("span must exist");
+        let span_name = span.name();
         let _result = CURRENT_ACTION.try_with(|action| {
-            let span = context.span(id).expect("span must exist");
-            let span_name = span.name();
             let mut action = action.borrow_mut();
             let (minutes, seconds, nanos) = elapsed(action.start_time);
             let mut log = format!("[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} ");
@@ -99,7 +99,6 @@ where
             let mut action = action.borrow_mut();
 
             let mut log = String::with_capacity(128);
-
             let (minutes, seconds, nanos) = elapsed(action.start_time);
             write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} ");
 

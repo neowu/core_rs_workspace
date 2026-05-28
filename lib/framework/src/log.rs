@@ -21,7 +21,7 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::appender::APPENDER;
-use crate::log::appender::ActionAppender;
+use crate::log::appender::Appender;
 use crate::log::layer::ActionLogLayer;
 use crate::write_str;
 
@@ -51,10 +51,10 @@ pub fn init() {
 
 static APP: OnceLock<&'static str> = OnceLock::new();
 
-pub fn init_action_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
+pub fn init_appender(appender: &str, app: &'static str) -> Result<(), Exception> {
     let value = match appender {
-        "console" => ActionAppender::Console,
-        "gcloud" => ActionAppender::GoogleCloud,
+        "console" => Appender::Console,
+        "gcloud" => Appender::GoogleCloud,
         _ => return Err(exception!("unknown appender, value={appender}")),
     };
     APPENDER.set(value).map_err(|_err| exception!("appender was already initialized"))?;
@@ -106,7 +106,7 @@ where
                     current_action.logs.push(format!("# action end, elapsed={elapsed:?}"));
                 }
                 if let Some(appender) = APPENDER.get() {
-                    appender.append(&current_action);
+                    appender.append_action(&current_action);
                 }
             });
             result

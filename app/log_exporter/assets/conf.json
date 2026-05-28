@@ -1,5 +1,5 @@
 {
-  "action_appender": "console",
+  "log_appender": "console",
   "log_dir": "/var/log/app",
   "kafka_uri": "dev.internal:9092",
   "bucket": "gs://archive"
