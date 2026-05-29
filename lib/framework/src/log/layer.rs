@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -69,10 +70,10 @@ where
                     "[span:{span_name}] {minutes:02}:{seconds:02}.{nanos:09} elapsed={span_elapsed:?} <"
                 ));
 
-                let total_elapsed = action.stats.entry(format!("{span_name}_elapsed")).or_default();
-                *total_elapsed += span_elapsed.as_nanos();
+                let total_elapsed = action.stats.entry(Cow::Owned(format!("{span_name}_elapsed"))).or_default();
+                *total_elapsed += span_elapsed.as_nanos() as u64;
 
-                let count = action.stats.entry(format!("{span_name}_count")).or_default();
+                let count = action.stats.entry(Cow::Owned(format!("{span_name}_count"))).or_default();
                 *count += 1;
             });
         }

@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::io;
+use std::io::BufWriter;
 use std::io::Write as _;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -8,7 +10,6 @@ use chrono::Utc;
 use indexmap::IndexMap;
 use serde::Serialize;
 
-use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
@@ -22,14 +23,11 @@ pub enum Appender {
 }
 
 impl Appender {
+    // appender must not emit log event!(), it could trigger layer on_event, make CURRENT_ACTION.borrow_mut() panic
     pub(super) fn append_action(&self, action: &Action) {
         match self {
             Appender::Console => append_console(action),
-            Appender::GoogleCloud => {
-                if let Err(err) = append_gcloud(action) {
-                    err.log();
-                }
-            }
+            Appender::GoogleCloud => append_gcloud(action),
         }
     }
 }
@@ -59,7 +57,7 @@ fn append_console(action: &Action) {
 
     for (key, value) in &action.stats {
         if key.ends_with("elapsed") {
-            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(u64::try_from(*value).unwrap_or(0)));
+            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value));
         } else {
             write_str!(&mut log, " | {key}={value}");
         }
@@ -67,12 +65,15 @@ fn append_console(action: &Action) {
 
     writeln!(io::stdout(), "{log}").expect("write to stdout cannot fail");
 
-    if action.severity.is_some() {
-        writeln!(io::stderr(), "{}", action.logs.join("\n")).expect("write to stderr cannot fail");
+    if action.flush_trace() {
+        let mut stderr = BufWriter::with_capacity(32 * 1024, io::stderr().lock());
+        for line in &action.logs {
+            writeln!(stderr, "{line}").expect("write to stderr cannot fail");
+        }
     }
 }
 
-fn append_gcloud(action: &Action) -> Result<(), Exception> {
+fn append_gcloud(action: &Action) {
     let id = &action.id;
     let time = action.date;
     let severity = severity(action);
@@ -93,13 +94,16 @@ fn append_gcloud(action: &Action) -> Result<(), Exception> {
             stats: &action.stats,
             label: LogLabel { log: "action" },
             trace_id: id,
-        })?
-    )?;
+        })
+        .expect("serialize to json cannot fail")
+    )
+    .expect("write to stdout cannot fail");
 
-    if action.severity.is_some() {
+    if action.flush_trace() {
+        let mut stdout = BufWriter::with_capacity(32 * 1024, io::stdout().lock());
         for line in &action.logs {
             writeln!(
-                io::stdout(),
+                stdout,
                 "{}",
                 json::to_json(&TraceEntry {
                     id,
@@ -109,11 +113,12 @@ fn append_gcloud(action: &Action) -> Result<(), Exception> {
                     message: line,
                     label: LogLabel { log: "trace" },
                     trace_id: id,
-                })?
-            )?;
+                })
+                .expect("serialize to json cannot fail")
+            )
+            .expect("write to stdout cannot fail");
         }
     }
-    Ok(())
 }
 
 const fn severity(action: &Action) -> &'static str {
@@ -143,7 +148,7 @@ struct ActionEntry<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
     context: &'a IndexMap<&'static str, String>,
-    stats: &'a IndexMap<String, u128>,
+    stats: &'a IndexMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]

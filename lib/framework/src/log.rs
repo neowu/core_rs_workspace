@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::env;
 use std::sync::OnceLock;
@@ -40,7 +41,7 @@ pub fn init() {
         .with(
             fmt::layer()
                 .compact()
-                .with_ansi(false) // generally cloud log console doesn't support color
+                .with_ansi(false) // cloud log console doesn't support color
                 .with_line_number(true)
                 .with_thread_ids(true)
                 .with_filter(LevelFilter::INFO),
@@ -70,20 +71,7 @@ where
 {
     let action_id = id_generator::random_id();
     let action_span = info_span!("action", kind, action_id, ref_id);
-    let mut action = Action {
-        start_time: Instant::now(),
-        id: action_id,
-        app: APP.get().unwrap_or(&"unknown"),
-        kind,
-        date: Utc::now(),
-        ref_id,
-        severity: None,
-        error_code: None,
-        error_message: None,
-        context: IndexMap::new(),
-        stats: IndexMap::new(),
-        logs: Vec::with_capacity(32),
-    };
+    let mut action = Action::new(action_id, kind, ref_id);
     action.logs.push(format!(
         "# action begin, kind={}, id={}, date={}, thread={:?}, ref_id={:?}",
         &action.kind,
@@ -100,14 +88,7 @@ where
             }
             CURRENT_ACTION.with(|current_action| {
                 let mut current_action = current_action.borrow_mut();
-                let elapsed = current_action.start_time.elapsed();
-                current_action.stats.insert("elapsed".to_owned(), elapsed.as_nanos());
-                if current_action.severity.is_some() {
-                    current_action.logs.push(format!("# action end, elapsed={elapsed:?}"));
-                }
-                if let Some(appender) = APPENDER.get() {
-                    appender.append_action(&current_action);
-                }
+                current_action.finish();
             });
             result
         })
@@ -160,7 +141,7 @@ macro_rules! stats {
         $(
             $crate::log::__stats(
                 stringify!($key),
-                $value as u128,
+                $value as u64,
                 concat!(module_path!(), ":", line!()),
             );
         )+
@@ -169,7 +150,7 @@ macro_rules! stats {
 
 #[doc(hidden)]
 #[inline]
-pub fn __stats(key: &'static str, value: u128, location: &'static str) {
+pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
         let mut action = action.borrow_mut();
 
@@ -177,7 +158,7 @@ pub fn __stats(key: &'static str, value: u128, location: &'static str) {
         let mut log = format!("{minutes:02}:{seconds:02}.{nanos:09} ");
         write_str!(log, "{location} [stats] {key}={value}");
 
-        let stats_value = action.stats.entry(key.to_owned()).or_default();
+        let stats_value = action.stats.entry(Cow::Borrowed(key)).or_default();
         *stats_value += value;
         action.logs.push(log);
     });
@@ -194,8 +175,42 @@ struct Action {
     error_code: Option<String>,
     error_message: Option<String>,
     context: IndexMap<&'static str, String>,
-    stats: IndexMap<String, u128>,
+    stats: IndexMap<Cow<'static, str>, u64>,
     logs: Vec<String>,
+}
+
+impl Action {
+    fn new(id: String, kind: &'static str, ref_id: Option<String>) -> Self {
+        Action {
+            start_time: Instant::now(),
+            id,
+            app: APP.get().unwrap_or(&"unknown"),
+            kind,
+            date: Utc::now(),
+            ref_id,
+            severity: None,
+            error_code: None,
+            error_message: None,
+            context: IndexMap::new(),
+            stats: IndexMap::new(),
+            logs: Vec::with_capacity(32),
+        }
+    }
+
+    const fn flush_trace(&self) -> bool {
+        self.severity.is_some()
+    }
+
+    fn finish(&mut self) {
+        let elapsed = self.start_time.elapsed();
+        self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as u64);
+        if self.flush_trace() {
+            self.logs.push(format!("# action end, elapsed={elapsed:?}"));
+        }
+        if let Some(appender) = APPENDER.get() {
+            appender.append_action(self);
+        }
+    }
 }
 
 fn elapsed(start: Instant) -> (u64, u64, u32) {
