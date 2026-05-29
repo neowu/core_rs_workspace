@@ -11,12 +11,14 @@ pub(super) enum Trigger {
     Daily { time_zone: FixedOffset, time: NaiveTime },
 }
 
+const INITIAL_DELAY: chrono::Duration = chrono::Duration::seconds(3);
+
 impl Trigger {
     pub(super) fn next(&self, previous: DateTime<Utc>, first: bool) -> DateTime<Utc> {
         match self {
             Self::FixedRate(interval) => {
                 if first {
-                    previous + chrono::Duration::seconds(3) // initial delay
+                    previous + INITIAL_DELAY // initial delay
                 } else {
                     previous + chrono::Duration::from_std(*interval).expect("input cannot be out of range")
                 }
@@ -42,13 +44,14 @@ mod tests {
     use chrono::TimeZone as _;
     use chrono::Utc;
 
+    use super::INITIAL_DELAY;
     use super::Trigger;
 
     #[test]
     fn fixed_rate_first_returns_previous() {
         let trigger = Trigger::FixedRate(Duration::from_mins(1));
         let previous = Utc.with_ymd_and_hms(2026, 5, 13, 10, 0, 0).unwrap();
-        assert_eq!(trigger.next(previous, true), previous);
+        assert_eq!(trigger.next(previous, true), previous + INITIAL_DELAY);
     }
 
     #[test]
