@@ -16,7 +16,7 @@ impl Trigger {
         match self {
             Self::FixedRate(interval) => {
                 if first {
-                    previous
+                    previous + chrono::Duration::seconds(3) // initial delay
                 } else {
                     previous + chrono::Duration::from_std(*interval).expect("input cannot be out of range")
                 }

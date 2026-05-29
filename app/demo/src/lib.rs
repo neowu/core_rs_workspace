@@ -64,7 +64,11 @@ pub async fn run() -> Result<(), Exception> {
     let app = app.merge(scheduler_routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes()?);
-    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
+    system.spawn(start_http_server(
+        app,
+        system.shutdown_signal(),
+        HttpServerConfig { shutdown_grace_period: Duration::from_secs(10), ..Default::default() },
+    ));
 
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;

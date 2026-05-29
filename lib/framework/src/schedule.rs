@@ -84,7 +84,6 @@ where
             let state = state.clone();
             let shutdown_signal = shutdown_signal.clone();
             handles.spawn(async move {
-                time::sleep(Duration::from_secs(3)).await; // initial delay
                 let mut previous = Utc::now();
                 let mut first = true;
                 loop {

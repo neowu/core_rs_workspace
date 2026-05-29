@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::MatchedPath;
@@ -12,6 +13,7 @@ use axum::response::IntoResponse as _;
 use axum::response::Response;
 use axum_extra::extract::CookieJar;
 use tokio::net::TcpListener;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
@@ -26,11 +28,16 @@ use crate::web::client_info::client_info;
 pub struct HttpServerConfig {
     pub bind_address: String,
     pub max_forwarded_ips: usize,
+    pub shutdown_grace_period: Duration,
 }
 
 impl Default for HttpServerConfig {
     fn default() -> Self {
-        HttpServerConfig { bind_address: "0.0.0.0:8080".to_owned(), max_forwarded_ips: 2 }
+        HttpServerConfig {
+            bind_address: "0.0.0.0:8080".to_owned(),
+            max_forwarded_ips: 2,
+            shutdown_grace_period: Duration::ZERO,
+        }
     }
 }
 
@@ -44,7 +51,11 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal.cancelled().await;
-            // TODO: sleep GracePeriod for cloud update routing like 10s
+            let period = config.shutdown_grace_period;
+            if !period.is_zero() {
+                info!("wait {period:?} before shutdown");
+                sleep(period).await;
+            }
         })
         .await
         .expect("failed to start http server");
