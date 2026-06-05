@@ -4,24 +4,26 @@ use std::time::Duration;
 use axum::Router;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
+use demo::AppConfig;
 use framework::exception::Exception;
+use framework::load_config;
 use framework::log;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::task;
+use framework::warn;
 use framework::web::SystemRoute as _;
 use framework::web::server::HttpServerConfig;
 use framework::web::server::start_http_server;
 use tokio::time::sleep;
-use tracing::warn;
 
 struct State {}
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    log::init();
-    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let mut system = System::new();
 
@@ -43,7 +45,7 @@ pub async fn main() -> Result<(), Exception> {
 }
 
 async fn job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
-    warn!("test");
+    warn!(error_code = "TRIGGER", "test");
     println!("Job executed: {}", context.name);
     sleep(Duration::from_mins(1)).await;
     Ok(())

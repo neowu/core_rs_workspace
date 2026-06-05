@@ -1,41 +1,24 @@
-use std::collections::HashMap;
-use std::time::Duration;
-
-use tokio::task::Id;
-use tokio::task::JoinSet;
-use tokio::time::timeout;
+use std::net::ToSocketAddrs;
 
 #[tokio::main]
 async fn main() {
-    let mut set: JoinSet<usize> = JoinSet::new();
-    let mut names: HashMap<Id, String> = HashMap::new();
-
-    for i in 0..10 {
-        let abort = set.spawn(async move {
-            tokio::time::sleep(Duration::from_secs(i as u64)).await;
-            i
-        });
-        names.insert(abort.id(), format!("task-{i}"));
+    // let path = PathBuf::from("../../conf.md");
+    let x = format!("{}:0", hostname()).to_socket_addrs().unwrap();
+    for addr in x {
+        println!("IP Address: {}", addr.ip());
     }
+}
 
-    // Drain finished tasks until timeout
-    let _ = timeout(Duration::from_secs(3), async {
-        while let Some(res) = set.join_next_with_id().await {
-            match res {
-                Ok((id, _value)) => {
-                    names.remove(&id);
-                } // finished cleanly
-                Err(e) => {
-                    names.remove(&e.id());
-                } // panicked/cancelled
-            }
-        }
-    })
-    .await;
+use std::ffi::CStr;
 
-    // Whatever's still in `names` is unfinished
-    println!("Unfinished: {:?}", names.values().collect::<Vec<_>>());
-
-    // Abort the stragglers
-    set.shutdown().await;
+fn hostname() -> &'static str {
+    let mut buf = [0u8; 256];
+    let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+    if ret != 0 {
+        panic!("failed to get hostname, error={}", std::io::Error::last_os_error());
+    }
+    // ensure NUL-terminated (POSIX doesn't guarantee it on truncation)
+    buf[buf.len() - 1] = 0;
+    let hostname = unsafe { CStr::from_ptr(buf.as_ptr() as *const libc::c_char) };
+    hostname.to_string_lossy().into_owned().leak()
 }

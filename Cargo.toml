@@ -11,7 +11,6 @@ framework_db = { path = "lib/framework_db" }
 framework_kafka = { path = "lib/framework_kafka" }
 framework_macro = { path = "lib/framework_macro" }
 
-tracing = { version = "*", features = ["max_level_debug"] }
 serde = { version = "*", features = ["derive"] }
 chrono = { version = "*", features = ["serde"] }
 uuid = { version = "*", features = ["v7", "serde"] }
@@ -201,12 +200,10 @@ mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"
 modulo_arithmetic = "warn"
 multiple_inherent_impl = "warn"
-multiple_unsafe_ops_per_block = "warn"
 mutex_atomic = "warn"
 mutex_integer = "warn"
 needless_raw_strings = "warn"
 non_zero_suggestions = "warn"
-panic = "warn"
 pathbuf_init_then_push = "warn"
 # pattern_type_mismatch = "warn" # currently can't used with tuple match: &(ref a, ref b), check in future
 pointer_format = "warn"
@@ -222,7 +219,6 @@ rest_pat_in_fully_bound_structs = "warn"
 return_and_then = "warn"
 same_name_method = "warn"
 semicolon_inside_block = "warn"
-separated_literal_suffix = "warn"
 shadow_unrelated = "warn"
 str_to_string = "warn"
 string_lit_chars_any = "warn"

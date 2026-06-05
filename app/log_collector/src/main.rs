@@ -2,9 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use framework::asset_path;
 use framework::exception::Exception;
-use framework::json;
+use framework::load_config;
 use framework::log;
 use framework::system::System;
 use framework::task;
@@ -35,9 +34,8 @@ struct Topics {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init();
-    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
-    log::init_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let mut system = System::new();
 

@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use demo::AppConfig;
 use framework::exception::Exception;
+use framework::load_config;
 use framework::log;
 use framework::system::System;
+use framework::warn;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
 use framework_kafka::consumer::Message;
@@ -12,7 +15,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
-use tracing::warn;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TestMessage {
@@ -32,8 +34,8 @@ struct Topics {
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    log::init();
-    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
@@ -90,7 +92,7 @@ async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) ->
             if key == "1" {
                 let value = message.payload()?;
                 state.producer.send(&state.topics.test_single, Some("xxx".to_owned()), &value).await?;
-                warn!("test");
+                warn!(error_code = "TRIGGER", "test");
             } else {
                 println!("Received message: {}", message.payload()?.name);
             }

@@ -16,6 +16,7 @@ use crate::http::HttpRequest;
 use crate::http::HttpResponse;
 use crate::json;
 use crate::log::current_action_id;
+use crate::string::intern;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::body::Json;
@@ -126,7 +127,7 @@ where
             Err(exception!(
                 format!("failed to call api, status={status}, error={}", error.message),
                 severity = error.severity,
-                code = code
+                code = intern(code)
             ))
         } else {
             Err(exception!(

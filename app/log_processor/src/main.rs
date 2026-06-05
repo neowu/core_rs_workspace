@@ -6,7 +6,7 @@ use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset_path;
 use framework::exception::Exception;
-use framework::json;
+use framework::load_config;
 use framework::log;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
@@ -43,16 +43,15 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init();
-    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
-    log::init_appender(&config.log_appender, env!("CARGO_BIN_NAME"))?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_BIN_NAME"));
 
     let mut system = System::new();
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;
     spawn_action!("import_kibana_objects", async move {
-        let objects = fs::read_to_string(&asset_path!("assets/kibana_objects.json")?)?;
+        let objects = fs::read_to_string(asset_path!("assets/kibana_objects.json"))?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
         kibana::import(&kibana_uri, objects).await
     });
@@ -84,16 +83,16 @@ async fn main() -> Result<(), Exception> {
 
 async fn put_index_templates(elasticsearch: &Elasticsearch) -> Result<(), Exception> {
     elasticsearch
-        .put_index_template("action", fs::read_to_string(&asset_path!("assets/index/action-index-template.json")?)?)
+        .put_index_template("action", fs::read_to_string(asset_path!("assets/index/action-index-template.json"))?)
         .await?;
     elasticsearch
-        .put_index_template("event", fs::read_to_string(&asset_path!("assets/index/event-index-template.json")?)?)
+        .put_index_template("event", fs::read_to_string(asset_path!("assets/index/event-index-template.json"))?)
         .await?;
     elasticsearch
-        .put_index_template("stat", fs::read_to_string(&asset_path!("assets/index/stat-index-template.json")?)?)
+        .put_index_template("stat", fs::read_to_string(asset_path!("assets/index/stat-index-template.json"))?)
         .await?;
     elasticsearch
-        .put_index_template("trace", fs::read_to_string(&asset_path!("assets/index/trace-index-template.json")?)?)
+        .put_index_template("trace", fs::read_to_string(asset_path!("assets/index/trace-index-template.json"))?)
         .await?;
     Ok(())
 }

@@ -1,14 +1,94 @@
 use std::env;
+use std::env::current_exe;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fs::read_to_string;
 use std::ops::Deref;
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::de;
+use serde::de::DeserializeOwned;
 
-use crate::exception::Exception;
+use crate::console;
+
+/// Loads a JSON config file into a deserializable type, panicking on any error.
+///
+/// Intended to be called once at startup. In debug builds it first loads
+/// `.env` (see [`load_env!`]) so that `env:` references in the config resolve
+/// against those variables; in release builds the `.env` step is a no-op. The
+/// config path is resolved with [`asset_path!`], which also panics if the file
+/// is not found.
+///
+/// Because this only runs at startup, every failure is fatal and surfaces as a
+/// panic rather than a `Result`.
+#[macro_export]
+macro_rules! load_config {
+    ($path:expr) => {{ $crate::config::__load_config($path, env!("CARGO_MANIFEST_DIR")) }};
+}
+
+#[doc(hidden)]
+pub fn __load_config<T>(path: &'static str, manifest_dir: &'static str) -> T
+where
+    T: DeserializeOwned,
+{
+    let exe_path = current_exe().expect("cannot get current exe path");
+    let config_path = exe_path.with_file_name(path);
+    if config_path.exists() {
+        console!("load config from exe path, path={}", config_path.display());
+        return parse_config(&config_path);
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        use std::path::PathBuf;
+
+        let dev_config_path = PathBuf::from(manifest_dir).join(path);
+        if dev_config_path.exists() {
+            load_dev_env(manifest_dir);
+            console!("load config from source code folder, path={}", dev_config_path.display());
+            return parse_config(&dev_config_path);
+        }
+    }
+
+    panic!("config not found, path={}, exe={}", config_path.display(), exe_path.display());
+}
+
+fn parse_config<T>(path: &Path) -> T
+where
+    T: DeserializeOwned,
+{
+    let json =
+        read_to_string(path).unwrap_or_else(|err| panic!("failed to read file, path={}, err={err}", path.display()));
+    serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to deserialize, json={json}, err={err}"))
+}
+
+fn load_dev_env(manifest_dir: &str) {
+    let path = PathBuf::from(manifest_dir).join(".env");
+    if !path.exists() {
+        return;
+    }
+
+    let content = read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read env file, file={}, err={}", path.display(), err));
+
+    console!("load env vars, file={}", path.display());
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            panic!("invalid env line, file={}, line={line}", path.display());
+        };
+        unsafe {
+            env::set_var(key.trim(), value.trim());
+        }
+    }
+}
 
 /// A string configuration loaded inline or from an environment variable.
 ///
@@ -21,18 +101,6 @@ use crate::exception::Exception;
 /// ```json
 /// { "token": "abc123" }
 /// { "token": "env:API_TOKEN" }
-/// ```
-///
-/// # Example
-///
-/// ```ignore
-/// #[derive(Deserialize)]
-/// struct Config {
-///     token: EnvString,
-/// }
-///
-/// let config: Config = serde_json::from_str(json)?;
-/// let token: String = config.token.value();
 /// ```
 pub struct EnvString(String);
 
@@ -75,59 +143,6 @@ impl From<EnvString> for String {
     fn from(env: EnvString) -> Self {
         env.0
     }
-}
-
-/// Loads environment variables from a file in debug builds; no-op in release.
-///
-/// The file is parsed line-by-line as `KEY=VALUE`. Blank lines and lines
-/// starting with `#` are ignored. The first `=` is the separator; later `=`
-/// characters stay in the value. Whitespace around the key and value is
-/// trimmed. Existing env vars are always overwritten.
-///
-/// The path is resolved relative to the caller crate's `CARGO_MANIFEST_DIR`.
-///
-/// # Example
-///
-/// ```ignore
-/// #[tokio::main]
-/// async fn main() -> Result<(), Exception> {
-///     framework::load_env!(".env")?;
-///     // ...
-/// }
-/// ```
-#[macro_export]
-macro_rules! load_env {
-    ($path:expr) => {
-        $crate::config::__load_env(env!("CARGO_MANIFEST_DIR"), $path)
-    };
-}
-
-#[doc(hidden)]
-pub fn __load_env(manifest_dir: &str, path: &str) -> Result<(), Exception> {
-    #[cfg(debug_assertions)]
-    {
-        use std::fs::read_to_string;
-        use std::path::PathBuf;
-
-        let file_path = PathBuf::from(manifest_dir).join(path);
-        let contents = read_to_string(&file_path).map_err(|err| {
-            exception!(format!("failed to read env file, file={}", file_path.to_string_lossy()), source = err)
-        })?;
-        tracing::info!("load env vars, file={}", file_path.to_string_lossy());
-        for line in contents.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let Some((key, value)) = line.split_once('=') else {
-                return Err(exception!(format!("invalid env line, path={}, line={line}", file_path.to_string_lossy())));
-            };
-            unsafe {
-                env::set_var(key.trim(), value.trim());
-            }
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

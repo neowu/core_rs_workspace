@@ -4,7 +4,6 @@ use axum::extract::ConnectInfo;
 use axum::extract::Request;
 use axum::http::HeaderName;
 use axum::http::header;
-use tracing::warn;
 
 const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
 
@@ -83,7 +82,7 @@ fn extract_ip(node: &str) -> Option<String> {
             last_colon_index = Some(i);
         } else if ch.to_digit(16).is_none() {
             // Invalid character in IP address
-            warn!("Invalid character in client IP address: {}", node);
+            warn!(error_code = "BAD_REQUEST", "Invalid character in client IP address: {node}");
             return None;
         }
     }
@@ -108,7 +107,7 @@ fn extract_ip(node: &str) -> Option<String> {
         return Some(node[0..last_colon_index].to_string());
     }
 
-    warn!("Invalid client IP address: {node}");
+    warn!(error_code = "BAD_REQUEST", "Invalid client IP address: {node}");
     None
 }
 

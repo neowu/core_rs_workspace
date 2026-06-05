@@ -5,8 +5,8 @@ use std::sync::Arc;
 use chrono::Datelike as _;
 use chrono::NaiveDate;
 use framework::exception::Exception;
+use framework::log;
 use framework::shell;
-use tracing::info;
 
 use crate::AppState;
 
@@ -24,7 +24,7 @@ pub(crate) fn local_file_path(name: &str, date: NaiveDate, state: &Arc<AppState>
 }
 
 pub(crate) fn cleanup_archive(date: NaiveDate, state: &Arc<AppState>) -> Result<(), Exception> {
-    info!("clean up archives, date={date}");
+    log!("clean up archives, date={date}");
 
     let action_log_path = local_file_path("action", date, state)?;
     if action_log_path.exists() {
@@ -64,7 +64,7 @@ async fn convert_parquet_and_upload(
     duckdb_memory_limit: u32,
 ) -> Result<(), Exception> {
     let local_path = local_path_buf.to_string_lossy();
-    info!("convert to parquet, path={local_path}");
+    log!("convert to parquet, path={local_path}");
     let parquet_path_buf = local_path_buf.with_extension("parquet");
     let parquet_path = parquet_path_buf.to_string_lossy();
     let duckdb_query = format!(
@@ -73,7 +73,7 @@ async fn convert_parquet_and_upload(
     );
     shell::run(&format!("duckdb -c \"{duckdb_query}\"")).await?;
 
-    info!("upload archive, path={parquet_path}");
+    log!("upload archive, path={parquet_path}");
     let upload_command = format!("gcloud storage cp --quiet {parquet_path} {remote_path}");
     shell::run(&upload_command).await?;
     fs::remove_file(parquet_path_buf)?;

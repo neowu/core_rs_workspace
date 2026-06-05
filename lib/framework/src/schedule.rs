@@ -12,8 +12,6 @@ use futures::FutureExt as _;
 use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
-use tracing::warn;
 
 use crate::exception::Exception;
 use crate::log;
@@ -94,8 +92,8 @@ where
                     previous = context.scheduled_time;
 
                     let name = context.name;
-                    let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true);
-                    info!(name, scheduled_time, "job scheduled");
+                    let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Secs, true);
+                    console!("job scheduled, name={name}, scheduled_time={scheduled_time}");
 
                     tokio::select! {
                         () = shutdown_signal.cancelled() => {
@@ -109,9 +107,9 @@ where
                 }
             });
         }
-        info!("scheduler started");
+        console!("scheduler started");
         handles.join_all().await;
-        info!("scheduler stopped");
+        console!("scheduler stopped");
     }
 }
 

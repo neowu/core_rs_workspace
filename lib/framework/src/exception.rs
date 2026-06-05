@@ -6,8 +6,6 @@ use std::fmt::Formatter;
 
 use serde::Deserialize;
 use serde::Serialize;
-use tracing::error;
-use tracing::warn;
 
 use crate::write_str;
 
@@ -15,9 +13,9 @@ pub mod error_code;
 
 pub struct Exception {
     pub severity: Severity,
-    pub code: Option<String>,
+    pub code: Option<&'static str>,
     pub message: String,
-    location: Option<&'static str>,
+    pub location: Option<&'static str>,
     source: Option<Box<Exception>>,
 }
 
@@ -28,6 +26,15 @@ pub enum Severity {
     Warn = 1,
     #[serde(rename = "ERROR")]
     Error = 0,
+}
+
+impl Display for Severity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Severity::Warn => f.write_str("WARN"),
+            Severity::Error => f.write_str("ERROR"),
+        }
+    }
 }
 
 impl Exception {
@@ -48,8 +55,8 @@ impl Exception {
     #[inline]
     #[must_use]
     #[doc(hidden)]
-    pub fn __with_code(mut self, code: impl Into<String>) -> Self {
-        self.code = Some(code.into());
+    pub const fn __with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
         self
     }
 
@@ -70,15 +77,8 @@ impl Exception {
             if index > 0 {
                 trace.push('\n');
             }
-            write_str!(
-                trace,
-                "{index}: {} ",
-                match source.severity {
-                    Severity::Warn => "WARN",
-                    Severity::Error => "ERROR",
-                }
-            );
-            if let Some(ref code) = source.code {
+            write_str!(trace, "{index}: {} ", source.severity);
+            if let Some(code) = source.code {
                 write_str!(trace, "[{code}] ");
             }
             write_str!(trace, "{}", source.message);
@@ -89,18 +89,6 @@ impl Exception {
             current_source = source.source.as_ref().map(Box::as_ref);
         }
         trace
-    }
-
-    #[inline]
-    pub fn log(&self) {
-        let backtrace = self.backtrace();
-        let message = &self.message;
-        match (self.severity, self.code.as_deref()) {
-            (Severity::Warn, Some(error_code)) => warn!(error_code, backtrace, "{message}"),
-            (Severity::Warn, None) => warn!(backtrace, "{message}"),
-            (Severity::Error, Some(error_code)) => error!(error_code, backtrace, "{message}"),
-            (Severity::Error, None) => error!(backtrace, "{message}"),
-        }
     }
 }
 
@@ -168,7 +156,7 @@ mod tests {
     fn backtrace_with_single() {
         let exception = Exception {
             severity: Severity::Error,
-            code: Some("E001".to_owned()),
+            code: Some("E001"),
             message: "bad input".to_owned(),
             location: Some("src/foo.rs:10"),
             source: None,
@@ -187,14 +175,14 @@ mod tests {
         };
         let middle = Exception {
             severity: Severity::Error,
-            code: Some("MID".to_owned()),
+            code: Some("MID"),
             message: "middle".to_owned(),
             location: None,
             source: Some(Box::new(root)),
         };
         let top = Exception {
             severity: Severity::Warn,
-            code: Some("TOP".to_owned()),
+            code: Some("TOP"),
             message: "top".to_owned(),
             location: Some("src/top.rs:5"),
             source: Some(Box::new(middle)),

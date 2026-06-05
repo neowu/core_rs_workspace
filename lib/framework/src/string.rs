@@ -1,3 +1,7 @@
+use std::collections::HashSet;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+
 pub trait StringExt {
     fn truncate_to_max(&self, len: usize) -> &str;
 }
@@ -24,6 +28,18 @@ macro_rules! write_str {
         use std::fmt::Write as _;
         write!($dst, $($arg)*).expect("writing to a String cannot fail")
     }};
+}
+
+static INTERN: LazyLock<Mutex<HashSet<&'static str>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+pub(crate) fn intern(value: &str) -> &'static str {
+    let mut set = INTERN.lock().unwrap();
+    if let Some(&existing) = set.get(value) {
+        return existing;
+    }
+    let leaked: &'static str = Box::leak(value.to_owned().into_boxed_str());
+    set.insert(leaked);
+    leaked
 }
 
 #[cfg(test)]

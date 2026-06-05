@@ -9,6 +9,7 @@ use std::time::Instant;
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
+use framework::console;
 use framework::context;
 use framework::exception::Exception;
 use framework::json::from_json;
@@ -30,9 +31,6 @@ use serde::de::DeserializeOwned;
 use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
-use tracing::debug;
-use tracing::error;
-use tracing::info;
 
 use crate::Topic;
 
@@ -127,7 +125,7 @@ where
         let topics: Vec<&str> = handlers.keys().copied().collect();
         consumer.subscribe(&topics).expect("failed to subscribe topic"); // fail fast on startup
 
-        info!("kafka consumer started, topics={:?}", topics);
+        console!("kafka consumer started, topics={:?}", topics);
 
         loop {
             match poll_message_groups(&consumer, self.poll_max_wait_time, self.poll_max_records) {
@@ -140,17 +138,17 @@ where
                     }
                     join_all(handles).await;
                     if let Err(e) = consumer.commit_consumer_state(CommitMode::Async) {
-                        error!(error = ?e, "failed to commit messages");
+                        console!("ERROR failed to commit messages, error={e:?}");
                     }
                 }
                 Err(e) => {
-                    error!(error = ?e, "failed to poll messages");
+                    console!("ERROR failed to poll messages, error={e:?}");
                     time::sleep(Duration::from_secs(5)).await;
                 }
             }
 
             if shutdown_signal.is_cancelled() {
-                info!("kafka consumer stopped, topics={:?}", topics);
+                console!("kafka consumer stopped, topics={:?}", topics);
                 return;
             }
         }
@@ -225,13 +223,13 @@ where
         context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
         for message in &messages {
-            debug!(key = message.key, payload = message.payload, "[message]");
+            log!("[message] key={:?}, payload={}", message.key, message.payload);
             bytes += message.payload.len();
         }
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
             let lag = Utc::now() - timestamp;
-            debug!("lag={lag}");
+            log!("lag={lag}");
         }
         handler(state, messages).await
     }))
@@ -303,10 +301,10 @@ where
     let ref_id = message.headers.get("ref_id").map(String::to_owned);
     let _result = log::start_action("message", ref_id, async {
         context!(topic = topic, key = format!("{:?}", message.key), fn = type_name::<H>());
-        debug!(timestamp = message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)), "[message]");
-        debug!(payload = message.payload, "[message]");
+        log!("[message] timestamp={:?}", message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)));
+        log!("[message] payload={}", message.payload);
         for (key, value) in &message.headers {
-            debug!("[header] {}={}", key, value);
+            log!("[header] {key}={value}");
         }
         if let Some(client) = message.headers.get("client") {
             context!(client = client);
@@ -314,7 +312,7 @@ where
         stats!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len());
         if let Some(timestamp) = message.timestamp {
             let lag = Utc::now() - timestamp;
-            debug!("lag={lag}");
+            log!("lag={lag}");
         }
         handler(state, message).await
     })

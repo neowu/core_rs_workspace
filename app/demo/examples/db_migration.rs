@@ -1,7 +1,5 @@
 use demo::AppConfig;
-use framework::asset_path;
-use framework::json;
-use framework::load_env;
+use framework::load_config;
 use framework::log;
 use framework_db::Database;
 use framework_db::DbConfig;
@@ -9,13 +7,10 @@ use framework_db::database;
 
 #[tokio::main]
 pub async fn main() {
-    log::init();
-    log::init_appender("console", env!("CARGO_BIN_NAME")).unwrap();
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let _ = log::start_action("migration", None, async {
-        load_env!(".env")?;
-        let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
-
         let db = Database::new(DbConfig {
             uri: config.db_url,
             user: config.db_user,

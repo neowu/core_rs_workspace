@@ -12,7 +12,6 @@ use axum::response::Response;
 use http::request::Parts;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tracing::debug;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
@@ -40,7 +39,7 @@ where
         let result = String::from_request(request, state).await;
         match result {
             Ok(body) => {
-                debug!("[request] body={body}");
+                log!("[request] body={body}");
                 Ok(TextBody(body))
             }
             Err(rejection) => {
@@ -69,7 +68,7 @@ where
         let result = String::from_request(request, state).await;
         match result {
             Ok(body) => {
-                debug!("[request] body={body}");
+                log!("[request] body={body}");
                 let body_object: Result<T, Exception> = json::from_json(&body);
                 match body_object {
                     Ok(value) => Ok(Self(value)),
@@ -103,7 +102,7 @@ where
         let result = json::to_json(&self.0);
         match result {
             Ok(body) => {
-                debug!("[response] body={body}");
+                log!("[response] body={body}");
                 let length = body.len();
                 stats!(response_content_length = length);
                 (
@@ -133,7 +132,7 @@ where
     type Rejection = HttpError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        debug!("[request] query={}", &parts.uri.query().unwrap_or_default());
+        log!("[request] query={}", &parts.uri.query().unwrap_or_default());
         let result = extract::Query::<T>::try_from_uri(&parts.uri);
         match result {
             Ok(extract::Query(query)) => Ok(Query(query)),

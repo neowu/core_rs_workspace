@@ -35,10 +35,10 @@ where
     E: Into<Exception>,
 {
     fn from(err: E) -> Self {
-        let exception: Exception = err.into();
-        exception.log();
+        let e: Exception = err.into();
+        log!(exception = e);
 
-        let status_code = exception.code.as_deref().map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
+        let status_code = e.code.map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
             error_code::BAD_REQUEST | error_code::VALIDATION_ERROR => StatusCode::BAD_REQUEST,
             error_code::NOT_FOUND => StatusCode::NOT_FOUND,
             error_code::FORBIDDEN => StatusCode::FORBIDDEN,
@@ -47,7 +47,7 @@ where
 
         Self {
             status_code,
-            body: HttpErrorBody { severity: exception.severity, code: exception.code, message: exception.message },
+            body: HttpErrorBody { severity: e.severity, code: e.code.map(str::to_owned), message: e.message },
         }
     }
 }

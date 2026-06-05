@@ -1,17 +1,19 @@
+use demo::AppConfig;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::http::StreamExt;
+use framework::load_config;
 use framework::log;
 use framework::stats;
-use tracing::warn;
+use framework::warn;
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    log::init();
-    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let _ = log::start_action("test_http_client", None, async {
         test_http().await
@@ -37,7 +39,7 @@ async fn test_http() -> Result<(), Exception> {
     //     println!("line={line}");
     // }
     stats!(http_client_hello = 1);
-    warn!("test");
+    warn!(error_code = "TRIGGER", "test");
     Ok(())
 }
 
@@ -51,7 +53,7 @@ async fn test_sse() -> Result<(), Exception> {
         println!("event => {event:?}");
     }
 
-    warn!("test");
+    warn!(error_code = "TRIGGER", "test");
 
     Ok(())
 }

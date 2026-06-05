@@ -17,8 +17,6 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
-use tracing::debug;
-use tracing::info;
 
 use crate::log;
 use crate::web::CLIENT;
@@ -47,19 +45,19 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
     let app = app.layer(middleware::from_fn(http_server_layer));
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
     let listener = TcpListener::bind(&config.bind_address).await.expect("failed to bind address");
-    info!("http server stated, bind={}", config.bind_address);
+    console!("http server stated, bind={}", config.bind_address);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal.cancelled().await;
             let period = config.shutdown_grace_period;
             if !period.is_zero() {
-                info!("wait {period:?} before shutdown");
+                console!("wait {period:?} before shutdown");
                 sleep(period).await;
             }
         })
         .await
         .expect("failed to start http server");
-    info!("http server stopped");
+    console!("http server stopped");
 }
 
 async fn http_server_layer(mut request: Request, next: Next) -> Response {
@@ -75,12 +73,12 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
 
         for (name, value) in request.headers() {
             if name != header::COOKIE {
-                debug!("[header] {name}={value:?}");
+                log!("[header] {name}={value:?}");
             }
         }
         let cookies = CookieJar::from_headers(request.headers());
         for cookie in cookies.iter() {
-            debug!("[cookie] {}={}", cookie.name(), cookie.value());
+            log!("[cookie] {}={}", cookie.name(), cookie.value());
         }
 
         let client_info = client_info(&request, 2);
@@ -111,10 +109,9 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         let http_response = next.run(request).await;
 
         let status = http_response.status().as_u16();
-        // TODO: warn on 404, 405?
         context!(response_status = status.to_string());
         for (name, value) in http_response.headers() {
-            debug!("[header] {name}={value:?}");
+            log!("[header] {name}={value:?}");
         }
         Ok(http_response)
     })

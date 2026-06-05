@@ -10,8 +10,8 @@ pub(crate) fn routes() -> Result<Router, Exception> {
     let router = Router::new();
     let router = router.route("/503", get(http_503));
     let router = router
-        .route_service("/", ServeFile::new(asset_path!("assets/web/index.html")?))
-        .route_service("/static/{*path}", ServeDir::new(asset_path!("assets/web/")?));
+        .route_service("/", ServeFile::new(asset_path!("assets/web/index.html")))
+        .route_service("/static/{*path}", ServeDir::new(asset_path!("assets/web/")));
     //     .fallback_service(ServeFile::new(asset_path!("assets/web/index.html")?))
     Ok(router)
 }

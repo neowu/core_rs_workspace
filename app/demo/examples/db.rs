@@ -2,26 +2,20 @@ use std::str::FromStr;
 
 use demo::AppConfig;
 use demo::user::User;
-use framework::asset_path;
 use framework::exception::Exception;
-use framework::json;
-use framework::load_env;
+use framework::load_config;
 use framework::log;
+use framework::warn;
 use framework_db::DbConfig;
 use framework_db::Field;
 use framework_db::database;
 use framework_db::repository;
-use tracing::debug;
-use tracing::warn;
 use uuid::Uuid;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    log::init();
-    log::init_appender("console", env!("CARGO_BIN_NAME"))?;
-    load_env!(".env")?;
-
-    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let db = framework_db::Database::new(DbConfig {
         uri: config.db_url,
@@ -31,12 +25,12 @@ pub async fn main() -> Result<(), Exception> {
     })?;
 
     let _ = log::start_action("test-db", None, async {
-        warn!("trigger");
+        warn!(error_code = "TRIGGER", "trigger");
 
         // let profile = UserProfile { id1: "id1".to_string(), id2: Uuid::now_v7(), name: "neo".to_string() };
         // db::repository::insert(&db, &profile).await?;
         let user = repository::get::<User>(&db, &Uuid::from_str("019dd6c2-3fe8-7501-a1a0-e69dc7c60346")?).await?;
-        debug!("{user:?}");
+        log!("{user:?}");
 
         let users = repository::select_all::<User>(
             &db,
@@ -47,7 +41,7 @@ pub async fn main() -> Result<(), Exception> {
             ],
         )
         .await?;
-        debug!("{users:?}");
+        log!("{users:?}");
 
         repository::update_all(
             &db,

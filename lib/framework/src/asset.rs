@@ -1,11 +1,10 @@
 use std::env::current_exe;
 use std::path::PathBuf;
 
-use tracing::info;
+use crate::console;
 
-use crate::exception;
-use crate::exception::Exception;
-
+// only used on startup, panic if path not found,
+// all asset path must be determined and resolve during startup
 #[macro_export]
 macro_rules! asset_path {
     ($path:expr) => {
@@ -14,26 +13,22 @@ macro_rules! asset_path {
 }
 
 #[doc(hidden)]
-pub fn __resolve(manifest_dir: &str, path: &str) -> Result<PathBuf, Exception> {
-    let exe_path = current_exe()?;
+pub fn __resolve(manifest_dir: &str, path: &str) -> PathBuf {
+    let exe_path = current_exe().expect("cannot get current exe path");
     let asset_path = exe_path.with_file_name(path);
     if asset_path.exists() {
-        info!("load asset from exe path, asset={}", asset_path.to_string_lossy());
-        return Ok(asset_path);
+        console!("load asset from exe path, asset={}", asset_path.to_string_lossy());
+        return asset_path;
     }
 
     #[cfg(debug_assertions)]
     {
         let dev_asset_path = PathBuf::from(manifest_dir).join(path);
         if dev_asset_path.exists() {
-            info!("load asset from source code folder, asset={}", dev_asset_path.to_string_lossy());
-            return Ok(dev_asset_path);
+            console!("load asset from source code folder, asset={}", dev_asset_path.to_string_lossy());
+            return dev_asset_path;
         }
     }
 
-    Err(exception!(format!(
-        "asset not found, asset={}, exe={}",
-        asset_path.to_string_lossy(),
-        exe_path.to_string_lossy()
-    )))
+    panic!("asset not found, asset={}, exe={}", asset_path.to_string_lossy(), exe_path.to_string_lossy());
 }

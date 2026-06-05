@@ -1,8 +1,4 @@
 use std::borrow::Cow;
-use std::io;
-use std::io::BufWriter;
-use std::io::Write as _;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -13,9 +9,8 @@ use serde::Serialize;
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
+use crate::network::hostname;
 use crate::write_str;
-
-pub(crate) static APPENDER: OnceLock<Appender> = OnceLock::new();
 
 pub enum Appender {
     Console,
@@ -24,27 +19,27 @@ pub enum Appender {
 
 impl Appender {
     // appender must not emit log event!(), it could trigger layer on_event, make CURRENT_ACTION.borrow_mut() panic
-    pub(super) fn append_action(&self, action: &Action) {
+    pub(super) fn append_action(&self, action: &Action, app: &'static str) {
         match self {
             Appender::Console => append_console(action),
-            Appender::GoogleCloud => append_gcloud(action),
+            Appender::GoogleCloud => append_gcloud(action, app),
         }
     }
 }
 
+#[allow(clippy::print_stdout, clippy::print_stderr)]
 fn append_console(action: &Action) {
     let date = action.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let severity = severity(action);
     let kind = action.kind;
     let id = &action.id;
-    let mut log = format!("{date} | {severity} | {kind} | id={id}");
+    let mut log = format!("ACTION: {date} | {severity} | {kind} | id={id}");
 
-    if let Some(ref error_code) = action.error_code {
-        write_str!(&mut log, " | error_code={error_code}");
-    }
-
-    if let Some(ref error_message) = action.error_message {
-        write_str!(&mut log, " | error_message={error_message}");
+    if let Some(error) = &action.error {
+        if let Some(error_code) = error.code {
+            write_str!(&mut log, " | error_code={error_code}");
+        }
+        write_str!(&mut log, " | error_message={}", error.message);
     }
 
     if let Some(ref ref_id) = action.ref_id {
@@ -63,69 +58,70 @@ fn append_console(action: &Action) {
         }
     }
 
-    writeln!(io::stdout(), "{log}").expect("write to stdout cannot fail");
+    println!("{log}");
 
     if action.flush_trace() {
-        let mut stderr = BufWriter::with_capacity(32 * 1024, io::stderr().lock());
         for line in &action.logs {
-            writeln!(stderr, "{line}").expect("write to stderr cannot fail");
+            eprintln!("{line}");
         }
     }
 }
 
-fn append_gcloud(action: &Action) {
+#[allow(clippy::print_stdout)]
+fn append_gcloud(action: &Action, app: &'static str) {
     let id = &action.id;
     let time = action.date;
     let severity = severity(action);
+    let error_code = action.error.as_ref().and_then(|e| e.code);
+    let error_message = action.error.as_ref().map(|e| e.message.as_str());
 
-    writeln!(
-        io::stdout(),
+    println!(
         "{}",
         json::to_json(&ActionEntry {
             id,
             time,
-            app: action.app,
             kind: action.kind,
+            app,
+            host: hostname(),
             severity,
             ref_id: action.ref_id.as_deref(),
-            error_code: action.error_code.as_deref(),
-            error_message: action.error_message.as_deref(),
+            error_code,
+            error_message,
             context: &action.context,
             stats: &action.stats,
             label: LogLabel { log: "action" },
             trace_id: id,
         })
         .expect("serialize to json cannot fail")
-    )
-    .expect("write to stdout cannot fail");
+    );
 
     if action.flush_trace() {
-        let mut stdout = BufWriter::with_capacity(32 * 1024, io::stdout().lock());
         for line in &action.logs {
-            writeln!(
-                stdout,
+            println!(
                 "{}",
                 json::to_json(&TraceEntry {
                     id,
                     time,
-                    app: action.app,
+                    app,
                     severity,
                     message: line,
                     label: LogLabel { log: "trace" },
                     trace_id: id,
                 })
                 .expect("serialize to json cannot fail")
-            )
-            .expect("write to stdout cannot fail");
+            );
         }
     }
 }
 
 const fn severity(action: &Action) -> &'static str {
-    match action.severity {
-        Some(Severity::Warn) => "WARN",
-        Some(Severity::Error) => "ERROR",
-        None => "INFO",
+    if let Some(error) = &action.error {
+        match error.severity {
+            Severity::Warn => "WARN",
+            Severity::Error => "ERROR",
+        }
+    } else {
+        "INFO"
     }
 }
 
@@ -138,8 +134,9 @@ struct LogLabel {
 struct ActionEntry<'a> {
     id: &'a str,
     time: DateTime<Utc>,
-    app: &'static str,
     kind: &'a str,
+    app: &'static str,
+    host: &'static str,
     severity: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     ref_id: Option<&'a str>,

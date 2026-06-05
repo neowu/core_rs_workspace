@@ -24,13 +24,13 @@ use framework::log;
 use framework::string::StringExt as _;
 use framework::validate::Validator as _;
 use framework::validation_error;
+use framework::warn;
 use framework::web::body::TextBody;
 use framework::web::client_info::ClientInfo;
 use framework::web::error::HttpResult;
 use framework_macro::Validate;
 use serde::Deserialize;
 use serde::Serialize;
-use tracing::warn;
 
 use crate::AppState;
 use crate::kafka::EventMessage;
@@ -105,13 +105,8 @@ async fn process_events(
 ) -> HttpResult<()> {
     let now = Utc::now();
     for event in request.events {
-        if let Err(error) = event.validate() {
-            warn!("skip invalid event, error={error}");
-            continue;
-        }
-
         if let Err(error) = event.custom_validate() {
-            warn!("skip invalid event, error={error}");
+            warn!(error_code = "INVALID_EVENT", "skip invalid event, error={error}");
             continue;
         }
 
@@ -184,6 +179,8 @@ impl Event {
     const MAX_ESTIMATED_LENGTH: usize = 900_000; // by default kafka message limit is 1M, leave 100k for rest of message
 
     fn custom_validate(&self) -> Result<(), Exception> {
+        self.validate()?;
+
         // Validate action for OK result
         if matches!(self.result, EventResult::Ok) && self.action.is_empty() {
             return Err(validation_error!("action must not be empty if result is OK"));

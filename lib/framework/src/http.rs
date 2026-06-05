@@ -22,14 +22,13 @@ use reqwest::Response;
 use reqwest::Url;
 use tokio::time::sleep;
 pub use tokio_stream::StreamExt;
-use tracing::Instrument as _;
-use tracing::debug;
-use tracing::debug_span;
-use tracing::warn;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
+use crate::log;
+use crate::span;
 use crate::stats;
+use crate::warn;
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -133,91 +132,87 @@ impl HttpClient {
     }
 
     pub async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, Exception> {
-        let span = debug_span!("http");
-        async {
-            let max_attempts = self.retry.max_attempts.max(1);
-            let interval = self.retry.interval;
+        let _span = span!("http");
+        let max_attempts = self.retry.max_attempts.max(1);
+        let interval = self.retry.interval;
 
-            let mut attempt: u32 = 0;
-            let response = loop {
-                attempt += 1;
-                let http_request = create_request(&request)?;
-                match self.client.execute(http_request).await {
-                    Ok(response) => {
-                        let status = response.status().as_u16();
-                        if status == 503 && attempt < max_attempts {
-                            warn!(
-                                error_code = "HTTP_REQUEST_FAILED",
-                                attempt, status, "http request failed, retry soon"
-                            );
-                            sleep(interval * attempt).await;
-                            continue;
-                        }
-                        break response;
+        let mut attempt: u32 = 0;
+        let response = loop {
+            attempt += 1;
+            let http_request = create_request(&request)?;
+            match self.client.execute(http_request).await {
+                Ok(response) => {
+                    let status = response.status().as_u16();
+                    if status == 503 && attempt < max_attempts {
+                        warn!(
+                            error_code = "HTTP_REQUEST_FAILED",
+                            "http request failed, retry soon, attempt={attempt}, status={status}"
+                        );
+                        sleep(interval * attempt).await;
+                        continue;
                     }
-                    Err(err) => {
-                        if request.method.is_idempotent() && attempt < max_attempts {
+                    break response;
+                }
+                Err(err) => {
+                    if request.method.is_idempotent() && attempt < max_attempts {
+                        // TODO: refactor log exception
+                        warn!(
+                            error_code = "HTTP_REQUEST_FAILED",
+                            "{}",
                             exception!(
                                 "http request failed, retry soon",
                                 severity = Severity::Warn,
                                 code = "HTTP_REQUEST_FAILED",
                                 source = err
                             )
-                            .log();
-                            sleep(interval * attempt).await;
-                            continue;
-                        }
-                        return Err(exception!("http request failed", code = "HTTP_REQUEST_FAILED", source = err));
+                        );
+                        sleep(interval * attempt).await;
+                        continue;
                     }
+                    return Err(exception!("http request failed", code = "HTTP_REQUEST_FAILED", source = err));
                 }
-            };
-
-            let status = response.status().as_u16();
-            debug!(status, "[response]");
-
-            let headers = parse_headers(&response)?;
-
-            let body = response.text().await?;
-            if let Some(content_type) = headers.get(&header::CONTENT_TYPE)
-                && (content_type.contains("json") || content_type.contains("text"))
-            {
-                debug!("[response] body={body}");
             }
-            stats!(http_read_bytes = body.len());
+        };
 
-            Ok(HttpResponse { status, headers, body })
+        let status = response.status().as_u16();
+        log!("[response] status={status}");
+
+        let headers = parse_headers(&response)?;
+
+        let body = response.text().await?;
+        if let Some(content_type) = headers.get(&header::CONTENT_TYPE)
+            && (content_type.contains("json") || content_type.contains("text"))
+        {
+            log!("[response] body={body}");
         }
-        .instrument(span)
-        .await
+        stats!(http_read_bytes = body.len());
+
+        Ok(HttpResponse { status, headers, body })
     }
 
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
-        let span = debug_span!("sse");
-        async {
-            request.headers.insert(header::ACCEPT, HeaderValue::from_static("text/event-stream"));
-            let http_request = create_request(&request)?;
+        let _span = span!("sse");
+        request.headers.insert(header::ACCEPT, HeaderValue::from_static("text/event-stream"));
+        let http_request = create_request(&request)?;
 
-            let response = self.client.execute(http_request).await?;
-            let status = response.status().as_u16();
-            debug!(status, "[response]");
+        let response = self.client.execute(http_request).await?;
+        let status = response.status().as_u16();
+        log!("[response] status={status}");
 
-            let headers = parse_headers(&response)?;
+        let headers = parse_headers(&response)?;
 
-            if status == 200
-                && let Some(content_type) = headers.get(&header::CONTENT_TYPE)
-                && content_type.starts_with("text/event-stream")
-            {
-                let stream = response.bytes_stream();
-                Ok(EventSource::new(Box::pin(stream.map_err(reqwest::Error::into))))
-            } else {
-                let body = response.text().await?;
-                debug!("[response] body={body}");
-                let content_type = headers.get(&header::CONTENT_TYPE);
-                Err(exception!(format!("invalid sse response, status={status}, content_type={content_type:?}")))
-            }
+        if status == 200
+            && let Some(content_type) = headers.get(&header::CONTENT_TYPE)
+            && content_type.starts_with("text/event-stream")
+        {
+            let stream = response.bytes_stream();
+            Ok(EventSource::new(Box::pin(stream.map_err(reqwest::Error::into))))
+        } else {
+            let body = response.text().await?;
+            log!("[response] body={body}");
+            let content_type = headers.get(&header::CONTENT_TYPE);
+            Err(exception!(format!("invalid sse response, status={status}, content_type={content_type:?}")))
         }
-        .instrument(span)
-        .await
     }
 }
 
@@ -225,23 +220,23 @@ fn parse_headers(response: &Response) -> Result<HashMap<HeaderName, String>, Exc
     let mut headers = HashMap::new();
     for (key, value) in response.headers() {
         let value = value.to_str()?;
-        debug!("[header] {key}={value}");
+        log!("[header] {key}={value}");
         headers.insert(key.to_owned(), value.to_owned());
     }
     Ok(headers)
 }
 
 fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
-    debug!(method = request.method.as_str(), "[request]");
-    debug!(url = request.url, "[request]");
+    log!("[request] method={}", request.method.as_str());
+    log!("[request] url={}", request.url);
     let url = Url::parse(&request.url)?;
     let mut http_request = Request::new(request.method.clone(), url);
     http_request.headers_mut().extend(request.headers.clone());
     for (key, value) in http_request.headers() {
-        debug!("[header] {}={}", key, value.to_str()?);
+        log!("[header] {key}={}", value.to_str()?);
     }
     if let Some(ref body) = request.body {
-        debug!("[request] body={body}");
+        log!("[request] body={body}");
         stats!(http_write_bytes = body.len());
         *http_request.body_mut() = Some(Body::from(body.to_owned()));
     }
@@ -308,7 +303,7 @@ impl Stream for EventSource {
                         if byte == b'\n' {
                             let current_bytes = mem::take(&mut self.buffer);
                             let line = String::from_utf8_lossy(&current_bytes);
-                            debug!("[sse] {line}");
+                            log!("[sse] {line}");
                             self.read_bytes += line.len();
 
                             if !line.is_empty()

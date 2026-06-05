@@ -2,11 +2,9 @@ use std::time::Duration;
 
 use axum::Router;
 use chrono::FixedOffset;
-use framework::asset_path;
 use framework::config::EnvString;
 use framework::exception::Exception;
-use framework::json;
-use framework::load_env;
+use framework::load_config;
 use framework::log;
 use framework::schedule::Scheduler;
 use framework::system::System;
@@ -31,6 +29,7 @@ pub struct AppState {
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
+    pub log_appender: String,
     pub db_url: String,
     pub db_user: String,
     pub db_password: EnvString,
@@ -38,11 +37,8 @@ pub struct AppConfig {
 
 #[inline]
 pub async fn run() -> Result<(), Exception> {
-    log::init();
-    log::init_appender("console", env!("CARGO_PKG_NAME"))?;
-    load_env!(".env")?;
-
-    let config: AppConfig = json::load_file(&asset_path!("assets/conf.json")?)?;
+    let config: AppConfig = load_config!("assets/conf.json");
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let mut system = System::new();
 

@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use framework::console;
 use framework::exception;
 use framework::exception::Exception;
+use framework::log;
 use framework::pool::ResourceManager;
 use tokio::time::timeout;
 use tokio_postgres::CancelToken;
@@ -10,8 +12,6 @@ use tokio_postgres::Client;
 use tokio_postgres::Config;
 use tokio_postgres::NoTls;
 use tokio_postgres::Statement;
-use tracing::debug;
-use tracing::error;
 
 use crate::PgError;
 
@@ -45,7 +45,7 @@ impl Connection {
         match result {
             Ok(result) => result.map_err(|err| exception!("failed to call db", source = err)),
             Err(_elapsed) => {
-                debug!("cancel query");
+                log!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
                     Ok(()) => Err(exception!("query timed out")),
@@ -64,12 +64,13 @@ impl ResourceManager for ConnectionManager {
     type Target = Connection;
 
     async fn create(&self) -> Result<Self::Target, Exception> {
-        let (client, connection) = self.config.connect(NoTls).await?;
+        let (client, connection) =
+            self.config.connect(NoTls).await.map_err(|err| exception!("failed to connect to db", source = err))?;
 
         // use native tokio spawn, not wire current span
         tokio::spawn(async {
             if let Err(e) = connection.await {
-                error!("connection error: {e}");
+                console!("ERROR db connection error, {e}");
             }
         });
 

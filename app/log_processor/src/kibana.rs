@@ -1,3 +1,4 @@
+use framework::console;
 use framework::exception;
 use framework::exception::Exception;
 use framework::http::HeaderName;
@@ -5,7 +6,6 @@ use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
-use tracing::info;
 
 pub(crate) async fn import(kibana_uri: &str, objects: String) -> Result<(), Exception> {
     let http_client = HttpClient::new(HttpClientConfig::default());
@@ -17,7 +17,7 @@ pub(crate) async fn import(kibana_uri: &str, objects: String) -> Result<(), Exce
 
     let response = http_client.execute(request).await?;
     if response.status == 200 {
-        info!("kibana objects are imported");
+        console!("kibana objects are imported");
     } else {
         return Err(exception!(format!("failed to import kibana objects, status={}", response.status)));
     }

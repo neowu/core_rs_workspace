@@ -10,7 +10,6 @@ use std::time::Instant;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 use tokio::time;
-use tracing::warn;
 
 use crate::exception::Exception;
 
@@ -85,7 +84,7 @@ where
                     if is_valid {
                         break res.item;
                     }
-                    warn!("resource is not valid, try next");
+                    warn!(error_code = "POOL_INVALID_RESOURCE", "resource is not valid, try next");
                 }
             }
         };

@@ -1,7 +1,6 @@
 use tokio::signal;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
 
 pub struct System {
     token: CancellationToken,
@@ -14,14 +13,14 @@ impl System {
         let shutdown_signal = token.clone();
         tokio::spawn(async move {
             let ctrl_c = async {
-                signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
+                signal::ctrl_c().await.expect("failed to listen Ctrl+C");
             };
 
             #[cfg(unix)]
             let terminate = async {
                 use tokio::signal::unix::SignalKind;
 
-                signal::unix::signal(SignalKind::terminate()).expect("failed to install signal handler").recv().await;
+                signal::unix::signal(SignalKind::terminate()).expect("failed to listen signal").recv().await;
             };
 
             tokio::select! {
@@ -29,7 +28,7 @@ impl System {
                 () = terminate => {},
             }
 
-            info!("received shutdown signal");
+            console!("received shutdown signal");
             shutdown_signal.cancel();
         });
         Self { token, handles: JoinSet::new() }

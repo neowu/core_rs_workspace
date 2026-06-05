@@ -3,7 +3,9 @@ use std::fmt::Debug;
 use chrono::Utc;
 use framework::exception::Exception;
 use framework::json::to_json;
+use framework::log;
 use framework::log::current_action_id;
+use framework::span;
 use framework::stats;
 use rdkafka::ClientConfig;
 use rdkafka::message::Header;
@@ -12,9 +14,6 @@ use rdkafka::producer::FutureProducer;
 use rdkafka::producer::FutureRecord;
 use rdkafka::util::Timeout;
 use serde::Serialize;
-use tracing::Instrument as _;
-use tracing::debug;
-use tracing::debug_span;
 
 use crate::Topic;
 
@@ -39,34 +38,29 @@ impl Producer {
     where
         T: Serialize + Debug,
     {
-        let span = debug_span!("kafka");
-        async {
-            let payload = to_json(message)?;
+        let _span = span!("kafka");
+        let payload = to_json(message)?;
 
-            stats!(kafka_write_messages = 1, kafka_write_bytes = payload.len());
+        stats!(kafka_write_messages = 1, kafka_write_bytes = payload.len());
 
-            let mut record = FutureRecord::<String, String>::to(topic.name)
-                .timestamp(Utc::now().timestamp_millis())
-                .payload(&payload);
+        let mut record =
+            FutureRecord::<String, String>::to(topic.name).timestamp(Utc::now().timestamp_millis()).payload(&payload);
 
-            if let Some(ref key) = key {
-                record = record.key(key);
-            }
-
-            let mut headers = OwnedHeaders::new().insert(Header { key: "client", value: Some(self.client) });
-            if let Some(ref_id) = current_action_id() {
-                headers = headers.insert(Header { key: "ref_id", value: Some(&ref_id) });
-            }
-            record = record.headers(headers);
-
-            debug!(topic = topic.name, key, payload, "send");
-            let result = self.producer.send(record, Timeout::Never).await;
-            if let Err((err, _)) = result {
-                return Err(err.into());
-            }
-            Ok(())
+        if let Some(ref key) = key {
+            record = record.key(key);
         }
-        .instrument(span)
-        .await
+
+        let mut headers = OwnedHeaders::new().insert(Header { key: "client", value: Some(self.client) });
+        if let Some(ref_id) = current_action_id() {
+            headers = headers.insert(Header { key: "ref_id", value: Some(&ref_id) });
+        }
+        record = record.headers(headers);
+
+        log!("send, topic={}, key={key:?}, payload={payload}", topic.name);
+        let result = self.producer.send(record, Timeout::Never).await;
+        if let Err((err, _)) = result {
+            return Err(err.into());
+        }
+        Ok(())
     }
 }

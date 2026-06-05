@@ -8,13 +8,11 @@ framework.workspace = true
 framework_kafka.workspace = true
 framework_macro.workspace = true
 
-tracing.workspace = true
 serde.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 axum.workspace = true
 
-hostname = "*"
 sha2 = "*"
 hex = "*"
 

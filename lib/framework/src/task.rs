@@ -6,8 +6,6 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::time;
-use tracing::info;
-use tracing::warn;
 
 use crate::exception::Exception;
 use crate::log;
@@ -97,9 +95,9 @@ where
 
 pub async fn shutdown(timeout: Duration) {
     if time::timeout(timeout, EXECUTOR.wait()).await.is_ok() {
-        info!("tasks finished");
+        console!("tasks finished");
     } else {
         let tasks = EXECUTOR.running_tasks.lock().unwrap();
-        warn!(running_tasks = ?tasks.iter(), "some of tasks failed to finish");
+        console!("WARN some of tasks failed to finish, running_tasks={:?}", tasks.iter());
     }
 }
