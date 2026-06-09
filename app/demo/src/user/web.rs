@@ -63,4 +63,8 @@ impl UserService for UserServiceImpl {
         repository::update(&self.state.db, &request.id, updates).await?;
         Ok(())
     }
+
+    async fn get_test(&self, request: GetUserByNameRequest) -> Result<GetUserResponse, Exception> {
+        Ok(GetUserResponse { id: Uuid::now_v7(), name: request.name, rating: None, tags: vec![] })
+    }
 }

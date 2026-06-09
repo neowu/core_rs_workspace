@@ -77,6 +77,8 @@ where
     where
         S: Clone,
     {
+        assert!(!self.schedules.is_empty(), "scheduler does not have any jobs");
+
         let mut handles = JoinSet::new();
         for schedule in self.schedules {
             let state = state.clone();

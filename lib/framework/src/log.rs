@@ -4,18 +4,18 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::Instant;
 
-use chrono::DateTime;
 pub use chrono::SecondsFormat;
 pub use chrono::Utc;
-use indexmap::IndexMap;
 use tokio::task_local;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
+use crate::log::action::Action;
 use crate::log::appender::Appender;
 use crate::network::hostname;
 use crate::write_str;
 
+mod action;
 pub mod appender;
 pub mod id_generator;
 
@@ -42,10 +42,6 @@ pub fn init(appender: &str, app: &'static str) {
     CONTEXT.set(Context { app, appender }).unwrap_or_else(|_| panic!("log can not be init once"));
 }
 
-pub fn app() -> &'static str {
-    CONTEXT.get().expect("log did not init").app
-}
-
 static CONTEXT: OnceLock<Context> = OnceLock::new();
 
 struct Context {
@@ -53,21 +49,26 @@ struct Context {
     appender: Appender,
 }
 
+task_local! {
+    static CURRENT_ACTION: RefCell<Action>;
+}
+
 #[inline]
 pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<String>, task: F) -> F::Output
 where
     F: Future<Output = Result<R, Exception>>,
 {
-    let action_id = id_generator::random_id();
-    let mut action = Action::new(action_id, kind, ref_id);
+    let now = Utc::now();
+    let action_id = id_generator::next_id(now.timestamp_millis());
+    let mut action = Action::new(action_id, kind, ref_id, now);
+    // TODO: app() requires log::init, which is wrong
     action.logs.push(format!(
-        "# [action], kind={}, id={}, date={}, thread={:?}, ref_id={:?}, app={}, host={} >",
+        "# [action], kind={}, id={}, date={}, thread={:?}, ref_id={:?}, host={} >",
         &action.kind,
         &action.id,
         &action.date.to_rfc3339_opts(SecondsFormat::Nanos, true),
         thread::current().id(),
         &action.ref_id,
-        app(),
         hostname()
     ));
     CURRENT_ACTION
@@ -79,6 +80,9 @@ where
                     current_action.log_exception(e);
                 }
                 current_action.finish();
+                if let Some(Context { app, appender }) = CONTEXT.get() {
+                    appender.append_action(&current_action, app);
+                }
             });
             result
         })
@@ -209,13 +213,9 @@ pub fn __log_exception(exception: &Exception) {
     });
 }
 
-task_local! {
-    static CURRENT_ACTION: RefCell<Action>;
-}
-
 #[inline]
 pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION.try_with(|action| Some(action.borrow().id.clone())).unwrap_or(None)
+    CURRENT_ACTION.try_with(|action| Some(action.borrow().id.to_string())).unwrap_or(None)
 }
 
 #[macro_export]
@@ -272,133 +272,6 @@ pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     });
 }
 
-struct Action {
-    start_time: Instant,
-    id: String,
-    kind: &'static str,
-    date: DateTime<Utc>,
-    ref_id: Option<String>,
-    error: Option<Error>,
-    context: IndexMap<&'static str, String>,
-    stats: IndexMap<Cow<'static, str>, u64>,
-    logs: Vec<String>,
-}
-
-struct Error {
-    severity: Severity,
-    code: Option<&'static str>,
-    message: String,
-}
-
-impl Action {
-    fn new(id: String, kind: &'static str, ref_id: Option<String>) -> Self {
-        Action {
-            start_time: Instant::now(),
-            id,
-            kind,
-            date: Utc::now(),
-            ref_id,
-            error: None,
-            context: IndexMap::new(),
-            stats: IndexMap::new(),
-            logs: Vec::with_capacity(32),
-        }
-    }
-
-    const fn flush_trace(&self) -> bool {
-        self.error.is_some()
-    }
-
-    fn log(&mut self, message: &str, location: &'static str) {
-        const MAX_LOGS: usize = 2000;
-        if self.logs.len() >= MAX_LOGS {
-            return;
-        }
-
-        let mut log = String::with_capacity(256);
-        let (minutes, seconds, nanos) = elapsed(self.start_time);
-        write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} {location} {message}");
-        self.logs.push(log);
-    }
-
-    fn log_with_severity(
-        &mut self,
-        message: &str,
-        severity: Option<Severity>,
-        error_code: Option<&'static str>,
-        location: &'static str,
-    ) {
-        const MAX_LOGS: usize = 2000;
-        if self.logs.len() >= MAX_LOGS {
-            return;
-        }
-
-        let mut log = String::with_capacity(256);
-        let (minutes, seconds, nanos) = elapsed(self.start_time);
-        write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} {location} ");
-        if let Some(severity) = severity {
-            write_str!(log, "{} ", severity);
-        }
-        if let Some(error_code) = error_code {
-            write_str!(log, "[{error_code}] ");
-        }
-        write_str!(log, "{message}");
-        self.logs.push(log);
-
-        if let Some(severity) = severity {
-            self.update_error(severity, error_code, message);
-        }
-    }
-
-    fn update_error(&mut self, severity: Severity, error_code: Option<&'static str>, error_message: &str) {
-        const MAX_ERROR_MESSAGE_LEN: usize = 200;
-        if self.error.as_ref().is_none_or(|error| error.severity < severity) {
-            self.error = Some(Error {
-                severity,
-                code: error_code,
-                message: truncate(error_message.to_owned(), MAX_ERROR_MESSAGE_LEN, None),
-            });
-        }
-    }
-
-    fn log_exception(&mut self, exception: &Exception) {
-        let (minutes, seconds, nanos) = elapsed(self.start_time);
-        let mut log = String::with_capacity(256);
-        write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} ");
-        if let Some(location) = exception.location {
-            write_str!(log, "{location} ");
-        }
-        write_str!(log, "{} ", exception.severity);
-        if let Some(error_code) = exception.code {
-            write_str!(log, "[{error_code}] ");
-        }
-        write_str!(log, "{}\n{}", exception.message, exception.backtrace());
-        self.logs.push(log);
-
-        self.update_error(exception.severity, exception.code, &exception.message);
-    }
-
-    fn finish(&mut self) {
-        let elapsed = self.start_time.elapsed();
-        self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as u64);
-        if self.flush_trace() {
-            self.logs.push(format!("# [action] elapsed={elapsed:?} <"));
-        }
-        if let Some(Context { app, appender }) = CONTEXT.get() {
-            appender.append_action(self, app);
-        }
-    }
-}
-
-fn elapsed(start: Instant) -> (u64, u64, u32) {
-    let elapsed = start.elapsed();
-    let total_seconds = elapsed.as_secs();
-    let minutes = total_seconds / 60;
-    let seconds = total_seconds % 60;
-    let nanos = elapsed.subsec_nanos();
-    (minutes, seconds, nanos)
-}
-
 fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
     if len >= value.len() {
         return value;
@@ -414,6 +287,15 @@ fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
         value.push_str(suffix);
     }
     value
+}
+
+fn elapsed(start: Instant) -> (u64, u64, u32) {
+    let elapsed = start.elapsed();
+    let total_seconds = elapsed.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    let nanos = elapsed.subsec_nanos();
+    (minutes, seconds, nanos)
 }
 
 #[cfg(test)]

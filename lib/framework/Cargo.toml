@@ -20,13 +20,11 @@ tower-http = {version ="*", features = ["fs"]}
 reqwest = { version = "0", features = ["stream"] }
 
 chrono.workspace = true
-uuid.workspace = true
 
 futures = "*"
 bytes = "*"
-bs58 = "*"
 libc = "*"
-indexmap = { version = "*", features = ["serde"] }
+rand = "*"
 
 [lints]
 workspace = true

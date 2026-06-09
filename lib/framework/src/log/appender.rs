@@ -1,9 +1,9 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::DateTime;
 use chrono::Utc;
-use indexmap::IndexMap;
 use serde::Serialize;
 
 use crate::exception::Severity;
@@ -69,7 +69,7 @@ fn append_console(action: &Action) {
 
 #[allow(clippy::print_stdout)]
 fn append_gcloud(action: &Action, app: &'static str) {
-    let id = &action.id;
+    let id = &format!("{}", action.id);
     let time = action.date;
     let severity = severity(action);
     let error_code = action.error.as_ref().and_then(|e| e.code);
@@ -144,8 +144,8 @@ struct ActionEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    context: &'a IndexMap<&'static str, String>,
-    stats: &'a IndexMap<Cow<'static, str>, u64>,
+    context: &'a HashMap<&'static str, String>,
+    stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]

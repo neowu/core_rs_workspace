@@ -111,7 +111,7 @@ async fn process_events(
         }
 
         let mut message = EventMessage {
-            id: log::id_generator::random_id(),
+            id: log::id_generator::next_id(now.timestamp_millis()).to_string(),
             date: event.date,
             app: app.to_owned(),
             received_time: now,

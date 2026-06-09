@@ -22,6 +22,10 @@ axum = { version = "*", features = ["macros", "http2"] }
 debug = "line-tables-only"
 opt-level = 3
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [workspace.lints.rust]
 unused_crate_dependencies = "warn"
 unreachable-pub = "warn"

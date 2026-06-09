@@ -69,4 +69,8 @@ pub trait UserService {
     #[put]
     #[path("/user/update")]
     async fn update(&self, request: UpdateUserRequest) -> Result<(), Exception>;
+
+    #[get]
+    #[path("/get_test")]
+    async fn get_test(&self, request: GetUserByNameRequest) -> Result<GetUserResponse, Exception>;
 }
