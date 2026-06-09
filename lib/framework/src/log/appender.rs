@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::mem;
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -19,7 +20,7 @@ pub enum Appender {
 
 impl Appender {
     // appender must not emit log event!(), it could trigger layer on_event, make CURRENT_ACTION.borrow_mut() panic
-    pub(super) fn append_action(&self, action: &Action, app: &'static str) {
+    pub(super) fn append_action(&self, action: &mut Action, app: &'static str) {
         match self {
             Appender::Console => append_console(action),
             Appender::GoogleCloud => append_gcloud(action, app),
@@ -43,7 +44,7 @@ fn append_console(action: &Action) {
     }
 
     if let Some(ref ref_id) = action.ref_id {
-        write_str!(&mut log, " | ref_id={ref_id}");
+        write_str!(&mut log, " | ref_id={ref_id:?}");
     }
 
     for (key, value) in &action.context {
@@ -68,12 +69,17 @@ fn append_console(action: &Action) {
 }
 
 #[allow(clippy::print_stdout)]
-fn append_gcloud(action: &Action, app: &'static str) {
+fn append_gcloud(action: &mut Action, app: &'static str) {
     let id = &format!("{}", action.id);
     let time = action.date;
     let severity = severity(action);
     let error_code = action.error.as_ref().and_then(|e| e.code);
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
+
+    let mut context = HashMap::with_capacity(action.context.len());
+    for (key, value) in mem::take(&mut action.context) {
+        context.insert(key, value);
+    }
 
     println!(
         "{}",
@@ -87,7 +93,7 @@ fn append_gcloud(action: &Action, app: &'static str) {
             ref_id: action.ref_id.as_deref(),
             error_code,
             error_message,
-            context: &action.context,
+            context,
             stats: &action.stats,
             label: LogLabel { log: "action" },
             trace_id: id,
@@ -139,12 +145,12 @@ struct ActionEntry<'a> {
     host: &'static str,
     severity: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ref_id: Option<&'a str>,
+    ref_id: Option<&'a [String]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    context: &'a HashMap<&'static str, String>,
+    context: HashMap<&'static str, String>,
     stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,

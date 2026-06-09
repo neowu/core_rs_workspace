@@ -66,7 +66,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
         return StatusCode::OK.into_response(); // gce lb health check requires to return 200
     }
 
-    let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(|id| vec![id.to_owned()]);
 
     let response = log::start_action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());

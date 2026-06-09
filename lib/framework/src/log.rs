@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::OnceLock;
-use std::thread;
 use std::time::Instant;
 
 pub use chrono::SecondsFormat;
@@ -12,7 +11,6 @@ use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::appender::Appender;
-use crate::network::hostname;
 use crate::write_str;
 
 mod action;
@@ -54,23 +52,13 @@ task_local! {
 }
 
 #[inline]
-pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<String>, task: F) -> F::Output
+pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>, task: F) -> F::Output
 where
     F: Future<Output = Result<R, Exception>>,
 {
     let now = Utc::now();
-    let action_id = id_generator::next_id(now.timestamp_millis());
-    let mut action = Action::new(action_id, kind, ref_id, now);
-    // TODO: app() requires log::init, which is wrong
-    action.logs.push(format!(
-        "# [action], kind={}, id={}, date={}, thread={:?}, ref_id={:?}, host={} >",
-        &action.kind,
-        &action.id,
-        &action.date.to_rfc3339_opts(SecondsFormat::Nanos, true),
-        thread::current().id(),
-        &action.ref_id,
-        hostname()
-    ));
+    let id = id_generator::next_id(now.timestamp_millis());
+    let action = Action::new(id, kind, ref_id, now);
     CURRENT_ACTION
         .scope(RefCell::new(action), async move {
             let result = task.await;
@@ -81,7 +69,7 @@ where
                 }
                 current_action.finish();
                 if let Some(Context { app, appender }) = CONTEXT.get() {
-                    appender.append_action(&current_action, app);
+                    appender.append_action(&mut current_action, app);
                 }
             });
             result
@@ -242,7 +230,7 @@ pub fn __context(key: &'static str, value: impl Into<String>, location: &'static
         let value = truncate(value.into(), MAX_CONTEXT_VALUE_LEN, Some("...(truncated)"));
         action.log(&format!("[content] {key}={value}"), location);
 
-        action.context.insert(key, value);
+        action.context.push((key, value));
     });
 }
 

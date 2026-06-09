@@ -66,7 +66,7 @@ where
     EXECUTOR.running_tasks.lock().unwrap().push(task_name.clone());
     let guard = TaskGuard { task_name };
 
-    let ref_id = current_action_id();
+    let ref_id = current_action_id().map(|id| vec![id]);
     tokio::spawn(async move {
         // hold the guard for the whole task; dropped on completion or on abort/cancel
         let _guard = guard;

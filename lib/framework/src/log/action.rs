@@ -1,8 +1,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::thread;
 use std::time::Instant;
 
 use chrono::DateTime;
+use chrono::SecondsFormat;
 use chrono::Utc;
 
 use crate::exception::Exception;
@@ -10,6 +12,7 @@ use crate::exception::Severity;
 use crate::log::elapsed;
 use crate::log::id_generator::ActionId;
 use crate::log::truncate;
+use crate::network::hostname;
 use crate::write_str;
 
 pub(crate) struct Action {
@@ -17,9 +20,9 @@ pub(crate) struct Action {
     pub(crate) id: ActionId,
     pub(crate) kind: &'static str,
     pub(crate) date: DateTime<Utc>,
-    pub(crate) ref_id: Option<String>,
+    pub(crate) ref_id: Option<Vec<String>>,
     pub(crate) error: Option<Error>,
-    pub(crate) context: HashMap<&'static str, String>,
+    pub(crate) context: Vec<(&'static str, String)>,
     pub(crate) stats: HashMap<Cow<'static, str>, u64>,
     pub(crate) logs: Vec<String>,
 }
@@ -31,18 +34,30 @@ pub(crate) struct Error {
 }
 
 impl Action {
-    pub(crate) fn new(id: ActionId, kind: &'static str, ref_id: Option<String>, date: DateTime<Utc>) -> Self {
-        Action {
+    pub(crate) fn new(id: ActionId, kind: &'static str, ref_id: Option<Vec<String>>, date: DateTime<Utc>) -> Self {
+        let mut action = Action {
             start_time: Instant::now(),
             id,
             kind,
             date,
             ref_id,
             error: None,
-            context: HashMap::new(),
+            context: Vec::new(),
             stats: HashMap::new(),
             logs: Vec::with_capacity(32),
-        }
+        };
+
+        let date_string = action.date.to_rfc3339_opts(SecondsFormat::Nanos, true);
+
+        action.logs.push(format!(
+            "# [action] id={}, date={date_string}, kind={kind}\nthread={:?}\nhost={}\nref_id={:?}",
+            &action.id,
+            thread::current().id(),
+            hostname(),
+            &action.ref_id,
+        ));
+
+        action
     }
 
     pub(crate) const fn flush_trace(&self) -> bool {
@@ -122,7 +137,7 @@ impl Action {
         let elapsed = self.start_time.elapsed();
         self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as u64);
         if self.flush_trace() {
-            self.logs.push(format!("# [action] elapsed={elapsed:?} <"));
+            self.logs.push(format!("# [action] elapsed={elapsed:?}"));
         }
     }
 }
