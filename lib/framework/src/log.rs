@@ -209,28 +209,60 @@ pub fn current_action_id() -> Option<String> {
 #[macro_export]
 macro_rules! context {
     ($($key:ident = $value:expr),+ $(,)?) => {
-        $(
+        $({
+            #[allow(unused_imports)]
+            use $crate::log::{ScalarContextValue as _, VecContextValue as _};
             $crate::log::__context(
                 stringify!($key),
-                $value,
+                ($value).into_context_value(),
                 concat!(module_path!(), ":", line!()),
             );
-        )+
+        })+
     };
 }
 
 #[doc(hidden)]
+pub trait ScalarContextValue {
+    fn into_context_value(self) -> Vec<String>;
+}
+
+impl<T: Into<String>> ScalarContextValue for T {
+    fn into_context_value(self) -> Vec<String> {
+        vec![self.into()]
+    }
+}
+
+#[doc(hidden)]
+pub trait VecContextValue {
+    fn into_context_value(self) -> Vec<String>;
+}
+
+impl<T: Into<String>> VecContextValue for Vec<T> {
+    fn into_context_value(self) -> Vec<String> {
+        self.into_iter().map(Into::into).collect()
+    }
+}
+
+#[doc(hidden)]
 #[inline]
-pub fn __context(key: &'static str, value: impl Into<String>, location: &'static str) {
+pub fn __context(key: &'static str, values: Vec<String>, location: &'static str) {
     const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
         let mut action = action.borrow_mut();
 
-        let value = truncate(value.into(), MAX_CONTEXT_VALUE_LEN, Some("...(truncated)"));
-        action.log(&format!("[content] {key}={value}"), location);
+        let values: Vec<String> =
+            values.into_iter().map(|value| truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)"))).collect();
 
-        action.context.push((key, value));
+        if values.len() == 1
+            && let Some(value) = values.first()
+        {
+            action.log(&format!("[content] {key}={value}"), location);
+        } else {
+            action.log(&format!("[content] {key}={values:?}"), location);
+        }
+
+        action.context.push((key, values));
     });
 }
 

@@ -10,19 +10,19 @@ use chrono::Utc;
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::elapsed;
-use crate::log::id_generator::ActionId;
+use crate::log::id_generator::LogId;
 use crate::log::truncate;
 use crate::network::hostname;
 use crate::write_str;
 
 pub(crate) struct Action {
     pub(crate) start_time: Instant,
-    pub(crate) id: ActionId,
+    pub(crate) id: LogId,
     pub(crate) kind: &'static str,
     pub(crate) date: DateTime<Utc>,
     pub(crate) ref_id: Option<Vec<String>>,
     pub(crate) error: Option<Error>,
-    pub(crate) context: Vec<(&'static str, String)>,
+    pub(crate) context: Vec<(&'static str, Vec<String>)>,
     pub(crate) stats: HashMap<Cow<'static, str>, u64>,
     pub(crate) logs: Vec<String>,
 }
@@ -34,7 +34,7 @@ pub(crate) struct Error {
 }
 
 impl Action {
-    pub(crate) fn new(id: ActionId, kind: &'static str, ref_id: Option<Vec<String>>, date: DateTime<Utc>) -> Self {
+    pub(crate) fn new(id: LogId, kind: &'static str, ref_id: Option<Vec<String>>, date: DateTime<Utc>) -> Self {
         let mut action = Action {
             start_time: Instant::now(),
             id,

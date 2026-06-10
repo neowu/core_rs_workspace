@@ -47,8 +47,14 @@ fn append_console(action: &Action) {
         write_str!(&mut log, " | ref_id={ref_id:?}");
     }
 
-    for (key, value) in &action.context {
-        write_str!(&mut log, " | {key}={value}");
+    for (key, values) in &action.context {
+        if values.len() == 1
+            && let Some(value) = values.first()
+        {
+            write_str!(&mut log, " | {key}={value}");
+        } else {
+            write_str!(&mut log, " | {key}={values:?}");
+        }
     }
 
     for (key, value) in &action.stats {
@@ -77,8 +83,8 @@ fn append_gcloud(action: &mut Action, app: &'static str) {
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
 
     let mut context = HashMap::with_capacity(action.context.len());
-    for (key, value) in mem::take(&mut action.context) {
-        context.insert(key, value);
+    for (key, values) in mem::take(&mut action.context) {
+        context.insert(key, values);
     }
 
     println!(
@@ -150,7 +156,7 @@ struct ActionEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    context: HashMap<&'static str, String>,
+    context: HashMap<&'static str, Vec<String>>,
     stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,

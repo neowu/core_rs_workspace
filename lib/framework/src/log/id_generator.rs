@@ -11,9 +11,9 @@ use crate::network::hostname;
 static ID_GENERATOR: LazyLock<IdGenerator> = LazyLock::new(IdGenerator::init);
 
 #[derive(Clone, Copy)]
-pub struct ActionId([u8; 10]);
+pub struct LogId([u8; 10]);
 
-impl fmt::Display for ActionId {
+impl fmt::Display for LogId {
     #[allow(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
@@ -27,7 +27,7 @@ impl fmt::Display for ActionId {
     }
 }
 
-pub fn next_id(current_time: i64) -> ActionId {
+pub fn next_id(current_time: i64) -> LogId {
     ID_GENERATOR.next_with_millis(current_time)
 }
 
@@ -41,7 +41,7 @@ impl IdGenerator {
         Self { counter: AtomicU16::new(rand::random()), machine_id: machine_identifier() }
     }
 
-    fn next_with_millis(&self, current_time: i64) -> ActionId {
+    fn next_with_millis(&self, current_time: i64) -> LogId {
         let counter = self.counter.fetch_add(1, Ordering::Relaxed);
 
         let bytes: [u8; 10] = [
@@ -57,7 +57,7 @@ impl IdGenerator {
             counter as u8,
         ];
 
-        ActionId(bytes)
+        LogId(bytes)
     }
 }
 

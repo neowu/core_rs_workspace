@@ -32,7 +32,7 @@ async fn test_action() {
         let x = Arc::new(Mutex::new(1));
         let y = x.clone();
 
-        context!(key = "value1", key2 = "value2");
+        context!(key = "value1", key2 = vec!["value2", "value_22", "value23"]);
 
         stats!(write_bytes = 23);
 

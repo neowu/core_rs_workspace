@@ -13,3 +13,7 @@ impl<T> Topic<T> {
         Self { name, _marker: PhantomData }
     }
 }
+
+type Header = &'static str;
+const REF_ID: Header = "ref_id";
+const CLIENT: Header = "client";

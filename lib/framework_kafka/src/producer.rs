@@ -15,6 +15,8 @@ use rdkafka::producer::FutureRecord;
 use rdkafka::util::Timeout;
 use serde::Serialize;
 
+use crate::CLIENT;
+use crate::REF_ID;
 use crate::Topic;
 
 pub struct Producer {
@@ -50,9 +52,9 @@ impl Producer {
             record = record.key(key);
         }
 
-        let mut headers = OwnedHeaders::new().insert(Header { key: "client", value: Some(self.client) });
+        let mut headers = OwnedHeaders::new().insert(Header { key: CLIENT, value: Some(self.client) });
         if let Some(ref_id) = current_action_id() {
-            headers = headers.insert(Header { key: "ref_id", value: Some(&ref_id) });
+            headers = headers.insert(Header { key: REF_ID, value: Some(&ref_id) });
         }
         record = record.headers(headers);
 
