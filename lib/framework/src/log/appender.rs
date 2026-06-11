@@ -1,15 +1,17 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::mem;
 use std::time::Duration;
 
 use chrono::DateTime;
 use chrono::Utc;
 use serde::Serialize;
+use serde::Serializer;
+use serde::ser::SerializeMap as _;
 
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
+use crate::log::metrics::Metrics;
 use crate::network::hostname;
 use crate::write_str;
 
@@ -20,12 +22,14 @@ pub enum Appender {
 
 impl Appender {
     // appender must not emit log event!(), it could trigger layer on_event, make CURRENT_ACTION.borrow_mut() panic
-    pub(super) fn append_action(&self, action: &mut Action, app: &'static str) {
+    pub(crate) fn append_action(&self, action: &Action, app: &'static str) {
         match self {
             Appender::Console => append_console(action),
             Appender::GoogleCloud => append_gcloud(action, app),
         }
     }
+
+    pub(crate) fn append_metrics(&self, _metrics: Metrics, _app: &'static str) {}
 }
 
 #[allow(clippy::print_stdout, clippy::print_stderr)]
@@ -75,17 +79,12 @@ fn append_console(action: &Action) {
 }
 
 #[allow(clippy::print_stdout)]
-fn append_gcloud(action: &mut Action, app: &'static str) {
+fn append_gcloud(action: &Action, app: &'static str) {
     let id = &format!("{}", action.id);
     let time = action.date;
     let severity = severity(action);
     let error_code = action.error.as_ref().and_then(|e| e.code);
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
-
-    let mut context = HashMap::with_capacity(action.context.len());
-    for (key, values) in mem::take(&mut action.context) {
-        context.insert(key, values);
-    }
 
     println!(
         "{}",
@@ -99,7 +98,7 @@ fn append_gcloud(action: &mut Action, app: &'static str) {
             ref_id: action.ref_id.as_deref(),
             error_code,
             error_message,
-            context,
+            context: action.context.as_ref(),
             stats: &action.stats,
             label: LogLabel { log: "action" },
             trace_id: id,
@@ -156,7 +155,8 @@ struct ActionEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    context: HashMap<&'static str, Vec<String>>,
+    #[serde(serialize_with = "vec_to_map")]
+    context: &'a [(&'static str, Vec<String>)],
     stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
@@ -175,4 +175,17 @@ struct TraceEntry<'a> {
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
     trace_id: &'a str,
+}
+
+// Custom serialization function
+fn vec_to_map<S>(vec: &[(&'static str, Vec<String>)], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // Initialize the map serializer with the exact size
+    let mut map = serializer.serialize_map(Some(vec.len()))?;
+    for (k, v) in vec {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
 }

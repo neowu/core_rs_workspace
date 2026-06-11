@@ -1,21 +1,25 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::OnceLock;
+use std::time::Duration;
 use std::time::Instant;
 
 pub use chrono::SecondsFormat;
 pub use chrono::Utc;
 use tokio::task_local;
+use tokio::time::sleep;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::appender::Appender;
+use crate::log::metrics::collect_metrics;
 use crate::write_str;
 
 mod action;
 pub mod appender;
 pub mod id_generator;
+mod metrics;
 
 // used for logging without action context
 #[macro_export]
@@ -38,6 +42,21 @@ pub fn init(appender: &str, app: &'static str) {
     };
 
     CONTEXT.set(Context { app, appender }).unwrap_or_else(|_| panic!("log can not be init once"));
+
+    start_metrics_task();
+}
+
+fn start_metrics_task() {
+    tokio::spawn(async {
+        loop {
+            sleep(Duration::from_secs(5)).await;
+
+            let metrics = collect_metrics();
+            if let Some(Context { app, appender }) = CONTEXT.get() {
+                appender.append_metrics(metrics, app);
+            }
+        }
+    });
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
@@ -69,7 +88,7 @@ where
                 }
                 current_action.finish();
                 if let Some(Context { app, appender }) = CONTEXT.get() {
-                    appender.append_action(&mut current_action, app);
+                    appender.append_action(&current_action, app);
                 }
             });
             result
