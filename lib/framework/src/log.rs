@@ -1,25 +1,22 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::OnceLock;
-use std::time::Duration;
 use std::time::Instant;
 
 pub use chrono::SecondsFormat;
 pub use chrono::Utc;
 use tokio::task_local;
-use tokio::time::sleep;
 
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::appender::Appender;
-use crate::log::metrics::collect_metrics;
 use crate::write_str;
 
 mod action;
 pub mod appender;
 pub mod id_generator;
-mod metrics;
+pub mod metrics;
 
 // used for logging without action context
 #[macro_export]
@@ -41,22 +38,7 @@ pub fn init(appender: &str, app: &'static str) {
         _ => panic!("unknown appender, value={appender}"),
     };
 
-    CONTEXT.set(Context { app, appender }).unwrap_or_else(|_| panic!("log can not be init once"));
-
-    start_metrics_task();
-}
-
-fn start_metrics_task() {
-    tokio::spawn(async {
-        loop {
-            sleep(Duration::from_secs(5)).await;
-
-            let metrics = collect_metrics();
-            if let Some(Context { app, appender }) = CONTEXT.get() {
-                appender.append_metrics(metrics, app);
-            }
-        }
-    });
+    CONTEXT.set(Context { app, appender }).unwrap_or_else(|_| panic!("init can only be called once"));
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
@@ -75,25 +57,31 @@ pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>,
 where
     F: Future<Output = Result<R, Exception>>,
 {
-    let now = Utc::now();
-    let id = id_generator::next_id(now.timestamp_millis());
-    let action = Action::new(id, kind, ref_id, now);
-    CURRENT_ACTION
-        .scope(RefCell::new(action), async move {
-            let result = task.await;
-            CURRENT_ACTION.with(|current_action| {
-                let mut current_action = current_action.borrow_mut();
-                if let Err(e) = &result {
-                    current_action.log_exception(e);
-                }
-                current_action.finish();
-                if let Some(Context { app, appender }) = CONTEXT.get() {
+    if let Some(Context { app, appender }) = CONTEXT.get() {
+        let now = Utc::now();
+        let id = id_generator::next_id(now.timestamp_millis());
+        let action = Action::new(id, kind, ref_id, now);
+        CURRENT_ACTION
+            .scope(RefCell::new(action), async move {
+                let result = task.await;
+                CURRENT_ACTION.with(|current_action| {
+                    let mut current_action = current_action.borrow_mut();
+                    if let Err(e) = &result {
+                        current_action.log_exception(e);
+                    }
+                    current_action.finish();
                     appender.append_action(&current_action, app);
-                }
-            });
-            result
-        })
-        .await
+                });
+                result
+            })
+            .await
+    } else {
+        let result = task.await;
+        if let Err(e) = &result {
+            console!("ERROR {e}");
+        }
+        result
+    }
 }
 
 pub struct Span {

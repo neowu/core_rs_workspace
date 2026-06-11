@@ -11,7 +11,7 @@ use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
 use framework::network::hostname;
-use framework::number::parse_u32;
+use framework::number::parse_u64;
 use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::task;
@@ -49,7 +49,7 @@ pub struct AppState {
     hash: String,
     bucket: String,
 
-    duckdb_memory_limit: u32, // in bytes
+    duckdb_memory_limit: u64, // in bytes
 }
 
 fn hash(hostname: &str) -> String {
@@ -57,9 +57,9 @@ fn hash(hostname: &str) -> String {
     hex::encode(hash)[0..6].to_owned()
 }
 
-fn duckdb_memory_limit() -> Result<u32, Exception> {
+fn duckdb_memory_limit() -> Result<u64, Exception> {
     if fs::exists("/sys/fs/cgroup/memory.max")? {
-        let max_memory = parse_u32(read_to_string("/sys/fs/cgroup/memory.max")?.trim())?;
+        let max_memory = parse_u64(read_to_string("/sys/fs/cgroup/memory.max")?.trim())?;
         console!("detected cgroup v2, max_memory={max_memory}, set duckdb_memory_limit to 50%");
         Ok(max_memory / 2)
     } else {

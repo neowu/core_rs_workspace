@@ -11,6 +11,7 @@ use serde::ser::SerializeMap as _;
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
+use crate::log::action::Error;
 use crate::log::metrics::Metrics;
 use crate::network::hostname;
 use crate::write_str;
@@ -29,13 +30,18 @@ impl Appender {
         }
     }
 
-    pub(crate) fn append_metrics(&self, _metrics: Metrics, _app: &'static str) {}
+    pub(crate) fn append_metrics(&self, metrics: &Metrics, app: &'static str) {
+        match self {
+            Appender::Console => append_metrics_console(metrics),
+            Appender::GoogleCloud => append_metrics_gcloud(metrics, app),
+        }
+    }
 }
 
 #[allow(clippy::print_stdout, clippy::print_stderr)]
 fn append_console(action: &Action) {
     let date = action.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let severity = severity(action);
+    let severity = severity(action.error.as_ref());
     let kind = action.kind;
     let id = &action.id;
     let mut log = format!("ACTION: {date} | {severity} | {kind} | id={id}");
@@ -79,10 +85,40 @@ fn append_console(action: &Action) {
 }
 
 #[allow(clippy::print_stdout)]
+fn append_metrics_console(metrics: &Metrics) {
+    let date = metrics.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let mut log = format!("METRICS: {date}");
+
+    if let Some(error) = &metrics.error {
+        let severity = severity(metrics.error.as_ref());
+        write_str!(&mut log, " | {severity}");
+        if let Some(error_code) = error.code {
+            write_str!(&mut log, " | error_code={error_code}");
+        }
+        write_str!(&mut log, " | error_message={}", error.message);
+    }
+
+    for (key, value) in &metrics.stats {
+        if key.ends_with("elapsed") {
+            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value));
+        } else {
+            write_str!(&mut log, " | {key}={value}");
+        }
+    }
+
+    for (key, value) in &metrics.info {
+        write_str!(&mut log, " | {key}={value}");
+    }
+
+    println!("{log}");
+}
+
+#[allow(clippy::print_stdout)]
 fn append_gcloud(action: &Action, app: &'static str) {
-    let id = &format!("{}", action.id);
+    let id = action.id.to_string();
+    let id = id.as_str();
     let time = action.date;
-    let severity = severity(action);
+    let severity = severity(action.error.as_ref());
     let error_code = action.error.as_ref().and_then(|e| e.code);
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
 
@@ -125,8 +161,31 @@ fn append_gcloud(action: &Action, app: &'static str) {
     }
 }
 
-const fn severity(action: &Action) -> &'static str {
-    if let Some(error) = &action.error {
+#[allow(clippy::print_stdout)]
+fn append_metrics_gcloud(metrics: &Metrics, app: &'static str) {
+    let error_code = metrics.error.as_ref().and_then(|e| e.code);
+    let error_message = metrics.error.as_ref().map(|e| e.message.as_str());
+
+    println!(
+        "{}",
+        json::to_json(&MetricsEntry {
+            id: metrics.id.to_string().as_str(),
+            time: metrics.date,
+            app,
+            host: hostname(),
+            severity: severity(metrics.error.as_ref()),
+            error_code,
+            error_message,
+            stats: &metrics.stats,
+            info: &metrics.info,
+            label: LogLabel { log: "metrics" },
+        })
+        .expect("serialize to json cannot fail")
+    );
+}
+
+const fn severity(error: Option<&Error>) -> &'static str {
+    if let Some(error) = error {
         match error.severity {
             Severity::Warn => "WARN",
             Severity::Error => "ERROR",
@@ -165,6 +224,25 @@ struct ActionEntry<'a> {
 }
 
 #[derive(Debug, Serialize)]
+struct MetricsEntry<'a> {
+    id: &'a str,
+    time: DateTime<Utc>,
+    app: &'static str,
+    host: &'static str,
+    severity: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_message: Option<&'a str>,
+    #[serde(serialize_with = "vec_to_map")]
+    stats: &'a [(&'static str, u64)],
+    #[serde(serialize_with = "vec_to_map")]
+    info: &'a [(&'static str, String)],
+    #[serde(rename = "logging.googleapis.com/labels")]
+    label: LogLabel,
+}
+
+#[derive(Debug, Serialize)]
 struct TraceEntry<'a> {
     id: &'a str,
     time: DateTime<Utc>,
@@ -178,9 +256,10 @@ struct TraceEntry<'a> {
 }
 
 // Custom serialization function
-fn vec_to_map<S>(vec: &[(&'static str, Vec<String>)], serializer: S) -> Result<S::Ok, S::Error>
+fn vec_to_map<S, V>(vec: &[(&'static str, V)], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    V: Serialize,
 {
     // Initialize the map serializer with the exact size
     let mut map = serializer.serialize_map(Some(vec.len()))?;

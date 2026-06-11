@@ -27,10 +27,10 @@ pub(crate) struct Action {
     pub(crate) logs: Vec<String>,
 }
 
-pub(crate) struct Error {
-    pub(crate) severity: Severity,
-    pub(crate) code: Option<&'static str>,
-    pub(crate) message: String,
+pub struct Error {
+    pub severity: Severity,
+    pub code: Option<&'static str>,
+    pub message: String,
 }
 
 impl Action {

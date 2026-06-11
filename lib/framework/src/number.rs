@@ -1,16 +1,16 @@
 use crate::exception::Exception;
 
 #[inline]
-pub fn parse_u32(value: &str) -> Result<u32, Exception> {
-    value.parse::<u32>().map_err(|err| exception!(format!("failed to parse, value={value}"), source = err))
+pub fn parse_u64(value: &str) -> Result<u64, Exception> {
+    value.parse::<u64>().map_err(|err| exception!(format!("failed to parse, value={value}"), source = err))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::number::parse_u32;
+    use crate::number::parse_u64;
 
     #[test]
-    fn parse_u32_invalid() {
-        parse_u32("invalid").unwrap_err();
+    fn parse_u64_invalid() {
+        parse_u64("invalid").unwrap_err();
     }
 }

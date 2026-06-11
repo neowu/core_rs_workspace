@@ -61,7 +61,7 @@ async fn convert_parquet_and_upload(
     local_path_buf: PathBuf,
     remote_path: &str,
     columns: &str,
-    duckdb_memory_limit: u32,
+    duckdb_memory_limit: u64,
 ) -> Result<(), Exception> {
     let local_path = local_path_buf.to_string_lossy();
     log!("convert to parquet, path={local_path}");
