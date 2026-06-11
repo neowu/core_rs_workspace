@@ -1,7 +1,7 @@
 * always make state with Box::leak()?
 * log_collector supports collect cookies?
 
-* stats collector, metrics
+* pool/kafka metrics
 * Arena support? log/request/response
 
 # Thoughts on AI era

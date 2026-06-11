@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::Router;
@@ -19,6 +20,8 @@ pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
 
 use crate::log;
+use crate::log::metrics::Counter;
+use crate::log::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::client_info::client_info;
@@ -60,6 +63,20 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
     console!("http server stopped");
 }
 
+static REQUEST_COUNTER: OnceLock<Counter> = OnceLock::new();
+
+pub fn http_server_collector() -> impl Fn(&mut Metrics) {
+    REQUEST_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("http_server_collector can only be called once"));
+    http_server_metrics
+}
+
+fn http_server_metrics(metrics: &mut Metrics) {
+    if let Some(counter) = REQUEST_COUNTER.get() {
+        let max = counter.max();
+        metrics.stats.push(("active_http_requests", max as u64));
+    }
+}
+
 async fn http_server_layer(mut request: Request, next: Next) -> Response {
     // skip log for health check
     if request.uri().path() == "/health-check" {
@@ -67,6 +84,8 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
     }
 
     let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(|id| vec![id.to_owned()]);
+
+    let _counter = REQUEST_COUNTER.get().map(Counter::increase);
 
     let response = log::start_action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());

@@ -99,11 +99,7 @@ fn append_metrics_console(metrics: &Metrics) {
     }
 
     for (key, value) in &metrics.stats {
-        if key.ends_with("elapsed") {
-            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value));
-        } else {
-            write_str!(&mut log, " | {key}={value}");
-        }
+        write_str!(&mut log, " | {key}={value}");
     }
 
     for (key, value) in &metrics.info {

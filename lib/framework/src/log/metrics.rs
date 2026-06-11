@@ -8,6 +8,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use tokio::time::sleep;
 
+use crate::exception::Severity;
 use crate::log::CONTEXT;
 use crate::log::Context;
 use crate::log::action::Error;
@@ -23,17 +24,20 @@ pub struct Metrics {
     pub info: Vec<(&'static str, String)>,
 }
 
-pub struct MetricsCollector {
-    previous_cpu_stats: Option<PreviousCpuStats>,
-    collectors: Vec<Collector>,
+impl Metrics {
+    fn update_error(&mut self, severity: Severity, error_code: &'static str, error_message: String) {
+        if self.error.as_ref().is_none_or(|error| error.severity < severity) {
+            self.error = Some(Error { severity, code: Some(error_code), message: error_message });
+        }
+    }
 }
 
 type Collector = Box<dyn Fn(&mut Metrics) + Send>;
 
-struct PreviousCpuStats {
-    time: Instant,
-    cpu_time: u64,
-    cpu_max: f64,
+pub struct MetricsCollector {
+    previous_cpu_stats: Option<PreviousCpuStats>,
+    mem_max: Option<u64>,
+    collectors: Vec<Collector>,
 }
 
 impl MetricsCollector {
@@ -46,7 +50,7 @@ impl MetricsCollector {
         } else {
             None
         };
-        Self { previous_cpu_stats, collectors: Vec::new() }
+        Self { previous_cpu_stats, mem_max: mem_max(), collectors: Vec::new() }
     }
 
     pub fn add(&mut self, collector: impl Fn(&mut Metrics) + Send + 'static) {
@@ -78,7 +82,11 @@ impl MetricsCollector {
         };
 
         if let Some(cpu_stats) = &mut self.previous_cpu_stats {
-            collect_vm_info(&mut metrics, cpu_stats);
+            collect_cpu_usage(&mut metrics, cpu_stats);
+        }
+
+        if let Some(mem_max) = self.mem_max {
+            collect_mem_usage(&mut metrics, mem_max);
         }
 
         for collector in &self.collectors {
@@ -95,26 +103,55 @@ impl Default for MetricsCollector {
     }
 }
 
+struct PreviousCpuStats {
+    time: Instant,
+    cpu_time: u64,
+    cpu_max: f64,
+}
+
+impl PreviousCpuStats {
+    fn cpu_usage(&mut self, now: Instant, cpu_time: u64) -> Option<u64> {
+        let wall_time_elapsed = now.duration_since(self.time).as_micros() as u64;
+        let cpu_time_elapsed = cpu_time.saturating_sub(self.cpu_time);
+
+        // update previous stats
+        self.time = now;
+        self.cpu_time = cpu_time;
+
+        if wall_time_elapsed == 0 {
+            None
+        } else {
+            let cpu_used = cpu_time_elapsed as f64 / wall_time_elapsed as f64;
+            Some((cpu_used / self.cpu_max * 100.0).round() as u64)
+        }
+    }
+}
+
 // collects cpu/memory usage in docker with cgroup v2 (the only supported env)
-fn collect_vm_info(metrics: &mut Metrics, previous_cpu_stats: &mut PreviousCpuStats) {
+fn collect_cpu_usage(metrics: &mut Metrics, previous_cpu_stats: &mut PreviousCpuStats) {
+    let now = Instant::now();
+    if let Some(cpu_time) = cpu_time()
+        && let Some(cpu_usage) = previous_cpu_stats.cpu_usage(now, cpu_time)
+    {
+        metrics.stats.push(("cpu_usage", cpu_usage));
+
+        if cpu_usage > 80 {
+            metrics.update_error(Severity::Warn, "HIGH_CPU_USAGE", format!("cpu usage is high, usage={cpu_usage}%"));
+            metrics.info.push(("cpu_pressure", fs::read_to_string("/sys/fs/cgroup/cpu.pressure").unwrap_or_default()));
+        }
+    }
+}
+
+fn collect_mem_usage(metrics: &mut Metrics, mem_max: u64) {
     if let Some(mem_used) = mem_used() {
         metrics.stats.push(("mem_used", mem_used));
-    }
-
-    if let Some(mem_max) = mem_max() {
         metrics.stats.push(("mem_max", mem_max));
-    }
 
-    let now = Instant::now();
-    if let Some(cpu_time) = cpu_time() {
-        let wall_time_elapsed = now.duration_since(previous_cpu_stats.time).as_micros() as u64;
-        let cpu_time_elapsed = cpu_time.saturating_sub(previous_cpu_stats.cpu_time);
-        if let Some(cpu_usage) = cpu_usage(cpu_time_elapsed, wall_time_elapsed, previous_cpu_stats.cpu_max) {
-            metrics.stats.push(("cpu_usage", cpu_usage));
+        let mem_usage = (mem_used as f64 / mem_max as f64 * 100.0).round() as u64;
+        if mem_usage > 80 {
+            metrics.update_error(Severity::Warn, "HIGH_MEM_USAGE", format!("memory usage is high, usage={mem_usage}%"));
+            metrics.info.push(("proc_status", fs::read_to_string("/proc/self/status").unwrap_or_default()));
         }
-
-        previous_cpu_stats.time = now;
-        previous_cpu_stats.cpu_time = cpu_time;
     }
 }
 
@@ -148,15 +185,6 @@ fn cpu_time() -> Option<u64> {
         }
     }
     None
-}
-
-fn cpu_usage(cpu_time_elapsed: u64, wall_time_elapsed: u64, cpu_max: f64) -> Option<u64> {
-    if wall_time_elapsed == 0 {
-        return None;
-    }
-    let cpu_used = cpu_time_elapsed as f64 / wall_time_elapsed as f64;
-    let usage = (cpu_used / cpu_max * 100.0).round();
-    Some(usage as u64)
 }
 
 // percent of cpu quota (cpu.max), 100 = at the limit; percent of raw cores used if no quota set

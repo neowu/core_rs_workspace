@@ -10,8 +10,10 @@ use framework::log::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::task;
+use framework::task::task_collector;
 use framework::web::SystemRoute as _;
 use framework::web::server::HttpServerConfig;
+use framework::web::server::http_server_collector;
 use framework::web::server::start_http_server;
 use framework_db::Database;
 use framework_db::DbConfig;
@@ -68,7 +70,8 @@ pub async fn run() -> Result<(), Exception> {
     ));
 
     let mut collector = MetricsCollector::new();
-    collector.add(task::task_collector());
+    collector.add(task_collector());
+    collector.add(http_server_collector());
     collector.start_collect_task();
 
     system.wait().await;
