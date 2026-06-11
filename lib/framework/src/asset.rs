@@ -13,6 +13,7 @@ macro_rules! asset_path {
 }
 
 #[doc(hidden)]
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 pub fn __resolve(manifest_dir: &str, path: &str) -> PathBuf {
     let exe_path = current_exe().expect("cannot get current exe path");
     let asset_path = exe_path.with_file_name(path);

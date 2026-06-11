@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "demo"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "axum",
  "chrono",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "axum",
  "axum-extra",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "framework_db"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "framework",
  "tokio",
@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "chrono",
  "framework",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1158,7 +1158,7 @@ checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
 
 [[package]]
 name = "log_collector"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "axum",
  "chrono",
@@ -1171,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "log_exporter"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "axum",
  "chrono",
@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "chrono",
  "framework",

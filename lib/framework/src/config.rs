@@ -31,6 +31,7 @@ macro_rules! load_config {
 }
 
 #[doc(hidden)]
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 pub fn __load_config<T>(path: &'static str, manifest_dir: &'static str) -> T
 where
     T: DeserializeOwned,
@@ -66,6 +67,7 @@ where
     serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to deserialize, json={json}, err={err}"))
 }
 
+#[cfg(debug_assertions)]
 fn load_dev_env(manifest_dir: &str) {
     let path = PathBuf::from(manifest_dir).join(".env");
     if !path.exists() {

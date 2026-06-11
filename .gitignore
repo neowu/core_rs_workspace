@@ -3,3 +3,4 @@
 /.claude/
 /.zed/
 .env
+/build/env.toml
