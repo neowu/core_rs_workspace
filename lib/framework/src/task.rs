@@ -99,15 +99,13 @@ where
 
 static TASK_COUNTER: OnceLock<Counter> = OnceLock::new();
 
-pub fn task_collector() -> impl Fn(&mut Metrics) {
-    TASK_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("task_collector can only be called once"));
-    task_metrics
-}
-
-fn task_metrics(metrics: &mut Metrics) {
-    if let Some(counter) = TASK_COUNTER.get() {
-        let max = counter.max();
-        metrics.stats.push(("active_tasks", max as u64));
+pub fn task_metrics() -> impl Fn(&mut Metrics) {
+    TASK_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("task_metrics can only be called once"));
+    |metrics| {
+        if let Some(counter) = TASK_COUNTER.get() {
+            let max = counter.max();
+            metrics.stats.push(("active_tasks", max as u64));
+        }
     }
 }
 

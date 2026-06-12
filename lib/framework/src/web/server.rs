@@ -65,15 +65,13 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
 
 static REQUEST_COUNTER: OnceLock<Counter> = OnceLock::new();
 
-pub fn http_server_collector() -> impl Fn(&mut Metrics) {
-    REQUEST_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("http_server_collector can only be called once"));
-    http_server_metrics
-}
-
-fn http_server_metrics(metrics: &mut Metrics) {
-    if let Some(counter) = REQUEST_COUNTER.get() {
-        let max = counter.max();
-        metrics.stats.push(("active_http_requests", max as u64));
+pub fn http_server_metrics() -> impl Fn(&mut Metrics) {
+    REQUEST_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("http_server_metrics can only be called once"));
+    |metrics| {
+        if let Some(counter) = REQUEST_COUNTER.get() {
+            let max = counter.max();
+            metrics.stats.push(("active_http_requests", max as u64));
+        }
     }
 }
 

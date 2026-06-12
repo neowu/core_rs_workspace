@@ -17,7 +17,7 @@ async fn main() {
 
     let mut system = System::new();
     let mut collector = MetricsCollector::new();
-    collector.add(task::task_collector());
+    collector.add(task::task_metrics());
     system.spawn(collector.start(system.shutdown_signal()));
 
     for i in 0..10 {

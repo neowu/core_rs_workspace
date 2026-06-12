@@ -95,7 +95,7 @@ impl Database {
         Ok(Database { pool, query_timeout: Duration::from_secs(5) })
     }
 
-    pub fn db_conn_collector(&self) -> impl Fn(&mut Metrics) + Send + 'static {
+    pub fn db_metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
         let pool = Arc::clone(&self.pool);
         move |metrics| metrics.stats.push(("active_db_conns", pool.active_count() as u64))
     }
