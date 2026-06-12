@@ -72,7 +72,8 @@ pub async fn run() -> Result<(), Exception> {
     let mut collector = MetricsCollector::new();
     collector.add(task_collector());
     collector.add(http_server_collector());
-    collector.start_collect_task();
+    collector.add(state.db.db_conn_collector());
+    system.spawn(collector.start(system.shutdown_signal()));
 
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;

@@ -12,6 +12,8 @@ use tokio::sync::Semaphore;
 use tokio::time;
 
 use crate::exception::Exception;
+use crate::log::metrics::Counter;
+use crate::log::metrics::CounterGuard;
 
 pub trait ResourceManager {
     type Target: Sized;
@@ -33,6 +35,7 @@ where
 {
     storage: Mutex<VecDeque<Resource<R::Target>>>,
     semaphore: Arc<Semaphore>,
+    counter: Counter,
     manager: R,
     max_valid_window: Duration,
     max_life_time: Duration,
@@ -53,6 +56,7 @@ where
         Self {
             storage: Mutex::new(VecDeque::with_capacity(capacity)),
             semaphore: Arc::new(Semaphore::new(capacity)),
+            counter: Counter::new(),
             manager,
             max_valid_window,
             max_life_time,
@@ -66,6 +70,7 @@ where
             Ok(Err(_)) => return Err(exception!("pool is closed")),
             Err(_) => return Err(exception!("timeout")),
         };
+        let counter = self.counter.increase();
 
         let item = loop {
             let candidate = {
@@ -94,7 +99,12 @@ where
             resource: Some(Resource { item, created_time: now, return_time: now }),
             pool: self,
             _permit: permit,
+            _counter: counter,
         })
+    }
+
+    pub fn active_count(&self) -> u32 {
+        self.counter.max()
     }
 }
 
@@ -105,6 +115,7 @@ where
     resource: Option<Resource<R::Target>>,
     pool: &'a ResourcePool<R>,
     _permit: OwnedSemaphorePermit,
+    _counter: CounterGuard<'a>,
 }
 
 impl<R> Deref for ResourceGuard<'_, R>

@@ -7,7 +7,9 @@ use std::time::Instant;
 use chrono::DateTime;
 use chrono::Utc;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
+use crate::console;
 use crate::exception::Severity;
 use crate::log::CONTEXT;
 use crate::log::Context;
@@ -57,17 +59,21 @@ impl MetricsCollector {
         self.collectors.push(Box::new(collector));
     }
 
-    pub fn start_collect_task(self) {
-        let mut collector = self;
+    pub async fn start(mut self, shutdown_signal: CancellationToken) {
         if let Some(Context { app, appender }) = CONTEXT.get() {
-            tokio::spawn(async move {
-                loop {
-                    sleep(Duration::from_secs(5)).await;
-
-                    let metrics = collector.collect_metrics();
-                    appender.append_metrics(&metrics, app);
+            console!("metrics collector started");
+            loop {
+                tokio::select! {
+                    () = shutdown_signal.cancelled() => {
+                        console!("metrics collector stopped");
+                        return;
+                    }
+                    () = sleep(Duration::from_secs(5)) => {
+                        let metrics = self.collect_metrics();
+                        appender.append_metrics(&metrics, app);
+                    }
                 }
-            });
+            }
         }
     }
 

@@ -6,6 +6,7 @@ use framework::load_config;
 use framework::log;
 use framework::log::metrics::MetricsCollector;
 use framework::spawn_action;
+use framework::system::System;
 use framework::task;
 use tokio::time;
 
@@ -14,9 +15,10 @@ async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
+    let mut system = System::new();
     let mut collector = MetricsCollector::new();
     collector.add(task::task_collector());
-    collector.start_collect_task();
+    system.spawn(collector.start(system.shutdown_signal()));
 
     for i in 0..10 {
         spawn_action!("sleep", async move {
@@ -26,5 +28,6 @@ async fn main() {
         });
     }
 
+    system.wait().await;
     task::shutdown(Duration::from_secs(30)).await;
 }
