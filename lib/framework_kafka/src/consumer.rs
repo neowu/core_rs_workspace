@@ -81,7 +81,7 @@ where
             config: ClientConfig::new()
                 .set("group.id", group_id)
                 .set("bootstrap.servers", bootstrap_servers)
-                .set("enable.auto.commit", "123")
+                .set("enable.auto.commit", "false")
                 .set_log_level(RDKafkaLogLevel::Info)
                 .to_owned(),
             handlers: HashMap::new(),

@@ -7,7 +7,6 @@ use std::fmt::Formatter;
 use std::fs::read_to_string;
 use std::ops::Deref;
 use std::path::Path;
-use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::de;
@@ -69,6 +68,8 @@ where
 
 #[cfg(debug_assertions)]
 fn load_dev_env(manifest_dir: &str) {
+    use std::path::PathBuf;
+
     let path = PathBuf::from(manifest_dir).join(".env");
     if !path.exists() {
         return;
