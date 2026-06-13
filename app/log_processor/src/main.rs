@@ -8,6 +8,7 @@ use framework::asset_path;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
+use framework::log::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
@@ -74,6 +75,9 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
     system.spawn(consumer.start(state, system.shutdown_signal()));
+
+    let collector = MetricsCollector::new();
+    system.spawn(collector.start(system.shutdown_signal()));
 
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;

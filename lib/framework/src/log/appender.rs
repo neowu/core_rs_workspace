@@ -210,8 +210,9 @@ struct ActionEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    #[serde(serialize_with = "vec_to_map")]
+    #[serde(flatten, serialize_with = "vec_to_map")]
     context: &'a [(&'static str, Vec<String>)],
+    #[serde(flatten)]
     stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
@@ -230,7 +231,7 @@ struct MetricsEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    #[serde(serialize_with = "vec_to_map")]
+    #[serde(flatten, serialize_with = "vec_to_map")]
     stats: &'a [(&'static str, u64)],
     #[serde(serialize_with = "vec_to_map")]
     info: &'a [(&'static str, String)],
@@ -263,4 +264,57 @@ where
         map.serialize_entry(k, v)?;
     }
     map.end()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use chrono::DateTime;
+    use serde_json::Value;
+
+    use super::ActionEntry;
+    use super::LogLabel;
+    use crate::json;
+
+    #[test]
+    fn serialize_action_entry() {
+        let context = vec![("user_id", vec!["u1".to_owned()])];
+        let mut stats = HashMap::new();
+        stats.insert("count".into(), 42);
+
+        let entry = ActionEntry {
+            id: "action-1",
+            time: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            kind: "http",
+            app: "test-app",
+            host: "host-1",
+            severity: "ERROR",
+            ref_id: Some(&["ref-1".to_owned()]),
+            error_code: Some("BAD_REQUEST"),
+            error_message: Some("invalid input"),
+            context: &context,
+            stats: &stats,
+            label: LogLabel { log: "action" },
+            trace_id: "action-1",
+        };
+
+        let json = json::to_json(&entry).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(value["id"], "action-1");
+        assert_eq!(value["kind"], "http");
+        assert_eq!(value["app"], "test-app");
+        assert_eq!(value["host"], "host-1");
+        assert_eq!(value["severity"], "ERROR");
+        assert_eq!(value["ref_id"][0], "ref-1");
+        assert_eq!(value["error_code"], "BAD_REQUEST");
+        assert_eq!(value["error_message"], "invalid input");
+        assert_eq!(value["time"], "2023-11-14T22:13:20Z");
+        // context/stats are flattened into the top-level object
+        assert_eq!(value["user_id"][0], "u1");
+        assert_eq!(value["count"], 42);
+        assert_eq!(value["logging.googleapis.com/labels"]["log"], "action");
+        assert_eq!(value["logging.googleapis.com/trace"], "action-1");
+    }
 }

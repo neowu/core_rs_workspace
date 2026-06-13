@@ -166,7 +166,7 @@ fn mem_used() -> Option<u64> {
     parse_u64(content.trim()).ok()
 }
 
-fn mem_max() -> Option<u64> {
+pub fn mem_max() -> Option<u64> {
     let content = fs::read_to_string("/sys/fs/cgroup/memory.max").ok()?;
     let content = content.trim();
     if content != "max" {

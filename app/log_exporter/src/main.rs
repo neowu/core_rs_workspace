@@ -1,5 +1,3 @@
-use std::fs;
-use std::fs::read_to_string;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,8 +8,9 @@ use framework::console;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
+use framework::log::metrics::MetricsCollector;
+use framework::log::metrics::mem_max;
 use framework::network::hostname;
-use framework::number::parse_u64;
 use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::task;
@@ -57,14 +56,13 @@ fn hash(hostname: &str) -> String {
     hex::encode(hash)[0..6].to_owned()
 }
 
-fn duckdb_memory_limit() -> Result<u64, Exception> {
-    if fs::exists("/sys/fs/cgroup/memory.max")? {
-        let max_memory = parse_u64(read_to_string("/sys/fs/cgroup/memory.max")?.trim())?;
-        console!("detected cgroup v2, max_memory={max_memory}, set duckdb_memory_limit to 50%");
-        Ok(max_memory / 2)
+fn duckdb_memory_limit() -> u64 {
+    if let Some(mem_max) = mem_max() {
+        console!("detected max memory, value={mem_max}, set duckdb_memory_limit to 50%");
+        mem_max / 2
     } else {
         console!("not in cgroup v2 env, set duckdb_memory_limit to 200MB");
-        Ok(200_000_000)
+        200_000_000
     }
 }
 
@@ -88,37 +86,31 @@ async fn main() -> Result<(), Exception> {
             log_dir: config.log_dir,
             hash,
             bucket: config.bucket,
-            duckdb_memory_limit: duckdb_memory_limit()?,
+            duckdb_memory_limit: duckdb_memory_limit(),
         }
     });
 
     let scheduler_state = Arc::clone(&state);
-    let scheduler_shutdown_signal = system.shutdown_signal();
-    system.spawn(async move {
-        let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
-        scheduler.schedule_daily(
-            "process_log_job",
-            process_log_job,
-            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
-        );
-        scheduler.start(scheduler_state, scheduler_shutdown_signal).await;
-    });
+    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+    scheduler.schedule_daily(
+        "process_log_job",
+        process_log_job,
+        NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+    );
+    system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 
     let consumer_state = Arc::clone(&state);
-    let consumer_signal = system.shutdown_signal();
-    system.spawn(async move {
-        let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
-        consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
-        consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
-        consumer.start(consumer_state, consumer_signal).await;
-    });
+    let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
+    consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
+    consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
+    system.spawn(consumer.start(consumer_state, system.shutdown_signal()));
 
-    let http_server_signal = system.shutdown_signal();
-    system.spawn(async move {
-        let app = Router::new();
-        let app = app.merge(web::routes(Arc::clone(&state)));
-        start_http_server(app, http_server_signal, HttpServerConfig::default()).await;
-    });
+    let app = Router::new();
+    let app = app.merge(web::routes(Arc::clone(&state)));
+    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
+
+    let collector = MetricsCollector::new();
+    system.spawn(collector.start(system.shutdown_signal()));
 
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;
