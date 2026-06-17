@@ -140,7 +140,9 @@ fn append_gcloud(action: &Action, app: &'static str) {
     );
 
     if action.flush_trace() {
-        for line in &action.logs {
+        for (i, line) in action.logs.iter().enumerate() {
+            // all trace lines share the action timestamp, gcloud orders by insertId, so use actionId + line number (0001 to 2000) to keep order
+            let insert_id = format!("{id}-{:04}", i + 1);
             println!(
                 "{}",
                 json::to_json(&TraceEntry {
@@ -151,6 +153,7 @@ fn append_gcloud(action: &Action, app: &'static str) {
                     message: line,
                     label: LogLabel { log: "trace" },
                     trace_id: id,
+                    insert_id: &insert_id,
                 })
                 .expect("serialize to json cannot fail")
             );
@@ -251,6 +254,8 @@ struct TraceEntry<'a> {
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
     trace_id: &'a str,
+    #[serde(rename = "logging.googleapis.com/insertId")]
+    insert_id: &'a str,
 }
 
 fn serialize_key_value_tuple<S, V>(vec: &[(&'static str, V)], serializer: S) -> Result<S::Ok, S::Error>

@@ -76,16 +76,23 @@ async fn event_options(headers: HeaderMap) -> HttpResult<HeaderMap> {
 // event will be sent via ajax or navigator.sendBeacon(), refer to https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
 #[debug_handler]
 async fn event_post(
-    state: State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(app): Path<String>,
     headers: HeaderMap,
     Extension(client_info): Extension<Arc<ClientInfo>>,
     body: TextBody,
 ) -> HttpResult<HeaderMap> {
     if !body.is_empty() {
-        let request: SendEventRequest = json::from_json(&body)?;
+        let request: SendEventRequest = json::from_json(&body).map_err(|err| {
+            exception!(
+                "failed to parse json body",
+                severity = Severity::Warn,
+                code = error_code::BAD_REQUEST,
+                source = err
+            )
+        })?;
         request.validate()?;
-        process_events(&state, &app, request, client_info).await?;
+        process_events(state, &app, request, client_info).await?;
     }
 
     let origin = headers.get(header::ORIGIN);
@@ -98,7 +105,7 @@ async fn event_post(
 }
 
 async fn process_events(
-    state: &Arc<AppState>,
+    state: Arc<AppState>,
     app: &str,
     request: SendEventRequest,
     client_info: Arc<ClientInfo>,

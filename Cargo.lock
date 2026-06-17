@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "demo"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "axum",
  "chrono",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "axum",
  "axum-extra",
@@ -504,7 +504,7 @@ dependencies = [
  "futures",
  "http",
  "libc",
- "rand 0.10.1",
+ "rand 0.9.4",
  "reqwest",
  "serde",
  "serde_html_form",
@@ -512,12 +512,12 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
- "tower-http 0.7.0",
+ "tower-http",
 ]
 
 [[package]]
 name = "framework_db"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "framework",
  "tokio",
@@ -526,7 +526,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "chrono",
  "framework",
@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1154,7 +1154,7 @@ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "log_collector"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "axum",
  "chrono",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "log_exporter"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "axum",
  "chrono",
@@ -1182,7 +1182,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "chrono",
  "framework",
@@ -1698,7 +1698,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower",
- "tower-http 0.6.11",
+ "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -2325,24 +2325,6 @@ checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
  "bitflags",
  "bytes",
- "futures-util",
- "http",
- "http-body",
- "pin-project-lite",
- "tower",
- "tower-layer",
- "tower-service",
- "url",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b11f75e912b0c2be01b63d8cf8057b8c3f97cf34abb3d431a3a4c8675498e233"
-dependencies = [
- "bitflags",
- "bytes",
  "futures-core",
  "futures-util",
  "http",
@@ -2356,8 +2338,10 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+ "tower",
  "tower-layer",
  "tower-service",
+ "url",
 ]
 
 [[package]]
