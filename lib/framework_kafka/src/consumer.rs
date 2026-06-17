@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -14,6 +15,8 @@ use framework::context;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
+use framework::log::metrics::Counter;
+use framework::log::metrics::Metrics;
 use framework::stats;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
@@ -69,6 +72,7 @@ pub struct MessageConsumer<S> {
     handlers: HashMap<&'static str, MessageHandler<S>>,
     poll_max_wait_time: Duration,
     poll_max_records: usize,
+    counter: Arc<Counter>,
 }
 
 impl<S> MessageConsumer<S>
@@ -87,6 +91,14 @@ where
             handlers: HashMap::new(),
             poll_max_wait_time: config.poll_max_wait_time,
             poll_max_records: config.poll_max_records,
+            counter: Arc::new(Counter::new()),
+        }
+    }
+
+    pub fn consumer_metrics(&self) -> impl Fn(&mut Metrics) + use<S> {
+        let counter = Arc::clone(&self.counter);
+        move |metrics| {
+            metrics.stats.push(("active_message_handlers", counter.max() as u64));
         }
     }
 
@@ -98,9 +110,10 @@ where
         S: Clone + Send + Sync + 'static,
     {
         let topic = topic.name;
+        let counter = Arc::clone(&self.counter);
         let handler = move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<Message<M>> = messages.into_iter().map(Message::from).collect();
-            handle_messages(topic, messages, handler, &state)
+            handle_messages(topic, messages, handler, &state, &counter)
         };
 
         self.handlers.insert(topic, Box::new(handler));
@@ -113,9 +126,10 @@ where
         M: DeserializeOwned + Send + 'static,
     {
         let topic = topic.name;
+        let counter = Arc::clone(&self.counter);
         let handler = move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<Message<M>> = messages.into_iter().map(Message::from).collect();
-            handle_bulk_messages(topic, messages, handler, state)
+            handle_bulk_messages(topic, messages, handler, state, Arc::clone(&counter))
         };
 
         self.handlers.insert(topic, Box::new(handler));
@@ -214,6 +228,7 @@ fn handle_bulk_messages<H, S, M, Fut>(
     messages: Vec<Message<M>>,
     handler: H,
     state: S,
+    counter: Arc<Counter>,
 ) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
 where
     S: Send + 'static,
@@ -223,6 +238,7 @@ where
 {
     let ref_id: Option<Vec<String>> = messages.iter().map(|m| m.headers.get(REF_ID).map(String::to_owned)).collect();
     Box::pin(log::start_action("message", ref_id, async move {
+        let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
         if let Some(client) =
             messages.iter().map(|m| m.headers.get(CLIENT).map(String::to_owned)).collect::<Option<Vec<String>>>()
@@ -256,11 +272,12 @@ fn handle_messages<H, S, M, Fut>(
     messages: Vec<Message<M>>,
     handler: H,
     state: &S,
+    counter: &Arc<Counter>,
 ) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
 where
     S: Clone + Send + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
-    Fut: Future<Output = Result<(), Exception>> + Send,
+    Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     M: DeserializeOwned + Send + 'static,
 {
     let mut handles = JoinSet::new();
@@ -278,13 +295,19 @@ where
             }
         } else {
             let state = state.clone();
-            handles.spawn(async move { handle_message(topic, message, handler, state).await });
+            let counter = Arc::clone(counter);
+            handles.spawn(async move {
+                let _counter = counter.increase();
+                handle_message(topic, message, handler, state).await;
+            });
         }
     }
 
     for node in nodes.into_values() {
         let state = state.clone();
+        let counter = Arc::clone(counter);
         handles.spawn(async move {
+            let _counter = counter.increase();
             handle_message(topic, node.message, handler, state.clone()).await;
             if let Some(next) = node.next {
                 for next_node in next {

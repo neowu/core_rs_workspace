@@ -48,6 +48,7 @@ async fn main() -> Result<(), Exception> {
     log::init(&config.log_appender, env!("CARGO_BIN_NAME"));
 
     let mut system = System::new();
+    let mut collector = MetricsCollector::new();
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;
@@ -74,11 +75,10 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
+    collector.add(consumer.consumer_metrics());
     system.spawn(consumer.start(state, system.shutdown_signal()));
 
-    let collector = MetricsCollector::new();
     system.spawn(collector.start(system.shutdown_signal()));
-
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;
 

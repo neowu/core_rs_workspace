@@ -49,11 +49,10 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(state));
+    collector.add(http_server_metrics());
     system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
 
-    collector.add(http_server_metrics());
     system.spawn(collector.start(system.shutdown_signal()));
-
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;
     Ok(())

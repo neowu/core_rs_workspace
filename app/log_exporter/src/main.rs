@@ -15,6 +15,7 @@ use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::task;
 use framework::web::server::HttpServerConfig;
+use framework::web::server::http_server_metrics;
 use framework::web::server::start_http_server;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
@@ -77,6 +78,7 @@ async fn main() -> Result<(), Exception> {
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let mut system = System::new();
+    let mut collector = MetricsCollector::new();
 
     let state = Arc::new({
         let hash = hash(hostname());
@@ -103,15 +105,15 @@ async fn main() -> Result<(), Exception> {
     let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
     consumer.add_bulk_handler(&consumer_state.topics.action, action_log_message_handler);
     consumer.add_bulk_handler(&consumer_state.topics.event, event_message_handler);
+    collector.add(consumer.consumer_metrics());
     system.spawn(consumer.start(consumer_state, system.shutdown_signal()));
 
     let app = Router::new();
     let app = app.merge(web::routes(Arc::clone(&state)));
+    collector.add(http_server_metrics());
     system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
 
-    let collector = MetricsCollector::new();
     system.spawn(collector.start(system.shutdown_signal()));
-
     system.wait().await;
     task::shutdown(Duration::from_secs(15)).await;
 

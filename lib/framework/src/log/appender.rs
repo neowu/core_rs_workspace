@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -210,7 +211,7 @@ struct ActionEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    #[serde(flatten, serialize_with = "vec_to_map")]
+    #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
     context: &'a [(&'static str, Vec<String>)],
     #[serde(flatten)]
     stats: &'a HashMap<Cow<'static, str>, u64>,
@@ -231,9 +232,9 @@ struct MetricsEntry<'a> {
     error_code: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
-    #[serde(flatten, serialize_with = "vec_to_map")]
+    #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
     stats: &'a [(&'static str, u64)],
-    #[serde(serialize_with = "vec_to_map")]
+    #[serde(serialize_with = "serialize_key_value_tuple")]
     info: &'a [(&'static str, String)],
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
@@ -252,16 +253,22 @@ struct TraceEntry<'a> {
     trace_id: &'a str,
 }
 
-// Custom serialization function
-fn vec_to_map<S, V>(vec: &[(&'static str, V)], serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_key_value_tuple<S, V>(vec: &[(&'static str, V)], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    V: Serialize,
+    V: Serialize + 'static,
 {
     // Initialize the map serializer with the exact size
     let mut map = serializer.serialize_map(Some(vec.len()))?;
     for (k, v) in vec {
-        map.serialize_entry(k, v)?;
+        if let Some(values) = (v as &dyn Any).downcast_ref::<Vec<String>>()
+            && values.len() == 1
+            && let Some(first) = values.first()
+        {
+            map.serialize_entry(k, first)?;
+        } else {
+            map.serialize_entry(k, v)?;
+        }
     }
     map.end()
 }
@@ -312,7 +319,7 @@ mod tests {
         assert_eq!(value["error_message"], "invalid input");
         assert_eq!(value["time"], "2023-11-14T22:13:20Z");
         // context/stats are flattened into the top-level object
-        assert_eq!(value["user_id"][0], "u1");
+        assert_eq!(value["user_id"], "u1");
         assert_eq!(value["count"], 42);
         assert_eq!(value["logging.googleapis.com/labels"]["log"], "action");
         assert_eq!(value["logging.googleapis.com/trace"], "action-1");

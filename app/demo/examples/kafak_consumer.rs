@@ -4,6 +4,7 @@ use demo::AppConfig;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
+use framework::log::metrics::MetricsCollector;
 use framework::system::System;
 use framework::warn;
 use framework_kafka::Topic;
@@ -45,6 +46,7 @@ pub async fn main() -> Result<(), Exception> {
     });
 
     let mut system = System::new();
+    let mut collector = MetricsCollector::new();
 
     let handle = tokio::spawn(process_message(rx));
 
@@ -53,8 +55,10 @@ pub async fn main() -> Result<(), Exception> {
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
+    collector.add(consumer.consumer_metrics());
 
     system.spawn(consumer.start(state, system.shutdown_signal()));
+    system.spawn(collector.start(system.shutdown_signal()));
 
     handle.await?;
 
