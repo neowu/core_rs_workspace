@@ -9,6 +9,7 @@ version = "0.6.7"
 framework = { path = "lib/framework" }
 framework_db = { path = "lib/framework_db" }
 framework_kafka = { path = "lib/framework_kafka" }
+framework_nats = { path = "lib/framework_nats" }
 framework_macro = { path = "lib/framework_macro" }
 
 serde = { version = "*", features = ["derive"] }

@@ -1,0 +1,17 @@
+[package]
+name = "framework_nats"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+framework.workspace = true
+serde.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tokio-util = "*"
+
+futures = "*"
+async-nats = "*"
+
+[lints]
+workspace = true

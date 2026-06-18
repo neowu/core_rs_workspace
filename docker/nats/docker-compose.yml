@@ -1,0 +1,22 @@
+services:
+  nats:
+    image: nats:2-alpine
+    command:
+      - --name=nats
+      - --http_port=8222
+      - --jetstream
+    ports:
+      - 4222:4222
+      - 6222:6222
+      - 8222:8222
+
+  nats-cli:
+    image: natsio/nats-box:latest
+    entrypoint: /bin/sh
+    command: -c "while true; do sleep 3600; done"
+    environment:
+      NATS_URL: nats://nats:4222
+    volumes:
+      - ./conf:/opt/conf
+    depends_on:
+      - nats
