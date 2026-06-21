@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::future::Future;
+use std::mem;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use tokio::sync::Notify;
-use tokio::task::JoinHandle;
+use tokio::task::Id;
+use tokio::task::JoinSet;
 use tokio::time;
 
 use crate::exception::Exception;
@@ -14,6 +16,53 @@ use crate::log::current_action_id;
 use crate::log::metrics::Counter;
 use crate::log::metrics::Metrics;
 
+// the global executor for fire-and-forget tasks; callers that want their own lifecycle hold a TaskExecutor directly
+static EXECUTOR: LazyLock<Mutex<TaskExecutor>> = LazyLock::new(Mutex::default);
+
+#[derive(Default)]
+pub struct TaskExecutor {
+    set: JoinSet<()>,
+    names: HashMap<Id, String>,
+}
+
+impl TaskExecutor {
+    pub fn spawn<F>(&mut self, name: String, task: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        // reap tasks that already finished, so `names` (and the set) don't grow unbounded
+        while let Some(result) = self.set.try_join_next_with_id() {
+            let id = match result {
+                Ok((id, ())) => id,
+                Err(error) => error.id(), // panicked or cancelled
+            };
+            self.names.remove(&id);
+        }
+
+        let handle = self.set.spawn(task);
+        self.names.insert(handle.id(), name);
+    }
+
+    /// Wait for all spawned tasks to finish, up to `timeout`. Any tasks still
+    /// running past the deadline are aborted; their names are returned.
+    pub async fn shutdown(mut self, timeout: Duration) -> Option<Vec<String>> {
+        let _result = time::timeout(timeout, async {
+            while let Some(result) = self.set.join_next_with_id().await {
+                let id = match result {
+                    Ok((id, ())) => id,
+                    Err(error) => error.id(), // panicked or cancelled
+                };
+                self.names.remove(&id);
+            }
+        })
+        .await;
+
+        self.set.abort_all();
+        let aborted: Vec<String> = self.names.into_values().collect();
+        (!aborted.is_empty()).then_some(aborted)
+    }
+}
+
 #[macro_export]
 macro_rules! spawn_action {
     ($name:expr, $task:expr) => {
@@ -21,99 +70,46 @@ macro_rules! spawn_action {
     };
 }
 
-static EXECUTOR: LazyLock<TaskExecutor> =
-    LazyLock::new(|| TaskExecutor { running_tasks: Mutex::new(Vec::new()), empty: Notify::new() });
-
-struct TaskExecutor {
-    running_tasks: Mutex<Vec<String>>,
-    empty: Notify,
-}
-
-impl TaskExecutor {
-    async fn wait(&self) {
-        loop {
-            // register the waiter BEFORE checking, to avoid missing a wakeup
-            let notified = self.empty.notified();
-            if self.running_tasks.lock().unwrap().is_empty() {
-                break;
-            }
-            notified.await;
-        }
-    }
-}
-
-struct TaskGuard {
-    task_name: String,
-}
-
-impl Drop for TaskGuard {
-    fn drop(&mut self) {
-        let mut tasks = EXECUTOR.running_tasks.lock().unwrap();
-        if let Some(pos) = tasks.iter().position(|name| name == &self.task_name) {
-            tasks.swap_remove(pos);
-        }
-        if tasks.is_empty() {
-            EXECUTOR.empty.notify_waiters();
-        }
-    }
-}
-
 #[doc(hidden)]
 #[inline]
-pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T) -> JoinHandle<Result<R, Exception>>
+pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T)
 where
     T: Future<Output = Result<R, Exception>> + Send + 'static,
     R: Send + Sync + 'static,
 {
     let task_name = format!("task:{name}@{location}");
-    EXECUTOR.running_tasks.lock().unwrap().push(task_name.clone());
-
     let ref_id = current_action_id().map(|id| vec![id]);
-    tokio::spawn(async move {
-        // hold the guard for the whole task; dropped on completion or on abort/cancel
-        let _guard = TaskGuard { task_name };
+
+    EXECUTOR.lock().unwrap().spawn(task_name, async move {
         let _counter = TASK_COUNTER.get().map(Counter::increase);
 
-        log::start_action("task", ref_id, async {
+        // start_action logs the Exception on failure, so the Result can be discarded here
+        let _result = log::start_action("task", ref_id, async {
             context!(task = name, location = location);
             task.await
         })
-        .await
-    })
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn __spawn<T>(task_name: String, task: T)
-where
-    T: Future<Output = ()> + Send + 'static,
-{
-    EXECUTOR.running_tasks.lock().unwrap().push(task_name.clone());
-    let guard = TaskGuard { task_name };
-
-    tokio::spawn(async {
-        let _guard = guard;
-        task.await;
+        .await;
     });
 }
 
+// counts only the global EXECUTOR's tasks; per-caller TaskExecutors track their own load separately
 static TASK_COUNTER: OnceLock<Counter> = OnceLock::new();
 
 pub fn task_metrics() -> impl Fn(&mut Metrics) {
     TASK_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("task_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = TASK_COUNTER.get() {
-            let max = counter.max();
-            metrics.stats.push(("active_tasks", max as u64));
+            metrics.stats.push(("active_tasks", counter.max() as u64));
         }
     }
 }
 
 pub async fn shutdown(timeout: Duration) {
-    if time::timeout(timeout, EXECUTOR.wait()).await.is_ok() {
-        console!("tasks finished");
+    // swap the global executor out under the lock, then drain it without holding the lock across await
+    let executor = mem::take(&mut *EXECUTOR.lock().unwrap());
+    if let Some(aborted) = executor.shutdown(timeout).await {
+        console!("WARN tasks aborted, tasks={aborted:?}");
     } else {
-        let tasks = EXECUTOR.running_tasks.lock().unwrap();
-        console!("WARN some of tasks failed to finish, running_tasks={:?}", tasks.iter());
+        console!("tasks finished");
     }
 }

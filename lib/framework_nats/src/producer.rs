@@ -43,10 +43,7 @@ impl Producer {
         }
 
         log!("send, subject={}, payload={payload}", subject.name);
-        // publish returns once the server routed the message; awaiting the ack waits for
-        // the message to be persisted to the stream (the JetStream analog of broker ack).
-        let ack = self.jetstream.publish_with_headers(subject.name, headers, payload.into()).await?;
-        ack.await?;
+        let _ack = self.jetstream.publish_with_headers(subject.name, headers, payload.into()).await?;
         Ok(())
     }
 }

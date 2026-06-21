@@ -1,6 +1,5 @@
 use std::any::type_name;
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -8,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_nats::jetstream;
-use async_nats::jetstream::AckKind;
 use async_nats::jetstream::consumer::AckPolicy;
 use async_nats::jetstream::consumer::PullConsumer;
 use async_nats::jetstream::consumer::pull;
@@ -17,13 +15,14 @@ use chrono::SecondsFormat;
 use chrono::Utc;
 use framework::console;
 use framework::context;
+use framework::error;
+use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
 use framework::log::metrics::Counter;
 use framework::log::metrics::Metrics;
 use framework::stats;
-use framework::warn;
 use futures::StreamExt as _;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinSet;
@@ -201,7 +200,15 @@ async fn consume_loop<S>(
                 while let Some(result) = batch.next().await {
                     match result {
                         Ok(message) => messages.push(message),
-                        Err(e) => console!("ERROR failed to read message, subject={subject}, error={e:?}"),
+                        Err(e) => {
+                            console!(
+                                "ERROR {}",
+                                exception!(
+                                    format!("failed to read message, subject={subject}"),
+                                    source = Exception::from_dyn(e.as_ref())
+                                )
+                            );
+                        }
                     }
                 }
                 if !messages.is_empty() {
@@ -209,7 +216,7 @@ async fn consume_loop<S>(
                 }
             }
             Err(e) => {
-                console!("ERROR failed to fetch messages, subject={subject}, error={e:?}");
+                console!("ERROR {}", exception!(format!("failed to fetch messages, subject={subject}"), source = e));
                 time::sleep(Duration::from_secs(5)).await;
             }
         }
@@ -258,7 +265,7 @@ where
 {
     let message = Message::<M>::from_nats(&raw);
     let ref_id = message.headers.get(REF_ID).map(|id| vec![id.to_owned()]);
-    let result = log::start_action("message", ref_id, async {
+    let _result = log::start_action("message", ref_id, async {
         context!(subject = subject, fn = type_name::<H>());
         log!("[message] timestamp={:?}", message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)));
         log!("[message] payload={}", message.payload);
@@ -273,11 +280,13 @@ where
             let lag = Utc::now() - timestamp;
             log!("lag={lag}");
         }
-        handler(state, message).await
+        let result = handler(state, message).await;
+        if let Err(e) = raw.ack().await {
+            return Err(exception!("failed to ack message", source = Exception::from_dyn(e.as_ref())));
+        }
+        result
     })
     .await;
-
-    ack(subject, &raw, result).await;
 }
 
 fn handle_bulk_messages<H, S, M, Fut>(
@@ -297,7 +306,7 @@ where
         let messages: Vec<Message<M>> = raw_messages.iter().map(Message::from_nats).collect();
         let ref_id: Option<Vec<String>> =
             messages.iter().map(|m| m.headers.get(REF_ID).map(String::to_owned)).collect();
-        let result = log::start_action("message", ref_id, async move {
+        let _result = log::start_action("message", ref_id, async move {
             let _counter = counter.increase();
             context!(subject = subject, fn = type_name::<H>());
             if let Some(client) =
@@ -315,41 +324,21 @@ where
                 let lag = Utc::now() - timestamp;
                 log!("lag={lag}");
             }
-            handler(state, messages).await
+            let result = handler(state, messages).await;
+            for raw in &raw_messages {
+                if let Err(e) = raw.ack().await {
+                    error!(
+                        error_code = "NATS_ACK_FAILED",
+                        "{}",
+                        exception!(
+                            format!("failed to ack message, subject={subject}"),
+                            source = Exception::from_dyn(e.as_ref())
+                        )
+                    );
+                }
+            }
+            result
         })
         .await;
-
-        // the whole batch shares the handler's outcome: ack all on success, nak all to
-        // trigger redelivery on failure.
-        let failed = result.is_err();
-        if let Err(e) = result {
-            warn!(
-                error_code = "NATS_HANDLER_FAILED",
-                "bulk handler failed, will redeliver, subject={subject}, error={e}"
-            );
-        }
-        for raw in &raw_messages {
-            ack_raw(subject, raw, failed).await;
-        }
     })
-}
-
-async fn ack<M>(subject: &'static str, raw: &jetstream::Message, result: Result<(), M>)
-where
-    M: Display,
-{
-    if let Err(e) = &result {
-        warn!(
-            error_code = "NATS_HANDLER_FAILED",
-            "message handler failed, will redeliver, subject={subject}, error={e}"
-        );
-    }
-    ack_raw(subject, raw, result.is_err()).await;
-}
-
-async fn ack_raw(subject: &'static str, raw: &jetstream::Message, failed: bool) {
-    let result = if failed { raw.ack_with(AckKind::Nak(None)).await } else { raw.ack().await };
-    if let Err(e) = result {
-        console!("ERROR failed to ack message, subject={subject}, error={e:?}");
-    }
 }

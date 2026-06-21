@@ -1,6 +1,8 @@
 use std::any::type_name;
+use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -17,7 +19,7 @@ use crate::exception::Exception;
 use crate::log;
 use crate::log::current_action_id;
 use crate::schedule::trigger::Trigger;
-use crate::task;
+use crate::task::TaskExecutor;
 
 pub mod controller;
 mod trigger;
@@ -38,14 +40,15 @@ struct Schedule<S> {
 pub struct Scheduler<S> {
     timezone: FixedOffset,
     schedules: Vec<Arc<Schedule<S>>>,
+    executor: Arc<Mutex<TaskExecutor>>,
 }
 
 impl<S> Scheduler<S>
 where
     S: Send + Sync + 'static,
 {
-    pub const fn new(timezone: FixedOffset) -> Self {
-        Self { timezone, schedules: Vec::new() }
+    pub fn new(timezone: FixedOffset) -> Self {
+        Self { timezone, schedules: Vec::new(), executor: Arc::new(Mutex::new(TaskExecutor::default())) }
     }
 
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: Duration)
@@ -83,6 +86,7 @@ where
         for schedule in self.schedules {
             let state = state.clone();
             let shutdown_signal = shutdown_signal.clone();
+            let executor = Arc::clone(&self.executor);
             handles.spawn(async move {
                 let mut previous = Utc::now();
                 let mut first = true;
@@ -103,7 +107,10 @@ where
                         }
                         () = time::sleep(waiting_time) => {
                             let state = state.clone();
-                            task::__spawn(format!("job:{name}@{scheduled_time}"), (schedule.job)(state, context));
+                            executor.lock().unwrap().spawn(
+                                format!("job:{name}@{scheduled_time}"),
+                                (schedule.job)(state, context),
+                            );
                         }
                     }
                 }
@@ -111,6 +118,10 @@ where
         }
         console!("scheduler started");
         handles.join_all().await;
+        let executor = mem::take(&mut *self.executor.lock().unwrap());
+        if let Some(aborted) = executor.shutdown(Duration::from_secs(15)).await {
+            console!("WARN job aborted, jobs={aborted:?}");
+        }
         console!("scheduler stopped");
     }
 }

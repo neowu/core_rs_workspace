@@ -38,6 +38,18 @@ impl Display for Severity {
 }
 
 impl Exception {
+    // used to convert Box<dyn Error>
+    #[inline]
+    pub fn from_dyn(error: &dyn Error) -> Self {
+        Exception {
+            severity: Severity::Error,
+            code: None,
+            message: error.to_string(),
+            location: None,
+            source: source(error.source()),
+        }
+    }
+
     #[inline]
     #[doc(hidden)]
     pub fn __new(message: impl Into<String>, location: &'static str) -> Self {

@@ -67,8 +67,8 @@ pub async fn main() -> Result<(), Exception> {
 
 async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {
     if message.payload()?.name == "1" {
-        let value = message.payload()?;
-        state.producer.send(&state.subjects.test_single, &value).await?;
+        // let value = message.payload()?;
+        state.producer.send(&state.subjects.test_single, &TestMessage { name: "resend".to_owned() }).await?;
     } else {
         state.tx.send(message.payload()?).await?;
     }
