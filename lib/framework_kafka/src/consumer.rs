@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::str::from_utf8;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -29,6 +30,7 @@ use rdkafka::consumer::Consumer as _;
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
 use rdkafka::message::Headers as _;
+use rdkafka::message::OwnedMessage;
 use rdkafka::util::Timeout;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinSet;
@@ -39,11 +41,10 @@ use crate::CLIENT;
 use crate::REF_ID;
 use crate::Topic;
 
+// decoded message handed to call-site handlers; the framework works with the raw rdkafka message.
 pub struct Message<T: DeserializeOwned> {
     pub key: Option<String>,
     pub payload: String,
-    pub headers: HashMap<String, String>,
-    pub timestamp: Option<DateTime<Utc>>,
     _marker: PhantomData<T>,
 }
 
@@ -112,7 +113,7 @@ where
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
         let handler = move |state: S, messages: Vec<BorrowedMessage>| {
-            let messages: Vec<Message<M>> = messages.into_iter().map(Message::from).collect();
+            let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
             handle_messages(topic, messages, handler, &state, &counter)
         };
 
@@ -128,7 +129,7 @@ where
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
         let handler = move |state: S, messages: Vec<BorrowedMessage>| {
-            let messages: Vec<Message<M>> = messages.into_iter().map(Message::from).collect();
+            let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
             handle_bulk_messages(topic, messages, handler, state, Arc::clone(&counter))
         };
 
@@ -171,27 +172,11 @@ where
     }
 }
 
-impl<T: DeserializeOwned> From<BorrowedMessage<'_>> for Message<T> {
-    fn from(message: BorrowedMessage) -> Message<T> {
+impl<T: DeserializeOwned> From<&OwnedMessage> for Message<T> {
+    fn from(message: &OwnedMessage) -> Message<T> {
         let key = message.key().map(|data| String::from_utf8_lossy(data).to_string());
-        let value = message.payload().map(|data| String::from_utf8_lossy(data).to_string());
-
-        let mut headers = HashMap::new();
-        if let Some(kafka_headers) = message.headers() {
-            for kafka_header in kafka_headers.iter() {
-                headers.insert(
-                    kafka_header.key.to_owned(),
-                    kafka_header.value.map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default(),
-                );
-            }
-        }
-
-        let timestamp = match message.timestamp() {
-            Timestamp::CreateTime(time) => DateTime::from_timestamp_millis(time),
-            Timestamp::NotAvailable | Timestamp::LogAppendTime(_) => None,
-        };
-
-        Message { key, payload: value.unwrap_or_default(), headers, timestamp, _marker: PhantomData }
+        let payload = message.payload().map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default();
+        Message { key, payload, _marker: PhantomData }
     }
 }
 
@@ -225,7 +210,7 @@ fn poll_message_groups(
 
 fn handle_bulk_messages<H, S, M, Fut>(
     topic: &'static str,
-    messages: Vec<Message<M>>,
+    raw_messages: Vec<OwnedMessage>,
     handler: H,
     state: S,
     counter: Arc<Counter>,
@@ -236,41 +221,43 @@ where
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     M: DeserializeOwned + Send + 'static,
 {
-    let ref_id: Option<Vec<String>> = messages.iter().map(|m| m.headers.get(REF_ID).map(String::to_owned)).collect();
+    let ref_id: Option<Vec<String>> = raw_messages.iter().map(|raw| header(raw, REF_ID).map(str::to_owned)).collect();
     Box::pin(log::start_action("message", ref_id, async move {
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
-        if let Some(client) =
-            messages.iter().map(|m| m.headers.get(CLIENT).map(String::to_owned)).collect::<Option<Vec<String>>>()
-        {
-            context!(client = client);
-        }
         let mut bytes = 0;
-        for message in &messages {
-            log!("[message] key={:?}, payload={}", message.key, message.payload);
-            bytes += message.payload.len();
-        }
+        let messages: Vec<Message<M>> = raw_messages
+            .iter()
+            .map(|raw| {
+                let message = Message::from(raw);
+                log!("[message] key={:?}, payload={}", message.key, message.payload);
+                bytes += message.payload.len();
+                message
+            })
+            .collect();
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
-        if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
+        if let Some(timestamp) = raw_messages.iter().filter_map(timestamp).min() {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
             let lag = Utc::now() - timestamp;
             stats!(kafka_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
+        }
+        if let Some(clients) =
+            raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
+        {
+            context!(client = clients);
         }
         handler(state, messages).await
     }))
 }
 
-struct MessageNode<M>
-where
-    M: DeserializeOwned,
-{
-    message: Message<M>,
-    next: Option<Vec<MessageNode<M>>>,
+struct MessageNode {
+    message: OwnedMessage,
+    next: Option<Vec<MessageNode>>,
 }
 
 fn handle_messages<H, S, M, Fut>(
     topic: &'static str,
-    messages: Vec<Message<M>>,
+    messages: Vec<OwnedMessage>,
     handler: H,
     state: &S,
     counter: &Arc<Counter>,
@@ -282,17 +269,17 @@ where
     M: DeserializeOwned + Send + 'static,
 {
     let mut handles = JoinSet::new();
-    let mut nodes: HashMap<String, MessageNode<M>> = HashMap::new();
+    let mut nodes: HashMap<String, MessageNode> = HashMap::new();
     for message in messages {
-        if let Some(ref key) = message.key {
-            if let Some(node) = nodes.get_mut(key) {
+        if let Some(key) = message.key().map(|data| String::from_utf8_lossy(data).to_string()) {
+            if let Some(node) = nodes.get_mut(&key) {
                 if let Some(ref mut next) = node.next {
                     next.push(MessageNode { message, next: None });
                 } else {
                     node.next = Some(vec![MessageNode { message, next: None }]);
                 }
             } else {
-                nodes.insert(key.to_owned(), MessageNode { message, next: None });
+                nodes.insert(key, MessageNode { message, next: None });
             }
         } else {
             let state = state.clone();
@@ -324,26 +311,45 @@ where
     })
 }
 
-async fn handle_message<H, S, M, Fut>(topic: &'static str, message: Message<M>, handler: H, state: S)
+async fn handle_message<H, S, M, Fut>(topic: &'static str, raw_message: OwnedMessage, handler: H, state: S)
 where
     H: Fn(S, Message<M>) -> Fut,
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
-    let ref_id = message.headers.get(REF_ID).map(|id| vec![id.to_owned()]);
+    let ref_id = header(&raw_message, REF_ID).map(|id| vec![id.to_owned()]);
     let _result = log::start_action("message", ref_id, async {
+        let message = Message::<M>::from(&raw_message);
         context!(topic = topic, key = format!("{:?}", message.key), fn = type_name::<H>());
-        log!("[message] timestamp={:?}", message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)));
         log!("[message] payload={}", message.payload);
-        if let Some(client) = message.headers.get(CLIENT) {
-            context!(client = client);
-        }
         stats!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len());
-        if let Some(timestamp) = message.timestamp {
+        if let Some(timestamp) = timestamp(&raw_message) {
+            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
             let lag = Utc::now() - timestamp;
-            log!("lag={lag}");
+            stats!(kafka_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
+        }
+        if let Some(client) = header(&raw_message, CLIENT) {
+            context!(client = client);
         }
         handler(state, message).await
     })
     .await;
+}
+
+// ref_id and client headers are set and consumed by the framework only.
+fn header<'a>(message: &'a OwnedMessage, name: &str) -> Option<&'a str> {
+    let headers = message.headers()?;
+    // headers are framework-written utf8; from_utf8 borrows on the happy path, falling back to "".
+    headers
+        .iter()
+        .find(|header| header.key == name)
+        .and_then(|header| header.value)
+        .map(|data| from_utf8(data).unwrap_or_default())
+}
+
+fn timestamp(message: &OwnedMessage) -> Option<DateTime<Utc>> {
+    match message.timestamp() {
+        Timestamp::CreateTime(time) => DateTime::from_timestamp_millis(time),
+        Timestamp::NotAvailable | Timestamp::LogAppendTime(_) => None,
+    }
 }
