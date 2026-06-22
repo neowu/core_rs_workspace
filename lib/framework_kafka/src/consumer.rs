@@ -1,5 +1,6 @@
 use std::any::type_name;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -13,6 +14,7 @@ use chrono::SecondsFormat;
 use chrono::Utc;
 use framework::console;
 use framework::context;
+use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
@@ -51,6 +53,7 @@ pub struct Message<T: DeserializeOwned> {
 impl<T: DeserializeOwned> Message<T> {
     pub fn payload(&self) -> Result<T, Exception> {
         from_json(&self.payload)
+            .map_err(|e| exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e))
     }
 }
 
@@ -221,7 +224,12 @@ where
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     M: DeserializeOwned + Send + 'static,
 {
-    let ref_id: Option<Vec<String>> = raw_messages.iter().map(|raw| header(raw, REF_ID).map(str::to_owned)).collect();
+    let ref_id = raw_messages
+        .iter()
+        .map(|raw| header(raw, REF_ID).map(str::to_owned))
+        .collect::<Option<HashSet<String>>>()
+        .map(|set| set.into_iter().collect::<Vec<String>>());
+
     Box::pin(log::start_action("message", ref_id, async move {
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
@@ -241,8 +249,11 @@ where
             let lag = Utc::now() - timestamp;
             stats!(kafka_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
         }
-        if let Some(clients) =
-            raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
+        if let Some(clients) = raw_messages
+            .iter()
+            .map(|raw| header(raw, CLIENT).map(str::to_owned))
+            .collect::<Option<HashSet<String>>>()
+            .map(|set| set.into_iter().collect::<Vec<String>>())
         {
             context!(client = clients);
         }

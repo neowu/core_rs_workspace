@@ -1,4 +1,9 @@
+use std::time::Duration;
+
 use framework::exception::Exception;
+use framework::log;
+use framework::spawn_action;
+use framework::task;
 use framework_kafka::Topic;
 use framework_kafka::producer::Producer;
 use serde::Deserialize;
@@ -13,17 +18,23 @@ struct TestMessage {
 pub async fn main() -> Result<(), Exception> {
     let producer = Producer::new("dev.internal:9092".to_owned(), env!("CARGO_BIN_NAME"));
 
-    let topic = Topic::new("test_single");
+    log::init("console", env!("CARGO_BIN_NAME"));
 
-    for i in 1..10 {
-        producer.send(&topic, Some(i.to_string()), &TestMessage { name: format!("{i}") }).await?;
-    }
+    spawn_action!("produce", async move {
+        let topic = Topic::new("test");
 
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        for i in 1..10 {
+            producer.send(&topic, Some(i.to_string()), &TestMessage { name: format!("{i}") }).await?;
+        }
 
-    for i in 10..20 {
-        producer.send(&topic, Some(i.to_string()), &TestMessage { name: format!("{i}") }).await?;
-    }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
+        for i in 10..20 {
+            producer.send(&topic, Some(i.to_string()), &TestMessage { name: format!("{i}") }).await?;
+        }
+        Ok(())
+    });
+
+    task::shutdown(Duration::from_mins(1)).await;
     Ok(())
 }

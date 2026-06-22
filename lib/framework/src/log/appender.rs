@@ -55,7 +55,13 @@ fn append_console(action: &Action) {
     }
 
     if let Some(ref ref_id) = action.ref_id {
-        write_str!(&mut log, " | ref_id={ref_id:?}");
+        if ref_id.len() == 1
+            && let Some(ref_id) = ref_id.first()
+        {
+            write_str!(&mut log, " | ref_id={ref_id}");
+        } else {
+            write_str!(&mut log, " | ref_id={ref_id:?}");
+        }
     }
 
     for (key, values) in &action.context {
