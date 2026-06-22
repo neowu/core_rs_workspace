@@ -54,7 +54,7 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
             shutdown_signal.cancelled().await;
             let period = config.shutdown_grace_period;
             if !period.is_zero() {
-                console!("wait {period:?} before shutdown");
+                console!("http server shutdown in {period:?}");
                 sleep(period).await;
             }
         })

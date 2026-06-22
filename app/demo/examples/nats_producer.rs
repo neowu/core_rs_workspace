@@ -13,7 +13,7 @@ struct TestMessage {
 pub async fn main() -> Result<(), Exception> {
     let producer = Producer::new("dev.internal:4222".to_owned(), env!("CARGO_BIN_NAME")).await;
 
-    let topic = Subject::new("test.single");
+    let topic = Subject::new("queue.test.single");
 
     for i in 1..10 {
         producer.send(&topic, &TestMessage { name: format!("{i}") }).await?;

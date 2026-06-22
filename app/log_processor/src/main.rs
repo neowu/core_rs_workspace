@@ -5,6 +5,7 @@ use std::time::Duration;
 use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset_path;
+use framework::console;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
@@ -55,7 +56,9 @@ async fn main() -> Result<(), Exception> {
     spawn_action!("import_kibana_objects", async move {
         let objects = fs::read_to_string(asset_path!("assets/kibana_objects.json"))?;
         let objects = objects.replace("${NOTIFICATION_BANNER}", &banner);
-        kibana::import(&kibana_uri, objects).await
+        kibana::import(&kibana_uri, objects).await?;
+        console!("kibana objects are imported");
+        Ok(())
     });
 
     let state = Arc::new(AppState { elasticsearch: Elasticsearch::new(config.elasticsearch_uri) });

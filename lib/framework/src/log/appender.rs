@@ -1,6 +1,8 @@
 use std::any::Any;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::io::Write as _;
+use std::io::stdout;
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -85,8 +87,9 @@ fn append_console(action: &Action) {
     println!("{log}");
 
     if action.flush_trace() {
+        let mut stdout = stdout().lock();
         for line in &action.logs {
-            eprintln!("{line}");
+            let _ = writeln!(stdout, "{line}");
         }
     }
 }

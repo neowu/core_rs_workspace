@@ -6,6 +6,7 @@ use framework::load_config;
 use framework::log;
 use framework::log::metrics::MetricsCollector;
 use framework::system::System;
+use framework::warn;
 use framework_nats::Subject;
 use framework_nats::consumer::BatchConsumer;
 use framework_nats::consumer::ConsumerConfig;
@@ -15,8 +16,6 @@ use framework_nats::consumer::consumer_metrics;
 use framework_nats::producer::Producer;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Receiver;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TestMessage {
@@ -26,7 +25,6 @@ struct TestMessage {
 struct State {
     subjects: Subjects,
     producer: Producer,
-    tx: mpsc::Sender<TestMessage>,
 }
 
 struct Subjects {
@@ -39,37 +37,38 @@ pub async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
-        subjects: Subjects { test_single: Subject::new("test.single"), test_bulk: Subject::new("test.bulk") },
+        subjects: Subjects {
+            test_single: Subject::new("queue.test.single"),
+            test_bulk: Subject::new("queue.test.bulk"),
+        },
         producer: Producer::new("dev.internal:4222".to_owned(), env!("CARGO_BIN_NAME")).await,
-        tx,
     });
 
     let mut system = System::new();
     let mut collector = MetricsCollector::new();
 
-    let handle = tokio::spawn(process_message(rx));
-
-    let mut consumer =
-        MessageConsumer::new("dev.internal:4222".to_owned(), "JET", env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
+    let mut consumer = MessageConsumer::new(
+        "dev.internal:4222".to_owned(),
+        "queue",
+        env!("CARGO_BIN_NAME"),
+        ConsumerConfig::default(),
+    );
     consumer.add_handler(&state.subjects.test_single, handler_single);
     collector.add(consumer_metrics());
 
     let batch_consumer = BatchConsumer::new(
         "dev.internal:4222".to_owned(),
-        "JET",
+        "queue",
         concat!(env!("CARGO_BIN_NAME"), "-bulk"),
         &state.subjects.test_bulk,
         handler_bulk,
-        &ConsumerConfig::default(),
+        ConsumerConfig::default(),
     );
 
     system.spawn(consumer.start(Arc::clone(&state), system.shutdown_signal()));
     system.spawn(batch_consumer.start(state, system.shutdown_signal()));
     system.spawn(collector.start(system.shutdown_signal()));
-
-    handle.await?;
 
     system.wait().await;
     Ok(())
@@ -78,22 +77,11 @@ pub async fn main() -> Result<(), Exception> {
 async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {
     if message.payload.name == "1" {
         state.producer.send(&state.subjects.test_single, &TestMessage { name: "resend".to_owned() }).await?;
+        warn!(error_code = "TRIGGER", "test");
     } else {
-        state.tx.send(message.payload).await?;
+        println!("Received message: {}", message.payload.name);
     }
     Ok(())
-}
-
-async fn process_message(mut rx: Receiver<TestMessage>) {
-    let mut buffer = Vec::with_capacity(1000);
-
-    while rx.recv_many(&mut buffer, 1000).await != 0 {
-        for message in buffer.drain(..) {
-            println!("Received message: {}", message.name);
-        }
-    }
-
-    println!("finished");
 }
 
 async fn handler_bulk(_state: Arc<State>, messages: Vec<Message<TestMessage>>) -> Result<(), Exception> {

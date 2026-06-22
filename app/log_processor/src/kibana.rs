@@ -1,4 +1,3 @@
-use framework::console;
 use framework::exception;
 use framework::exception::Exception;
 use framework::http::HeaderName;
@@ -17,10 +16,8 @@ pub(crate) async fn import(kibana_uri: &str, objects: String) -> Result<(), Exce
 
     let response = http_client.execute(request).await?;
     if response.status == 200 {
-        console!("kibana objects are imported");
+        Ok(())
     } else {
-        return Err(exception!(format!("failed to import kibana objects, status={}", response.status)));
+        Err(exception!(format!("failed to import kibana objects, status={}", response.status)))
     }
-
-    Ok(())
 }

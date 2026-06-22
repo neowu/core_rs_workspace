@@ -78,7 +78,7 @@ pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
     }
 }
 
-type SingleHandler<S> = Arc<dyn Fn(S, jetstream::Message) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type MessageHandler<S> = Box<dyn Fn(jetstream::Message, S) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 // one durable pull consumer over a whole stream that may carry different subject types. each
 // subject is registered with its own handler; messages are pulled continuously via sequence(),
@@ -87,7 +87,7 @@ pub struct MessageConsumer<S> {
     url: String,
     stream: &'static str,
     durable: &'static str,
-    handlers: HashMap<&'static str, SingleHandler<S>>,
+    handlers: HashMap<&'static str, MessageHandler<S>>,
     config: ConsumerConfig,
 }
 
@@ -95,8 +95,8 @@ impl<S> MessageConsumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new(url: String, stream: &'static str, durable: &'static str, config: &ConsumerConfig) -> Self {
-        Self { url, stream, durable, handlers: HashMap::new(), config: *config }
+    pub fn new(url: String, stream: &'static str, durable: &'static str, config: ConsumerConfig) -> Self {
+        Self { url, stream, durable, handlers: HashMap::new(), config }
     }
 
     pub fn add_handler<H, Fut, M>(&mut self, subject: &Subject<M>, handler: H)
@@ -105,10 +105,8 @@ where
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
         M: DeserializeOwned + Send + 'static,
     {
-        let subject = subject.name;
-        let wrapper: SingleHandler<S> =
-            Arc::new(move |state: S, raw: jetstream::Message| Box::pin(handle_message(subject, raw, handler, state)));
-        self.handlers.insert(subject, wrapper);
+        let wrapper: MessageHandler<S> = Box::new(move |raw, state| Box::pin(handle_message(raw, handler, state)));
+        self.handlers.insert(subject.name, wrapper);
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
@@ -116,8 +114,10 @@ where
 
         let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
         let context = jetstream::new(connection);
-        let stream_handle =
-            context.get_stream(stream).await.unwrap_or_else(|e| panic!("failed to get stream, error={e}")); // fail fast on startup
+        let stream_handle = context
+            .get_stream(stream)
+            .await
+            .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
 
         let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
         console!("nats consumer started, stream={stream}, subjects={subjects:?}");
@@ -136,7 +136,6 @@ where
             .await
             .expect("failed to create consumer"); // fail fast on startup
 
-        let handlers = Arc::new(handlers);
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
         let mut executor = TaskExecutor::default();
 
@@ -155,37 +154,30 @@ where
                         let raw = match message {
                             Ok(raw) => raw,
                             Err(e) => {
-                                console!(
-                                    "ERROR {}",
-                                    exception!("failed to read message", source = Exception::from_dyn(e.as_ref()))
-                                );
+                                console!("ERROR failed to read message, error={e:?}");
                                 continue;
                             }
                         };
 
-                        let Some(handler) = handlers.get(raw.subject.as_str()).cloned() else {
-                            console!("WARN no handler registered, subject={}", raw.subject.as_str());
+                        let subject = raw.subject.as_str();
+                        let Some(handler) = handlers.get(subject) else {
+                            console!("WARN no handler registered, subject={subject}");
                             if let Err(e) = raw.ack().await {
-                                console!(
-                                    "ERROR {}",
-                                    exception!("failed to ack message", source = Exception::from_dyn(e.as_ref()))
-                                );
+                                console!("ERROR failed to ack message, error={e:?}");
                             }
                             continue;
                         };
-
-                        let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore closed");
-                        let state = state.clone();
-                        let name = format!("message:{}", raw.subject.as_str());
+                        let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
+                        let name = format!("message:{subject}");
+                        let task = handler(raw, state.clone());
                         executor.spawn(name, async move {
-                            let _permit = permit;
-                            let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
-                            handler(state, raw).await;
+                            let _permit = permit; // held until the handler (and its ack) completes
+                            task.await;
                         });
                     }
                 }
                 Err(e) => {
-                    console!("ERROR {}", exception!("failed to fetch messages", source = e));
+                    console!("ERROR failed to fetch messages, error={e:?}");
                     time::sleep(Duration::from_secs(5)).await;
                 }
             }
@@ -200,19 +192,21 @@ where
         if let Some(aborted) = executor.shutdown(SHUTDOWN_DRAIN_TIMEOUT).await {
             console!("WARN message aborted, messages={aborted:?}");
         }
-        console!("nats consumer stopped, stream={stream}, subjects={subjects:?}");
+        console!("nats consumer stopped, name={durable}, stream={stream}, subjects={subjects:?}");
     }
 }
 
-async fn handle_message<H, S, M, Fut>(subject: &'static str, raw: jetstream::Message, handler: H, state: S)
+async fn handle_message<H, S, M, Fut>(raw: jetstream::Message, handler: H, state: S)
 where
     H: Fn(S, Message<M>) -> Fut,
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
+    let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id = header(&raw, REF_ID).map(|id| vec![id.to_owned()]);
     let _result = log::start_action("message", ref_id, async {
-        context!(subject = subject, fn = type_name::<H>());
+        let subject = raw.subject.to_string();
+        context!(subject = &subject, fn = type_name::<H>());
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
         if let Some(timestamp) = timestamp(&raw) {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
@@ -224,7 +218,7 @@ where
         }
         stats!(nats_read_entries = 1, nats_read_bytes = raw.payload.len());
         let result = match from_json::<M>(&String::from_utf8_lossy(&raw.payload)) {
-            Ok(payload) => handler(state, Message { payload, subject: raw.subject.to_string() }).await,
+            Ok(payload) => handler(state, Message { subject, payload }).await,
             Err(e) => Err(exception!("failed to decode message", code = "NATS_INVALID_MESSAGE", source = e)),
         };
         // always ack (at-most-once): log ack failures but never block redelivery on handler errors.
@@ -268,9 +262,9 @@ where
         durable: &'static str,
         subject: &Subject<M>,
         handler: H,
-        config: &ConsumerConfig,
+        config: ConsumerConfig,
     ) -> Self {
-        Self { url, stream, durable, subject: subject.name, handler, config: *config, _marker: PhantomData }
+        Self { url, stream, durable, subject: subject.name, handler, config, _marker: PhantomData }
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
@@ -278,8 +272,10 @@ where
 
         let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
         let context = jetstream::new(connection);
-        let stream_handle =
-            context.get_stream(stream).await.unwrap_or_else(|e| panic!("failed to get stream, error={e}")); // fail fast on startup
+        let stream_handle = context
+            .get_stream(stream)
+            .await
+            .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
 
         console!("nats batch consumer started, stream={stream}, subject={subject}");
 
@@ -312,13 +308,7 @@ where
                         match result {
                             Ok(message) => raw_messages.push(message),
                             Err(e) => {
-                                console!(
-                                    "ERROR {}",
-                                    exception!(
-                                        format!("failed to read message, subject={subject}"),
-                                        source = Exception::from_dyn(e.as_ref())
-                                    )
-                                );
+                                console!("ERROR failed to read message, subject={subject}, error={e:?}");
                             }
                         }
                     }
@@ -327,13 +317,7 @@ where
                     }
                 }
                 Err(e) => {
-                    console!(
-                        "ERROR {}",
-                        exception!(
-                            format!("failed to fetch messages, subject={subject}"),
-                            source = Exception::from_dyn(&e)
-                        )
-                    );
+                    console!("ERROR failed to fetch messages, subject={subject}, error={e:?}");
                     time::sleep(Duration::from_secs(5)).await;
                 }
             }
@@ -344,7 +328,7 @@ where
             }
         }
 
-        console!("nats batch consumer stopped, stream={stream}, subject={subject}");
+        console!("nats batch consumer stopped, name={durable}, stream={stream}, subject={subject}");
     }
 }
 
@@ -354,9 +338,9 @@ where
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
+    let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id: Option<Vec<String>> = raw_messages.iter().map(|raw| header(raw, REF_ID).map(str::to_owned)).collect();
     let _result = log::start_action("message", ref_id, async move {
-        let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
         context!(subject = subject, fn = type_name::<H>());
         if let Some(client) =
             raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
