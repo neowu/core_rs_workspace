@@ -221,7 +221,7 @@ macro_rules! context {
             use $crate::log::{ScalarContextValue as _, VecContextValue as _};
             $crate::log::__context(
                 stringify!($key),
-                ($value).into_context_value(),
+                ($value).__into_context_value(),
                 concat!(module_path!(), ":", line!()),
             );
         })+
@@ -230,22 +230,24 @@ macro_rules! context {
 
 #[doc(hidden)]
 pub trait ScalarContextValue {
-    fn into_context_value(self) -> Vec<String>;
+    fn __into_context_value(self) -> Vec<String>;
 }
 
 impl<T: Into<String>> ScalarContextValue for T {
-    fn into_context_value(self) -> Vec<String> {
+    #[inline]
+    fn __into_context_value(self) -> Vec<String> {
         vec![self.into()]
     }
 }
 
 #[doc(hidden)]
 pub trait VecContextValue {
-    fn into_context_value(self) -> Vec<String>;
+    fn __into_context_value(self) -> Vec<String>;
 }
 
 impl<T: Into<String>> VecContextValue for Vec<T> {
-    fn into_context_value(self) -> Vec<String> {
+    #[inline]
+    fn __into_context_value(self) -> Vec<String> {
         self.into_iter().map(Into::into).collect()
     }
 }

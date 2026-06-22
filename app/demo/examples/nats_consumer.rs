@@ -7,9 +7,11 @@ use framework::log;
 use framework::log::metrics::MetricsCollector;
 use framework::system::System;
 use framework_nats::Subject;
+use framework_nats::consumer::BatchConsumer;
 use framework_nats::consumer::ConsumerConfig;
 use framework_nats::consumer::Message;
 use framework_nats::consumer::MessageConsumer;
+use framework_nats::consumer::consumer_metrics;
 use framework_nats::producer::Producer;
 use serde::Deserialize;
 use serde::Serialize;
@@ -51,12 +53,20 @@ pub async fn main() -> Result<(), Exception> {
 
     let mut consumer =
         MessageConsumer::new("dev.internal:4222".to_owned(), "JET", env!("CARGO_BIN_NAME"), &ConsumerConfig::default());
-
     consumer.add_handler(&state.subjects.test_single, handler_single);
-    consumer.add_bulk_handler(&state.subjects.test_bulk, handler_bulk);
-    collector.add(consumer.consumer_metrics());
+    collector.add(consumer_metrics());
 
-    system.spawn(consumer.start(state, system.shutdown_signal()));
+    let batch_consumer = BatchConsumer::new(
+        "dev.internal:4222".to_owned(),
+        "JET",
+        concat!(env!("CARGO_BIN_NAME"), "-bulk"),
+        &state.subjects.test_bulk,
+        handler_bulk,
+        &ConsumerConfig::default(),
+    );
+
+    system.spawn(consumer.start(Arc::clone(&state), system.shutdown_signal()));
+    system.spawn(batch_consumer.start(state, system.shutdown_signal()));
     system.spawn(collector.start(system.shutdown_signal()));
 
     handle.await?;
@@ -66,11 +76,10 @@ pub async fn main() -> Result<(), Exception> {
 }
 
 async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {
-    if message.payload()?.name == "1" {
-        // let value = message.payload()?;
+    if message.payload.name == "1" {
         state.producer.send(&state.subjects.test_single, &TestMessage { name: "resend".to_owned() }).await?;
     } else {
-        state.tx.send(message.payload()?).await?;
+        state.tx.send(message.payload).await?;
     }
     Ok(())
 }
@@ -89,7 +98,7 @@ async fn process_message(mut rx: Receiver<TestMessage>) {
 
 async fn handler_bulk(_state: Arc<State>, messages: Vec<Message<TestMessage>>) -> Result<(), Exception> {
     for message in messages {
-        println!("Received bulk message: {}", message.payload()?.name);
+        println!("Received bulk message: {}", message.payload.name);
     }
     Ok(())
 }

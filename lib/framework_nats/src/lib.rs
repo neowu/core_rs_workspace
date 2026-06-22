@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
 pub mod consumer;
-pub mod consumer_v2;
 pub mod producer;
 
 pub struct Subject<T> {

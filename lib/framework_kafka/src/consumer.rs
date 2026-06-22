@@ -334,9 +334,6 @@ where
         context!(topic = topic, key = format!("{:?}", message.key), fn = type_name::<H>());
         log!("[message] timestamp={:?}", message.timestamp.map(|t| t.to_rfc3339_opts(SecondsFormat::Millis, true)));
         log!("[message] payload={}", message.payload);
-        for (key, value) in &message.headers {
-            log!("[header] {key}={value}");
-        }
         if let Some(client) = message.headers.get(CLIENT) {
             context!(client = client);
         }
