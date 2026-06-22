@@ -16,7 +16,6 @@ use chrono::SecondsFormat;
 use chrono::Utc;
 use framework::console;
 use framework::context;
-use framework::error;
 use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
@@ -226,14 +225,16 @@ where
         stats!(nats_read_entries = 1, nats_read_bytes = raw.payload.len());
         let result = match from_json::<M>(&String::from_utf8_lossy(&raw.payload)) {
             Ok(payload) => handler(state, Message { payload, subject: raw.subject.to_string() }).await,
-            Err(e) => Err(e),
+            Err(e) => Err(exception!("failed to decode message", code = "NATS_INVALID_MESSAGE", source = e)),
         };
         // always ack (at-most-once): log ack failures but never block redelivery on handler errors.
         if let Err(e) = raw.ack().await {
-            error!(
-                error_code = "NATS_ACK_FAILED",
-                "{}",
-                exception!("failed to ack message", source = Exception::from_dyn(e.as_ref()))
+            log!(
+                exception = exception!(
+                    "failed to ack message",
+                    code = "NATS_ACK_FAILED",
+                    source = Exception::from_dyn(e.as_ref())
+                )
             );
         }
         result
@@ -365,15 +366,13 @@ where
         let mut bytes = 0;
         let mut messages: Vec<Message<M>> = Vec::with_capacity(raw_messages.len());
         for raw in raw_messages {
-            log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
             bytes += raw.payload.len();
-            match from_json::<M>(&String::from_utf8_lossy(&raw.payload)) {
+            let payload = String::from_utf8_lossy(&raw.payload);
+            log!("[message] payload={}", &payload);
+            match from_json::<M>(&payload) {
                 Ok(payload) => messages.push(Message { payload, subject: raw.subject.to_string() }),
                 Err(e) => {
-                    console!(
-                        "ERROR {}",
-                        exception!(format!("failed to decode message, subject={subject}"), source = e)
-                    );
+                    log!(exception = exception!("failed to decode message", code = "NATS_INVALID_MESSAGE", source = e));
                 }
             }
         }
@@ -383,15 +382,23 @@ where
             let lag = Utc::now() - timestamp;
             stats!(nats_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
         }
+        if let Some(clients) =
+            raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
+        {
+            context!(client = clients);
+        }
+
         let result = handler(state, messages).await;
         // ack the latest only; AckPolicy::All acks the whole batch. always ack regardless of result.
         if let Some(raw) = raw_messages.last()
             && let Err(e) = raw.ack().await
         {
-            error!(
-                error_code = "NATS_ACK_FAILED",
-                "{}",
-                exception!("failed to ack message", source = Exception::from_dyn(e.as_ref()))
+            log!(
+                exception = exception!(
+                    "failed to ack message",
+                    code = "NATS_ACK_FAILED",
+                    source = Exception::from_dyn(e.as_ref())
+                )
             );
         }
         result

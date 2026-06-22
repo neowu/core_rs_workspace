@@ -1,4 +1,5 @@
 words = [
+    "NATS",
     "duckdb",
     "kibana",
     "serde",

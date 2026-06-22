@@ -252,8 +252,9 @@ where
         }
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
         if let Some(timestamp) = messages.iter().filter_map(|message| message.timestamp).min() {
+            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
             let lag = Utc::now() - timestamp;
-            log!("lag={lag}");
+            stats!(kafka_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
         }
         handler(state, messages).await
     }))
