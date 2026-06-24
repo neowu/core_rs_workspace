@@ -9,7 +9,7 @@ use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
 use framework::log::metrics::MetricsCollector;
-use framework::log::metrics::mem_max;
+use framework::log::metrics::container_mem_max;
 use framework::network::hostname;
 use framework::schedule::Scheduler;
 use framework::system::System;
@@ -58,7 +58,7 @@ fn hash(hostname: &str) -> String {
 }
 
 fn duckdb_memory_limit() -> u64 {
-    if let Some(mem_max) = mem_max() {
+    if let Some(mem_max) = container_mem_max() {
         console!("detected max memory, value={mem_max}, set duckdb_memory_limit to 50%");
         mem_max / 2
     } else {
