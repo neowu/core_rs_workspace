@@ -58,8 +58,7 @@ pub(crate) async fn action_log_message_handler(
     let mut writer = LineWriter::new(file);
 
     for message in messages {
-        let log = message.payload()?;
-        writer.write_all(json::to_json(&log)?.as_bytes())?;
+        writer.write_all(json::to_json(&message.payload)?.as_bytes())?;
         writer.write_all(b"\n")?;
     }
     writer.flush()?;

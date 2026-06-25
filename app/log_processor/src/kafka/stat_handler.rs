@@ -44,7 +44,7 @@ pub(crate) async fn stat_message_handler(
 ) -> Result<(), Exception> {
     let mut documents: Vec<(String, StatDocument)> = Vec::with_capacity(messages.len());
     for message in messages {
-        let payload = message.payload()?;
+        let payload = message.payload;
         let doc = StatDocument {
             timestamp: payload.date,
             app: payload.app,

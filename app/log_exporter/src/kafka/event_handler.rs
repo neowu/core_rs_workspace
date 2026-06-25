@@ -8,6 +8,7 @@ use std::sync::Arc;
 use chrono::DateTime;
 use chrono::Utc;
 use framework::exception::Exception;
+use framework::json;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -42,7 +43,7 @@ pub(crate) async fn event_message_handler(
     let mut writer = LineWriter::new(file);
 
     for message in messages {
-        writer.write_all(message.payload.as_bytes())?;
+        writer.write_all(json::to_json(&message.payload)?.as_bytes())?;
         writer.write_all(b"\n")?;
     }
     writer.flush()?;

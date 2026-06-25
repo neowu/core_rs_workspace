@@ -82,7 +82,7 @@ pub(crate) async fn action_log_message_handler(
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
     let mut traces: Vec<(String, TraceDocument)> = vec![];
     for message in messages {
-        let payload = message.payload()?;
+        let payload = message.payload;
         let doc = ActionLogDocument {
             timestamp: payload.date,
             app: payload.app.clone(),

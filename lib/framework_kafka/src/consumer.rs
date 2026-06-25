@@ -2,7 +2,6 @@ use std::any::type_name;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::str::from_utf8;
 use std::sync::Arc;
@@ -44,17 +43,9 @@ use crate::REF_ID;
 use crate::Topic;
 
 // decoded message handed to call-site handlers; the framework works with the raw rdkafka message.
-pub struct Message<T: DeserializeOwned> {
+pub struct Message<T> {
     pub key: Option<String>,
-    pub payload: String,
-    _marker: PhantomData<T>,
-}
-
-impl<T: DeserializeOwned> Message<T> {
-    pub fn payload(&self) -> Result<T, Exception> {
-        from_json(&self.payload)
-            .map_err(|e| exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e))
-    }
+    pub payload: T,
 }
 
 type MessageHandler<S> =
@@ -175,14 +166,6 @@ where
     }
 }
 
-impl<T: DeserializeOwned> From<&OwnedMessage> for Message<T> {
-    fn from(message: &OwnedMessage) -> Message<T> {
-        let key = message.key().map(|data| String::from_utf8_lossy(data).to_string());
-        let payload = message.payload().map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default();
-        Message { key, payload, _marker: PhantomData }
-    }
-}
-
 fn poll_message_groups(
     consumer: &BaseConsumer,
     max_wait_time: Duration,
@@ -234,15 +217,21 @@ where
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
-        let messages: Vec<Message<M>> = raw_messages
-            .iter()
-            .map(|raw| {
-                let message = Message::from(raw);
-                log!("[message] key={:?}, payload={}", message.key, message.payload);
-                bytes += message.payload.len();
-                message
-            })
-            .collect();
+        let mut messages: Vec<Message<M>> = Vec::with_capacity(raw_messages.len());
+        for raw in &raw_messages {
+            let key = key(raw);
+            let payload = payload(raw);
+            log!("[message] key={:?}, payload={}", key, payload);
+            bytes += payload.len();
+            match from_json::<M>(&payload) {
+                Ok(payload) => messages.push(Message { key, payload }),
+                Err(e) => {
+                    log!(
+                        exception = exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e)
+                    );
+                }
+            }
+        }
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.iter().filter_map(timestamp).min() {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
@@ -282,7 +271,7 @@ where
     let mut handles = JoinSet::new();
     let mut nodes: HashMap<String, MessageNode> = HashMap::new();
     for message in messages {
-        if let Some(key) = message.key().map(|data| String::from_utf8_lossy(data).to_string()) {
+        if let Some(key) = key(&message) {
             if let Some(node) = nodes.get_mut(&key) {
                 if let Some(ref mut next) = node.next {
                     next.push(MessageNode { message, next: None });
@@ -330,10 +319,11 @@ where
 {
     let ref_id = header(&raw_message, REF_ID).map(|id| vec![id.to_owned()]);
     let _result = log::start_action("message", ref_id, async {
-        let message = Message::<M>::from(&raw_message);
-        context!(topic = topic, key = format!("{:?}", message.key), fn = type_name::<H>());
-        log!("[message] payload={}", message.payload);
-        stats!(kafka_read_entries = 1, kafka_read_bytes = message.payload.len());
+        let key = key(&raw_message);
+        let payload = payload(&raw_message);
+        context!(topic = topic, key = format!("{:?}", key), fn = type_name::<H>());
+        log!("[message] payload={}", payload);
+        stats!(kafka_read_entries = 1, kafka_read_bytes = payload.len());
         if let Some(timestamp) = timestamp(&raw_message) {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
             let lag = Utc::now() - timestamp;
@@ -342,7 +332,9 @@ where
         if let Some(client) = header(&raw_message, CLIENT) {
             context!(client = client);
         }
-        handler(state, message).await
+        let payload: M = from_json(&payload)
+            .map_err(|e| exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e))?;
+        handler(state, Message { key, payload }).await
     })
     .await;
 }
@@ -356,6 +348,14 @@ fn header<'a>(message: &'a OwnedMessage, name: &str) -> Option<&'a str> {
         .find(|header| header.key == name)
         .and_then(|header| header.value)
         .map(|data| from_utf8(data).unwrap_or_default())
+}
+
+fn key(message: &OwnedMessage) -> Option<String> {
+    message.key().map(|data| String::from_utf8_lossy(data).to_string())
+}
+
+fn payload(message: &OwnedMessage) -> String {
+    message.payload().map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default()
 }
 
 fn timestamp(message: &OwnedMessage) -> Option<DateTime<Utc>> {

@@ -50,7 +50,7 @@ pub(crate) async fn event_message_handler(
 ) -> Result<(), Exception> {
     let mut documents: Vec<(String, EventDocument)> = Vec::with_capacity(messages.len());
     for message in messages {
-        let payload = message.payload()?;
+        let payload = message.payload;
         let doc = EventDocument {
             timestamp: payload.date,
             app: payload.app,

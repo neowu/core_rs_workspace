@@ -69,10 +69,9 @@ pub async fn main() -> Result<(), Exception> {
 async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {
     if let Some(ref key) = message.key {
         if key == "1" {
-            let value = message.payload()?;
-            state.producer.send(&state.topics.test_single, Some("xxx".to_string()), &value).await?;
+            state.producer.send(&state.topics.test_single, Some("xxx".to_string()), &message.payload).await?;
         } else {
-            state.tx.send(message.payload()?).await?;
+            state.tx.send(message.payload).await?;
         }
     }
     Ok(())
@@ -94,11 +93,10 @@ async fn handler_bulk(state: Arc<State>, messages: Vec<Message<TestMessage>>) ->
     for message in messages {
         if let Some(ref key) = message.key {
             if key == "1" {
-                let value = message.payload()?;
-                state.producer.send(&state.topics.test_single, Some("xxx".to_owned()), &value).await?;
+                state.producer.send(&state.topics.test_single, Some("xxx".to_owned()), &message.payload).await?;
                 warn!(error_code = "TRIGGER", "test");
             } else {
-                println!("Received message: {}", message.payload()?.name);
+                println!("Received message: {}", message.payload.name);
             }
         }
     }

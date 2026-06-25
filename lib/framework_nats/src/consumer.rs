@@ -46,25 +46,13 @@ pub struct ConsumerConfig {
     pub max_concurrency: usize,
     pub batch_max_messages: usize,
     pub batch_max_wait: Duration,
-    pub ack_wait: Duration,
-    // max delivery attempts before the message is dropped by the server; -1 is unlimited.
-    pub max_deliver: i64,
 }
 
 impl Default for ConsumerConfig {
     fn default() -> Self {
-        Self {
-            max_concurrency: 100,
-            batch_max_messages: 1000,
-            batch_max_wait: Duration::from_secs(1),
-            ack_wait: Duration::from_mins(1),
-            max_deliver: -1,
-        }
+        Self { max_concurrency: 100, batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
     }
 }
-
-// how long graceful shutdown waits for in-flight handlers before aborting them.
-const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 // shared across every consumer in the process; reports overall in-flight handlers.
 static MESSAGE_COUNTER: OnceLock<Counter> = OnceLock::new();
@@ -128,8 +116,8 @@ where
                 pull::Config {
                     durable_name: Some(durable.to_owned()),
                     ack_policy: AckPolicy::Explicit,
-                    ack_wait: config.ack_wait,
-                    max_deliver: config.max_deliver,
+                    ack_wait: Duration::from_mins(30),
+                    filter_subjects: subjects,
                     ..Default::default()
                 },
             )
@@ -189,10 +177,14 @@ where
 
         // graceful shutdown: stop pulling, then wait for every in-flight handler (and its ack) to finish,
         // aborting any that overrun the drain timeout (their messages are redelivered later).
-        if let Some(aborted) = executor.shutdown(SHUTDOWN_DRAIN_TIMEOUT).await {
+        if let Some(aborted) = executor.shutdown(Duration::from_secs(30)).await {
             console!("WARN message aborted, messages={aborted:?}");
         }
-        console!("nats consumer stopped, name={durable}, stream={stream}, subjects={subjects:?}");
+
+        console!(
+            "nats consumer stopped, name={durable}, stream={stream}, subjects={:?}",
+            consumer.cached_info().config.filter_subjects
+        );
     }
 }
 
@@ -286,8 +278,7 @@ where
                     durable_name: Some(durable.to_owned()),
                     filter_subject: subject.to_owned(),
                     ack_policy: AckPolicy::All,
-                    ack_wait: config.ack_wait,
-                    max_deliver: config.max_deliver,
+                    ack_wait: Duration::from_mins(30),
                     ..Default::default()
                 },
             )
