@@ -1,0 +1,14 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ulimits:
+      nofile: 262144
+    volumes:
+      - ./users.d/viewer.xml:/etc/clickhouse-server/users.d/viewer.xml
+    environment:
+      - CLICKHOUSE_USER=root
+      - CLICKHOUSE_PASSWORD=root
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ports:
+      - 8123:8123
+      - 9000:9000
