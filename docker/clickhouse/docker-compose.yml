@@ -4,7 +4,8 @@ services:
     ulimits:
       nofile: 262144
     volumes:
-      - ./users.d/viewer.xml:/etc/clickhouse-server/users.d/viewer.xml
+      - ./config.d/custom_config.xml:/etc/clickhouse-server/config.d/custom_config.xml
+    #   - ./users.d/viewer.xml:/etc/clickhouse-server/users.d/viewer.xml
     environment:
       - CLICKHOUSE_USER=root
       - CLICKHOUSE_PASSWORD=root

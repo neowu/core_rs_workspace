@@ -85,7 +85,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
 
     let _counter = REQUEST_COUNTER.get().map(Counter::increase);
 
-    let response = log::start_action("http", ref_id, async {
+    let response = log::action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());
 
         for (name, value) in request.headers() {

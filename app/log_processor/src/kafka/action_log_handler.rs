@@ -8,8 +8,12 @@ use framework::exception::Exception;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
+use time::Duration;
+use time::OffsetDateTime;
 
 use crate::AppState;
+use crate::clickhouse::ActionResult;
+use crate::clickhouse::ActionRow;
 
 // action log message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +83,15 @@ pub(crate) async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
 ) -> Result<(), Exception> {
+    insert_to_clickhouse(&state, &messages).await?;
+    index_to_elasticsearch(&state, messages).await?;
+    Ok(())
+}
+
+async fn index_to_elasticsearch(
+    state: &Arc<AppState>,
+    messages: Vec<Message<ActionLogMessage>>,
+) -> Result<(), Exception> {
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
     let mut traces: Vec<(String, TraceDocument)> = vec![];
     for message in messages {
@@ -127,4 +140,93 @@ fn action_index(now: NaiveDate) -> String {
 
 fn trace_index(now: NaiveDate) -> String {
     format!("trace-{}", now.format("%Y.%m.%d"))
+}
+
+async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionLogMessage>]) -> Result<(), Exception> {
+    let rows: Vec<ActionRow> = messages.iter().map(|message| to_action_row(&message.payload)).collect();
+    state.clickhouse.insert("action", &rows).await
+}
+
+fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
+    // a single value goes into context; multiple values go into multi_context. None becomes "".
+    let mut context: HashMap<String, String> = HashMap::new();
+    let mut multi_context: HashMap<String, Vec<String>> = HashMap::new();
+    for (key, values) in &payload.context {
+        if values.len() == 1
+            && let Some(Some(first)) = values.first()
+        {
+            context.insert(key.to_owned(), first.to_owned());
+        } else {
+            let values: Vec<String> = values.iter().flatten().map(String::to_owned).collect();
+            multi_context.insert(key.to_owned(), values);
+        }
+    }
+
+    if let Some(clients) = &payload.clients {
+        if clients.len() == 1
+            && let Some(first) = clients.first()
+        {
+            context.insert("client".to_owned(), first.to_owned());
+        } else {
+            multi_context.insert("client".to_owned(), clients.clone());
+        }
+    }
+
+    // a single ref_id goes into ref_id; multiple ref_ids go into ref_ids.
+    let (ref_id, ref_ids) = match &payload.ref_ids {
+        Some(ids) if ids.len() == 1 => (ids.first().map(String::to_owned).clone(), Vec::new()),
+        Some(ids) => (None, ids.clone()),
+        None => (None, Vec::new()),
+    };
+
+    // elapsed and every perf_stat counter are flattened into the numeric stats map; f64 stats are rounded to i64.
+    let mut stats: HashMap<String, i64> =
+        payload.stats.iter().flatten().map(|(key, value)| (key.clone(), value.round() as i64)).collect();
+    stats.insert("elapsed".to_owned(), payload.elapsed);
+    if let Some(perf_stats) = &payload.perf_stats {
+        for (key, perf) in perf_stats {
+            stats.insert(format!("{key}_elapsed"), perf.total_elapsed);
+            stats.insert(format!("{key}_count"), perf.count);
+            if let Some(value) = perf.read_entries {
+                stats.insert(format!("{key}_read_entries"), value);
+            }
+            if let Some(value) = perf.write_entries {
+                stats.insert(format!("{key}_write_entries"), value);
+            }
+            if let Some(value) = perf.read_bytes {
+                stats.insert(format!("{key}_read_bytes"), value);
+            }
+            if let Some(value) = perf.write_bytes {
+                stats.insert(format!("{key}_write_bytes"), value);
+            }
+        }
+    }
+
+    ActionRow {
+        time: to_offset_datetime(payload.date),
+        id: payload.id.clone(),
+        app: payload.app.clone(),
+        host: payload.host.clone(),
+        result: to_action_result(&payload.result),
+        action: payload.action.clone(),
+        ref_id,
+        ref_ids,
+        error_code: payload.error_code.clone(),
+        error_message: payload.error_message.clone(),
+        context,
+        multi_context,
+        stats,
+    }
+}
+
+fn to_action_result(result: &str) -> ActionResult {
+    match result {
+        "WARN" => ActionResult::Warn,
+        "ERROR" => ActionResult::Error,
+        _ => ActionResult::Ok,
+    }
+}
+
+fn to_offset_datetime(date: DateTime<Utc>) -> OffsetDateTime {
+    OffsetDateTime::UNIX_EPOCH + Duration::milliseconds(date.timestamp_millis())
 }

@@ -1,6 +1,7 @@
 words = [
     "Cpu",
     "NATS",
+    "clickhouse",
     "duckdb",
     "kibana",
     "serde",

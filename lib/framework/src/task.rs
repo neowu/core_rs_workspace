@@ -16,7 +16,7 @@ use crate::log::current_action_id;
 use crate::log::metrics::Counter;
 use crate::log::metrics::Metrics;
 
-// the global executor for fire-and-forget tasks; callers that want their own lifecycle hold a TaskExecutor directly
+// the global executor for fire-and-forget tasks; callers that want their own life cycle hold a TaskExecutor directly
 static EXECUTOR: LazyLock<Mutex<TaskExecutor>> = LazyLock::new(Mutex::default);
 
 #[derive(Default)]
@@ -84,7 +84,7 @@ where
         let _counter = TASK_COUNTER.get().map(Counter::increase);
 
         // start_action logs the Exception on failure, so the Result can be discarded here
-        let _result = log::start_action("task", ref_id, async {
+        let _result = log::action("task", ref_id, async {
             context!(task = name, location = location);
             task.await
         })

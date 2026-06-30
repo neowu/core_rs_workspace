@@ -15,7 +15,7 @@ async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let _ = log::start_action("test_http_client", None, async {
+    let _ = log::action("test_http_client", None, async {
         test_http().await
         // test_sse().await
     })

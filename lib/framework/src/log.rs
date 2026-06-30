@@ -53,7 +53,7 @@ task_local! {
 }
 
 #[inline]
-pub async fn start_action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>, task: F) -> F::Output
+pub async fn action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>, task: F) -> F::Output
 where
     F: Future<Output = Result<R, Exception>>,
 {

@@ -196,7 +196,7 @@ where
 {
     let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id = header(&raw, REF_ID).map(|id| vec![id.to_owned()]);
-    let _result = log::start_action("message", ref_id, async {
+    let _result = log::action("message", ref_id, async {
         let subject = raw.subject.to_string();
         context!(subject = &subject, fn = type_name::<H>());
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
@@ -331,7 +331,7 @@ where
 {
     let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id: Option<Vec<String>> = raw_messages.iter().map(|raw| header(raw, REF_ID).map(str::to_owned)).collect();
-    let _result = log::start_action("message", ref_id, async move {
+    let _result = log::action("message", ref_id, async move {
         context!(subject = subject, fn = type_name::<H>());
         if let Some(client) =
             raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()

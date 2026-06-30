@@ -10,7 +10,7 @@ pub async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let _ = log::start_action("migration", None, async {
+    let _ = log::action("migration", None, async {
         let db = Database::new(DbConfig {
             uri: config.db_url,
             user: config.db_user,

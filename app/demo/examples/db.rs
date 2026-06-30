@@ -24,7 +24,7 @@ pub async fn main() -> Result<(), Exception> {
         client: env!("CARGO_BIN_NAME"),
     })?;
 
-    let _ = log::start_action("test-db", None, async {
+    let _ = log::action("test-db", None, async {
         warn!(error_code = "TRIGGER", "trigger");
 
         // let profile = UserProfile { id1: "id1".to_string(), id2: Uuid::now_v7(), name: "neo".to_string() };

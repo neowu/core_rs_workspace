@@ -213,7 +213,7 @@ where
         .collect::<Option<HashSet<String>>>()
         .map(|set| set.into_iter().collect::<Vec<String>>());
 
-    Box::pin(log::start_action("message", ref_id, async move {
+    Box::pin(log::action("message", ref_id, async move {
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
@@ -318,7 +318,7 @@ where
     M: DeserializeOwned,
 {
     let ref_id = header(&raw_message, REF_ID).map(|id| vec![id.to_owned()]);
-    let _result = log::start_action("message", ref_id, async {
+    let _result = log::action("message", ref_id, async {
         let key = key(&raw_message);
         let payload = payload(&raw_message);
         context!(topic = topic, key = format!("{:?}", key), fn = type_name::<H>());

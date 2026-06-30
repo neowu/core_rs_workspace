@@ -135,7 +135,7 @@ where
     let ref_id = current_action_id().map(|id| vec![id]);
     let triggered = ref_id.is_some();
     Box::pin(
-        log::start_action("job", ref_id, async move {
+        log::action("job", ref_id, async move {
             context!(
                 job = context.name,
                 scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
