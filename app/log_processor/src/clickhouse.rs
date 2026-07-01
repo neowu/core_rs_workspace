@@ -57,12 +57,11 @@ impl ClickHouse {
     }
 }
 
-// row written to log.action; field names and order match the table columns for RowBinary insert.
 #[derive(Row, Serialize)]
 pub(crate) struct ActionRow {
     // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the time feature provides this serde helper.
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
-    pub time: OffsetDateTime,
+    pub timestamp: OffsetDateTime,
     pub id: String,
     pub app: String,
     pub host: String,
@@ -84,4 +83,15 @@ pub(crate) enum ActionResult {
     Ok = 1,
     Warn = 2,
     Error = 3,
+}
+
+#[derive(Row, Serialize)]
+pub(crate) struct TraceRow {
+    // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the time feature provides this serde helper.
+    #[serde(with = "clickhouse::serde::time::datetime64::millis")]
+    pub timestamp: OffsetDateTime,
+    pub id: String,
+    pub app: String,
+    pub error_code: Option<String>,
+    pub content: String,
 }

@@ -10,4 +10,12 @@
     <asynchronous_metric_log remove="remove" />
     <session_log remove="remove" />
     <part_log remove="remove" /> -->
+    <http_server_default_response>
+      <![CDATA[<html>
+        <title>ClickHouse</title>
+        <body>
+        <p><a href="/play">Web SQL UI</a></p>
+        <p><a href="/dashboard">Dashboard</a></p>
+        </body></html>]]>
+    </http_server_default_response>
 </clickhouse>

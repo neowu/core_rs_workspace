@@ -569,7 +569,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
 name = "demo"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "axum",
  "chrono",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "axum",
  "axum-extra",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "framework_db"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "framework",
  "tokio",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "chrono",
  "framework",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "async-nats",
  "chrono",
@@ -1430,7 +1430,7 @@ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "log_collector"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "axum",
  "chrono",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "log_exporter"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "axum",
  "chrono",
@@ -1458,7 +1458,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.6.10"
+version = "0.6.12"
 dependencies = [
  "chrono",
  "clickhouse",

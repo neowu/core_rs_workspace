@@ -139,7 +139,8 @@ async fn init_clickhouse(clickhouse: ClickHouse) -> Result<(), Exception> {
         // clickhouse.execute("DROP DATABASE IF EXISTS log").await?;
 
         clickhouse.execute("CREATE DATABASE IF NOT EXISTS log").await?;
-        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse_action.sql"))?).await?;
+        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/action.sql"))?).await?;
+        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/trace.sql"))?).await?;
 
         // read-only account: SELECT on the log database is its only grant.
         clickhouse.execute("CREATE USER IF NOT EXISTS viewer IDENTIFIED BY 'viewer'").await?;

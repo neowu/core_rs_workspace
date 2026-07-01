@@ -14,6 +14,7 @@ use time::OffsetDateTime;
 use crate::AppState;
 use crate::clickhouse::ActionResult;
 use crate::clickhouse::ActionRow;
+use crate::clickhouse::TraceRow;
 
 // action log message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,8 +144,28 @@ fn trace_index(now: NaiveDate) -> String {
 }
 
 async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionLogMessage>]) -> Result<(), Exception> {
-    let rows: Vec<ActionRow> = messages.iter().map(|message| to_action_row(&message.payload)).collect();
-    state.clickhouse.insert("action", &rows).await
+    let mut actions = Vec::with_capacity(messages.len());
+    let mut traces = vec![];
+    for message in messages {
+        let payload = &message.payload;
+        actions.push(to_action_row(payload));
+        if let Some(content) = &payload.trace_log {
+            let trace = TraceRow {
+                timestamp: to_offset_datetime(message.payload.date),
+                id: payload.id.clone(),
+                content: content.clone(),
+                app: payload.app.clone(),
+                error_code: payload.error_code.clone(),
+            };
+            traces.push(trace);
+        }
+    }
+
+    state.clickhouse.insert("action", &actions).await?;
+    if !traces.is_empty() {
+        state.clickhouse.insert("trace", &traces).await?;
+    }
+    Ok(())
 }
 
 fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
@@ -203,7 +224,7 @@ fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
     }
 
     ActionRow {
-        time: to_offset_datetime(payload.date),
+        timestamp: to_offset_datetime(payload.date),
         id: payload.id.clone(),
         app: payload.app.clone(),
         host: payload.host.clone(),
