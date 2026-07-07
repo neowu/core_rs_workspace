@@ -16,19 +16,18 @@ use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
 use framework::task;
+use framework_clickhouse::ClickHouse;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
 use framework_kafka::consumer::MessageConsumer;
 use serde::Deserialize;
 
-use crate::clickhouse::ClickHouse;
 use crate::elasticsearch::Elasticsearch;
 use crate::job::cleanup_old_index_job;
 use crate::kafka::action_log_handler::action_log_message_handler;
 use crate::kafka::event_handler::event_message_handler;
 use crate::kafka::stat_handler::stat_message_handler;
 
-mod clickhouse;
 mod elasticsearch;
 mod job;
 mod kafka;

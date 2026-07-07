@@ -367,6 +367,7 @@ dependencies = [
  "bnum",
  "bstr",
  "bytes",
+ "chrono",
  "cityhash-rs",
  "clickhouse-macros",
  "clickhouse-types",
@@ -381,7 +382,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "time",
  "tokio",
  "tracing",
  "url",
@@ -755,6 +755,15 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower-http",
+]
+
+[[package]]
+name = "framework_clickhouse"
+version = "0.6.12"
+dependencies = [
+ "clickhouse",
+ "framework",
+ "serde_repr",
 ]
 
 [[package]]
@@ -1461,13 +1470,12 @@ name = "log_processor"
 version = "0.6.12"
 dependencies = [
  "chrono",
- "clickhouse",
  "framework",
+ "framework_clickhouse",
  "framework_kafka",
+ "framework_macro",
  "regex",
  "serde",
- "serde_repr",
- "time",
  "tokio",
 ]
 

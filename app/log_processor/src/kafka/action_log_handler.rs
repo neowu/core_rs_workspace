@@ -5,19 +5,17 @@ use chrono::DateTime;
 use chrono::NaiveDate;
 use chrono::Utc;
 use framework::exception::Exception;
+use framework_clickhouse::Serialize_repr;
+use framework_clickhouse::clickhouse;
+use framework_macro::Row;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
-use time::Duration;
-use time::OffsetDateTime;
 
 use crate::AppState;
-use crate::clickhouse::ActionResult;
-use crate::clickhouse::ActionRow;
-use crate::clickhouse::TraceRow;
 
 // action log message schema from java core-ng framework
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct ActionLogMessage {
     id: String,
     date: DateTime<Utc>,
@@ -45,6 +43,15 @@ struct PerformanceStatMessage {
     write_entries: Option<i64>,
     read_bytes: Option<i64>,
     write_bytes: Option<i64>,
+}
+
+pub(crate) async fn action_log_message_handler(
+    state: Arc<AppState>,
+    messages: Vec<Message<ActionLogMessage>>,
+) -> Result<(), Exception> {
+    insert_to_clickhouse(&state, &messages).await?;
+    index_to_elasticsearch(&state, messages).await?;
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -78,15 +85,6 @@ struct TraceDocument {
     action: String,
     error_code: Option<String>,
     content: String,
-}
-
-pub(crate) async fn action_log_message_handler(
-    state: Arc<AppState>,
-    messages: Vec<Message<ActionLogMessage>>,
-) -> Result<(), Exception> {
-    insert_to_clickhouse(&state, &messages).await?;
-    index_to_elasticsearch(&state, messages).await?;
-    Ok(())
 }
 
 async fn index_to_elasticsearch(
@@ -143,6 +141,47 @@ fn trace_index(now: NaiveDate) -> String {
     format!("trace-{}", now.format("%Y.%m.%d"))
 }
 
+#[derive(Row, Serialize)]
+#[table(name = "action")]
+struct ActionRow {
+    // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
+    #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
+    pub timestamp: DateTime<Utc>,
+    pub id: String,
+    pub app: String,
+    pub host: String,
+    pub result: ActionResult,
+    pub action: String,
+    pub ref_id: Option<String>,
+    pub ref_ids: Vec<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub context: HashMap<String, String>,
+    pub multi_context: HashMap<String, Vec<String>>,
+    pub stats: HashMap<String, i64>,
+}
+
+// Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3); serialized as its i8 discriminant.
+#[derive(Serialize_repr)]
+#[repr(i8)]
+enum ActionResult {
+    Ok = 1,
+    Warn = 2,
+    Error = 3,
+}
+
+#[derive(Row, Serialize)]
+#[table(name = "trace")]
+struct TraceRow {
+    // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
+    #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
+    pub timestamp: DateTime<Utc>,
+    pub id: String,
+    pub app: String,
+    pub error_code: Option<String>,
+    pub content: String,
+}
+
 async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionLogMessage>]) -> Result<(), Exception> {
     let mut actions = Vec::with_capacity(messages.len());
     let mut traces = vec![];
@@ -151,7 +190,7 @@ async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionL
         actions.push(to_action_row(payload));
         if let Some(content) = &payload.trace_log {
             let trace = TraceRow {
-                timestamp: to_offset_datetime(message.payload.date),
+                timestamp: message.payload.date,
                 id: payload.id.clone(),
                 content: content.clone(),
                 app: payload.app.clone(),
@@ -161,9 +200,9 @@ async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionL
         }
     }
 
-    state.clickhouse.insert("action", &actions).await?;
+    state.clickhouse.insert(&actions).await?;
     if !traces.is_empty() {
-        state.clickhouse.insert("trace", &traces).await?;
+        state.clickhouse.insert(&traces).await?;
     }
     Ok(())
 }
@@ -224,7 +263,7 @@ fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
     }
 
     ActionRow {
-        timestamp: to_offset_datetime(payload.date),
+        timestamp: payload.date,
         id: payload.id.clone(),
         app: payload.app.clone(),
         host: payload.host.clone(),
@@ -246,8 +285,4 @@ fn to_action_result(result: &str) -> ActionResult {
         "ERROR" => ActionResult::Error,
         _ => ActionResult::Ok,
     }
-}
-
-fn to_offset_datetime(date: DateTime<Utc>) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::milliseconds(date.timestamp_millis())
 }

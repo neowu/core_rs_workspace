@@ -229,7 +229,8 @@ fn parse_headers(response: &Response) -> Result<HashMap<HeaderName, String>, Exc
 fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
     log!("[request] method={}", request.method.as_str());
     log!("[request] url={}", request.url);
-    let url = Url::parse(&request.url)?;
+    let url =
+        Url::parse(&request.url).map_err(|e| exception!(format!("invalid url, url={}", &request.url), source = e))?;
     let mut http_request = Request::new(request.method.clone(), url);
     http_request.headers_mut().extend(request.headers.clone());
     for (key, value) in http_request.headers() {

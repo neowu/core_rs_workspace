@@ -7,6 +7,7 @@ version = "0.6.12"
 
 [workspace.dependencies]
 framework = { path = "lib/framework" }
+framework_clickhouse = { path = "lib/framework_clickhouse" }
 framework_db = { path = "lib/framework_db" }
 framework_kafka = { path = "lib/framework_kafka" }
 framework_nats = { path = "lib/framework_nats" }

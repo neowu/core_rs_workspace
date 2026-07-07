@@ -5,15 +5,14 @@ edition = "2024"
 
 [dependencies]
 framework.workspace = true
+framework_clickhouse.workspace = true
 framework_kafka.workspace = true
+framework_macro.workspace = true
 
 serde.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 
-clickhouse = { version = "*", features = ["time", "inserter"] }
-serde_repr = "*"
-time = "*"
 regex = "*"
 
 [lints]
