@@ -10,7 +10,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
     let struct_ident = &model.ident;
     let struct_name = struct_ident.to_string();
-    let column_names: Vec<String> = model.fields.iter().map(|field| field.ident.to_string()).collect();
+    let column_names: Vec<String> =
+        model.fields.iter().map(|field| field.attr("column")?.string_meta_value("name")).collect::<Result<_>>()?;
 
     // clickhouse::Row members are #[doc(hidden)] and semver-exempt; this mirrors what
     // clickhouse-macros 0.3.0 generates for an owned struct with named fields, so a
@@ -43,8 +44,11 @@ mod tests {
             #[table(name = "action")]
             struct ActionRow {
                 #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
+                #[column(name = "@timestamp")]
                 timestamp: DateTime<Utc>,
+                #[column(name = "id")]
                 id: String,
+                #[column(name = "elapsed")]
                 elapsed: i64,
             }
         };
@@ -57,7 +61,7 @@ mod tests {
                 #[automatically_derived]
                 impl framework_clickhouse::clickhouse::Row for ActionRow {
                     const NAME: &'static str = "ActionRow";
-                    const COLUMN_NAMES: &'static [&'static str] = &["timestamp", "id", "elapsed",];
+                    const COLUMN_NAMES: &'static [&'static str] = &["@timestamp", "id", "elapsed",];
                     const COLUMN_COUNT: usize = <Self as framework_clickhouse::clickhouse::Row>::COLUMN_NAMES.len();
                     const KIND: framework_clickhouse::clickhouse::_priv::RowKind = framework_clickhouse::clickhouse::_priv::RowKind::Struct;
                     type Value<'__v> = Self;
@@ -74,6 +78,20 @@ mod tests {
     fn build_row_without_table() {
         let source = quote! {
             #[derive(Row, Serialize)]
+            struct ActionRow {
+                #[column(name = "id")]
+                id: String,
+            }
+        };
+
+        build(source).unwrap_err();
+    }
+
+    #[test]
+    fn build_row_without_column() {
+        let source = quote! {
+            #[derive(Row, Serialize)]
+            #[table(name = "action")]
             struct ActionRow {
                 id: String,
             }

@@ -40,9 +40,12 @@ pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 /// #[table(name = "table_name")]
 /// ```
-/// Column names come from field idents verbatim (`#[serde(rename)]`/`#[serde(skip)]` are not honored),
-/// and only owned structs with named fields are supported.
-#[proc_macro_derive(Row, attributes(table))]
+/// field attributes
+/// ```
+/// #[column(name = "column_name")]
+/// ```
+/// `#[serde(rename)]`/`#[serde(skip)]` are not honored, and only owned structs with named fields are supported.
+#[proc_macro_derive(Row, attributes(table, column))]
 pub fn row(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     row::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
