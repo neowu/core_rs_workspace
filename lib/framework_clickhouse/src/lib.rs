@@ -1,21 +1,16 @@
-use clickhouse::Client;
-use clickhouse::RowOwned;
-use clickhouse::RowWrite;
 // #[serde(with = "clickhouse::serde::...")] field paths resolve `clickhouse::` in the caller's
 // module scope, and the framework_macro::Row derive expands to `framework_clickhouse::clickhouse::`
 // paths, so apps use this re-export instead of depending on the clickhouse crate directly.
 pub use clickhouse;
-pub use serde_repr::Serialize_repr;
+use clickhouse::Client;
+use clickhouse::RowOwned;
+use clickhouse::RowWrite;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log;
 use framework::span;
 use framework::stats;
-
-// implemented by #[derive(framework_macro::Row)] via #[table(name = "...")]
-pub trait Table {
-    const NAME: &'static str;
-}
+pub use serde_repr::Serialize_repr;
 
 pub struct ClickHouse {
     client: Client,
@@ -44,14 +39,14 @@ impl ClickHouse {
 
     // async_insert is enabled on the client, so end() hands the batch to the server and returns
     // without waiting for the on-disk flush (wait_for_async_insert=0); the server batches across requests.
-    pub async fn insert<T>(&self, rows: &[T]) -> Result<(), Exception>
+    pub async fn insert<T>(&self, table: &str, rows: &[T]) -> Result<(), Exception>
     where
-        T: RowOwned + RowWrite + Table,
+        T: RowOwned + RowWrite,
     {
         let _span = span!("clickhouse");
         // Inserter accumulates the serialized byte count and row count, returned as Quantities by end().
         // fully qualified because the hidden clickhouse::Row trait also declares a NAME const
-        let mut inserter = self.client.inserter::<T>(<T as Table>::NAME);
+        let mut inserter = self.client.inserter::<T>(table);
         for row in rows {
             inserter.write(row).await.map_err(|err| exception!("failed to insert", source = err))?;
         }

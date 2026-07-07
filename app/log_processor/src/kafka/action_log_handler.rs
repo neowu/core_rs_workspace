@@ -7,7 +7,7 @@ use chrono::Utc;
 use framework::exception::Exception;
 use framework_clickhouse::Serialize_repr;
 use framework_clickhouse::clickhouse;
-use framework_macro::Row;
+use framework_clickhouse::clickhouse::Row;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -142,35 +142,21 @@ fn trace_index(now: NaiveDate) -> String {
 }
 
 #[derive(Row, Serialize)]
-#[table(name = "action")]
 struct ActionRow {
     // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
     #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
-    #[column(name = "timestamp")]
     pub timestamp: DateTime<Utc>,
-    #[column(name = "id")]
     pub id: String,
-    #[column(name = "app")]
     pub app: String,
-    #[column(name = "host")]
     pub host: String,
-    #[column(name = "result")]
     pub result: ActionResult,
-    #[column(name = "action")]
     pub action: String,
-    #[column(name = "ref_id")]
     pub ref_id: Option<String>,
-    #[column(name = "ref_ids")]
     pub ref_ids: Vec<String>,
-    #[column(name = "error_code")]
     pub error_code: Option<String>,
-    #[column(name = "error_message")]
     pub error_message: Option<String>,
-    #[column(name = "context")]
     pub context: HashMap<String, String>,
-    #[column(name = "multi_context")]
     pub multi_context: HashMap<String, Vec<String>>,
-    #[column(name = "stats")]
     pub stats: HashMap<String, i64>,
 }
 
@@ -184,19 +170,13 @@ enum ActionResult {
 }
 
 #[derive(Row, Serialize)]
-#[table(name = "trace")]
 struct TraceRow {
     // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
     #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
-    #[column(name = "timestamp")]
     pub timestamp: DateTime<Utc>,
-    #[column(name = "id")]
     pub id: String,
-    #[column(name = "app")]
     pub app: String,
-    #[column(name = "error_code")]
     pub error_code: Option<String>,
-    #[column(name = "content")]
     pub content: String,
 }
 
@@ -218,9 +198,9 @@ async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionL
         }
     }
 
-    state.clickhouse.insert(&actions).await?;
+    state.clickhouse.insert("action", &actions).await?;
     if !traces.is_empty() {
-        state.clickhouse.insert(&traces).await?;
+        state.clickhouse.insert("trace", &traces).await?;
     }
     Ok(())
 }

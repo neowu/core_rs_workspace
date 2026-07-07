@@ -1419,7 +1419,6 @@ dependencies = [
  "framework",
  "framework_clickhouse",
  "framework_kafka",
- "framework_macro",
  "regex",
  "serde",
  "tokio",

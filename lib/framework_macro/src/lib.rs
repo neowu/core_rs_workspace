@@ -3,7 +3,6 @@ use syn::Error;
 mod api;
 mod entity;
 mod model;
-mod row;
 mod util;
 mod validate;
 
@@ -33,21 +32,6 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
-}
-
-/// Derive `clickhouse::Row` and `framework_clickhouse::Table` for a ClickHouse row struct.
-/// struct attributes
-/// ```
-/// #[table(name = "table_name")]
-/// ```
-/// field attributes
-/// ```
-/// #[column(name = "column_name")]
-/// ```
-/// `#[serde(rename)]`/`#[serde(skip)]` are not honored, and only owned structs with named fields are supported.
-#[proc_macro_derive(Row, attributes(table, column))]
-pub fn row(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    row::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// `#[api]` derives an axum route builder and an HTTP client from a trait.
