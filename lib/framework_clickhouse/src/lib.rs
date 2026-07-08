@@ -17,7 +17,7 @@ pub struct ClickHouse {
 }
 
 impl ClickHouse {
-    pub fn new(uri: String, user: String, password: &str, database: Option<&str>) -> Self {
+    pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
         // async_insert lets the server batch writes; wait_for_async_insert=0 returns once buffered, not flushed.
         // inserts added later inherit these settings from the shared client.
         let client = Client::default()

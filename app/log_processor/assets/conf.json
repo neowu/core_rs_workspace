@@ -2,9 +2,11 @@
   "log_appender": "console",
   "kafka_uri": "dev.internal:9092",
   "elasticsearch_uri": "http://dev.internal:9200",
-  "clickhouse_uri": "http://dev.internal:8123",
-  "clickhouse_user": "root",
-  "clickhouse_password": "root",
   "kibana_uri": "http://dev.internal:5601",
-  "banner": "# local"
+  "banner": "# local",
+  "clickhouse": {
+    "uri": "http://dev.internal:8123",
+    "user": "root",
+    "password": "root"
+  }
 }

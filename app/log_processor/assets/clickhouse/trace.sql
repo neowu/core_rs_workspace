@@ -9,6 +9,6 @@ CREATE TABLE IF NOT EXISTS log.trace
     INDEX idx_error_code error_code TYPE bloom_filter(0.01) GRANULARITY 1,
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMMDD(timestamp)
+PARTITION BY toDate(timestamp)
 ORDER BY (toStartOfHour(timestamp), app)
 TTL timestamp + INTERVAL 30 DAY

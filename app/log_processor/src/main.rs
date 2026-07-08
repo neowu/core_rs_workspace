@@ -38,16 +38,21 @@ struct AppConfig {
     log_appender: String,
     kafka_uri: String,
     elasticsearch_uri: String,
-    clickhouse_uri: String,
-    clickhouse_user: String,
-    clickhouse_password: EnvString,
     kibana_uri: String,
     banner: String,
+    clickhouse: Option<ClickhouseConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClickhouseConfig {
+    uri: String,
+    user: String,
+    password: EnvString,
 }
 
 pub struct AppState {
     elasticsearch: Elasticsearch,
-    clickhouse: ClickHouse,
+    clickhouse: Option<ClickHouse>,
 }
 
 #[tokio::main]
@@ -72,12 +77,10 @@ async fn main() -> Result<(), Exception> {
 
     let state = Arc::new(AppState {
         elasticsearch: Elasticsearch::new(config.elasticsearch_uri),
-        clickhouse: ClickHouse::new(
-            config.clickhouse_uri.clone(),
-            config.clickhouse_user.clone(),
-            &config.clickhouse_password,
-            Some("log"),
-        ),
+        clickhouse: config
+            .clickhouse
+            .as_ref()
+            .map(|config| ClickHouse::new(&config.uri, &config.user, &config.password, Some("log"))),
     });
 
     let scheduler_state = Arc::clone(&state);
@@ -89,8 +92,11 @@ async fn main() -> Result<(), Exception> {
     );
     system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 
-    let clickhouse = ClickHouse::new(config.clickhouse_uri, config.clickhouse_user, &config.clickhouse_password, None);
-    init_clickhouse(clickhouse).await?;
+    if let Some(config) = &config.clickhouse {
+        let clickhouse = ClickHouse::new(&config.uri, &config.user, &config.password, None);
+        init_clickhouse(clickhouse).await?;
+    }
+
     init_elasticsearch(&state.elasticsearch).await?;
 
     let mut consumer = MessageConsumer::new(config.kafka_uri, env!("CARGO_BIN_NAME"), &ConsumerConfig::default());

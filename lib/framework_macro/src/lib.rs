@@ -3,6 +3,7 @@ use syn::Error;
 mod api;
 mod entity;
 mod model;
+mod nats_api;
 mod util;
 mod validate;
 
@@ -41,4 +42,13 @@ pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro_attribute]
 pub fn api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// `#[nats_api]` derives a NATS request/reply service builder and client from a trait.
+/// Each method must be `async fn`, annotated with `#[subject = "..."]`,
+/// take `&self` and at most one request parameter, and return `Result<..., Exception>`.
+/// Generates a sibling module (snake_case of the trait name) exposing `service(nats_client, service)` and `client(nats_client, client)`.
+#[proc_macro_attribute]
+pub fn nats_api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    nats_api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
 }

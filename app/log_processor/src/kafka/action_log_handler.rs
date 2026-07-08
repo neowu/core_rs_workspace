@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::NaiveDate;
 use chrono::Utc;
 use framework::exception::Exception;
+use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Serialize_repr;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
@@ -49,7 +50,10 @@ pub(crate) async fn action_log_message_handler(
     state: Arc<AppState>,
     messages: Vec<Message<ActionLogMessage>>,
 ) -> Result<(), Exception> {
-    insert_to_clickhouse(&state, &messages).await?;
+    if let Some(clickhouse) = &state.clickhouse {
+        insert_to_clickhouse(clickhouse, &messages).await?;
+    }
+
     index_to_elasticsearch(&state, messages).await?;
     Ok(())
 }
@@ -180,7 +184,10 @@ struct TraceRow {
     pub content: String,
 }
 
-async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionLogMessage>]) -> Result<(), Exception> {
+async fn insert_to_clickhouse(
+    clickhouse: &ClickHouse,
+    messages: &[Message<ActionLogMessage>],
+) -> Result<(), Exception> {
     let mut actions = Vec::with_capacity(messages.len());
     let mut traces = vec![];
     for message in messages {
@@ -198,9 +205,9 @@ async fn insert_to_clickhouse(state: &Arc<AppState>, messages: &[Message<ActionL
         }
     }
 
-    state.clickhouse.insert("action", &actions).await?;
+    clickhouse.insert("action", &actions).await?;
     if !traces.is_empty() {
-        state.clickhouse.insert("trace", &traces).await?;
+        clickhouse.insert("trace", &traces).await?;
     }
     Ok(())
 }

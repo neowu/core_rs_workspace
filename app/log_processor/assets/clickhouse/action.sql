@@ -20,6 +20,6 @@ CREATE TABLE IF NOT EXISTS log.action
     INDEX idx_context_keys mapKeys(context) TYPE bloom_filter(0.01),
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMMDD(timestamp)
+PARTITION BY toDate(timestamp)
 ORDER BY (toStartOfHour(timestamp), app, action)
 TTL timestamp + INTERVAL 30 DAY
