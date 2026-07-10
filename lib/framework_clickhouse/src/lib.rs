@@ -1,16 +1,33 @@
 // #[serde(with = "clickhouse::serde::...")] field paths resolve `clickhouse::` in the caller's
 // module scope, and the framework_macro::Row derive expands to `framework_clickhouse::clickhouse::`
 // paths, so apps use this re-export instead of depending on the clickhouse crate directly.
+use std::fmt::Debug;
+
 pub use clickhouse;
 use clickhouse::Client;
 use clickhouse::RowOwned;
+use clickhouse::RowRead;
 use clickhouse::RowWrite;
+use clickhouse::query::Query;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log;
 use framework::span;
 use framework::stats;
+use serde::Serialize;
 pub use serde_repr::Serialize_repr;
+
+// clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
+// like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
+pub trait QueryParam: Debug {
+    fn bind(&self, query: Query) -> Query;
+}
+
+impl<T: Serialize + Debug> QueryParam for T {
+    fn bind(&self, query: Query) -> Query {
+        query.bind(self)
+    }
+}
 
 pub struct ClickHouse {
     client: Client,
@@ -31,10 +48,28 @@ impl ClickHouse {
         Self { client }
     }
 
-    pub async fn execute(&self, sql: &str) -> Result<(), Exception> {
+    // each `?` in sql is replaced client-side by the corresponding param, in order; use `??` for a literal `?`
+    pub async fn execute(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<(), Exception> {
         let _span = span!("clickhouse");
-        log!("sql={sql}");
-        self.client.query(sql).execute().await.map_err(|err| exception!("failed to execute statement", source = err))
+        log!("execute, sql={sql}, params={params:?}");
+        let mut query = self.client.query(sql);
+        for param in params {
+            query = param.bind(query);
+        }
+        query.execute().await.map_err(|err| exception!("failed to execute statement", source = err))
+    }
+
+    pub async fn select_one<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<T, Exception>
+    where
+        T: RowOwned + RowRead,
+    {
+        let _span = span!("clickhouse");
+        log!("select_one, sql={sql}, params={params:?}");
+        let mut query = self.client.query(sql);
+        for param in params {
+            query = param.bind(query);
+        }
+        query.fetch_one().await.map_err(|err| exception!("failed to execute statement", source = err))
     }
 
     // async_insert is enabled on the client, so end() hands the batch to the server and returns

@@ -8,6 +8,7 @@ framework.workspace = true
 framework_db.workspace = true
 framework_kafka.workspace = true
 framework_nats.workspace = true
+framework_clickhouse.workspace = true
 framework_macro.workspace = true
 
 serde.workspace = true

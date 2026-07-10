@@ -8,6 +8,7 @@ framework.workspace = true
 
 # pinned to minor version: framework_macro::Row hand-implements the semver-exempt clickhouse::Row trait
 clickhouse = { version = "*", features = ["chrono", "inserter"] }
+serde.workspace = true
 serde_repr = "*"
 
 [lints]

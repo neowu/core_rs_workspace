@@ -108,6 +108,7 @@ async fn main() -> Result<(), Exception> {
 
     system.spawn(collector.start(system.shutdown_signal()));
     system.wait().await;
+
     task::shutdown(Duration::from_secs(15)).await;
 
     Ok(())
@@ -141,15 +142,12 @@ async fn init_clickhouse(clickhouse: ClickHouse) -> Result<(), Exception> {
     log::action("task", None, async {
         context!(task = "init_clickhouse");
 
-        // clickhouse.execute("DROP DATABASE IF EXISTS log").await?;
+        // clickhouse.execute("DROP DATABASE IF EXISTS log", &[]).await?;
 
-        clickhouse.execute("CREATE DATABASE IF NOT EXISTS log").await?;
-        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/action.sql"))?).await?;
-        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/trace.sql"))?).await?;
+        clickhouse.execute("CREATE DATABASE IF NOT EXISTS log", &[]).await?;
+        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/action.sql"))?, &[]).await?;
+        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/trace.sql"))?, &[]).await?;
 
-        // read-only account: SELECT on the log database is its only grant.
-        clickhouse.execute("CREATE USER IF NOT EXISTS viewer IDENTIFIED BY 'viewer'").await?;
-        clickhouse.execute("GRANT SELECT ON log.* TO viewer").await?;
         Ok(())
     })
     .await
