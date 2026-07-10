@@ -9,6 +9,7 @@ use clickhouse::RowOwned;
 use clickhouse::RowRead;
 use clickhouse::RowWrite;
 use clickhouse::query::Query;
+use clickhouse::sql;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log;
@@ -17,10 +18,20 @@ use framework::stats;
 use serde::Serialize;
 pub use serde_repr::Serialize_repr;
 
+// local newtype so the impl doesn't conflict with the Serialize blanket impl
+#[derive(Debug)]
+pub struct Identifier<'a>(pub &'a str);
+
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
 // like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
 pub trait QueryParam: Debug {
     fn bind(&self, query: Query) -> Query;
+}
+
+impl QueryParam for Identifier<'_> {
+    fn bind(&self, query: Query) -> Query {
+        query.bind(sql::Identifier(self.0))
+    }
 }
 
 impl<T: Serialize + Debug> QueryParam for T {
