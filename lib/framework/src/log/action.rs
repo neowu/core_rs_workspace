@@ -51,10 +51,10 @@ impl Action {
 
         action.logs.push(format!(
             "# [action] id={}, date={date_string}, kind={kind}\nthread={:?}\nhost={}\nref_id={:?}",
-            &action.id,
+            action.id,
             thread::current().id(),
             hostname(),
-            &action.ref_id,
+            action.ref_id,
         ));
 
         action

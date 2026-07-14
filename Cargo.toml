@@ -28,6 +28,9 @@ opt-level = 3
 inherits = "release"
 debug = true
 
+[workspace.build]
+warnings = "deny"
+
 [workspace.lints.rust]
 unused_crate_dependencies = "warn"
 unreachable-pub = "warn"
