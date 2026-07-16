@@ -2,6 +2,7 @@ use syn::Error;
 
 mod api;
 mod entity;
+mod enum8;
 mod model;
 mod nats_api;
 mod util;
@@ -33,6 +34,13 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// Derive serde `Serialize`/`Deserialize` for a fieldless enum mapped to a clickhouse Enum8 column;
+/// serialized as the i8 discriminant, e.g. `Ok = 1` <-> `1`.
+#[proc_macro_derive(Enum8)]
+pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    enum8::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// `#[api]` derives an axum route builder and an HTTP client from a trait.

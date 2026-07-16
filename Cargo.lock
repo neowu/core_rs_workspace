@@ -407,6 +407,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clickhouse_test"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "framework",
+ "framework_clickhouse",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -563,6 +574,16 @@ name = "data-encoding"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
+
+[[package]]
+name = "db_test"
+version = "1.0.0"
+dependencies = [
+ "framework",
+ "framework_db",
+ "framework_macro",
+ "tokio",
+]
 
 [[package]]
 name = "demo"
@@ -753,10 +774,11 @@ dependencies = [
 name = "framework_clickhouse"
 version = "0.6.14"
 dependencies = [
+ "chrono",
  "clickhouse",
  "framework",
+ "framework_macro",
  "serde",
- "serde_repr",
 ]
 
 [[package]]

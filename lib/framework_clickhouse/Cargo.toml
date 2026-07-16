@@ -5,11 +5,12 @@ edition = "2024"
 
 [dependencies]
 framework.workspace = true
+framework_macro.workspace = true
 
 # pinned to minor version: framework_macro::Row hand-implements the semver-exempt clickhouse::Row trait
 clickhouse = { version = "*", features = ["chrono", "inserter", "rustls-tls"] }
+chrono.workspace = true
 serde.workspace = true
-serde_repr = "*"
 
 [lints]
 workspace = true

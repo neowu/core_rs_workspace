@@ -6,9 +6,10 @@ use chrono::NaiveDate;
 use chrono::Utc;
 use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
-use framework_clickhouse::Serialize_repr;
+use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
+use framework_clickhouse::data_type::DateTime64;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -147,9 +148,7 @@ fn trace_index(now: NaiveDate) -> String {
 
 #[derive(Row, Serialize)]
 struct ActionRow {
-    // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
-    #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime64,
     pub id: String,
     pub app: String,
     pub host: String,
@@ -164,9 +163,8 @@ struct ActionRow {
     pub stats: HashMap<String, i64>,
 }
 
-// Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3); serialized as its i8 discriminant.
-#[derive(Serialize_repr)]
-#[repr(i8)]
+// Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)
+#[derive(Enum8)]
 enum ActionResult {
     Ok = 1,
     Warn = 2,
@@ -175,9 +173,7 @@ enum ActionResult {
 
 #[derive(Row, Serialize)]
 struct TraceRow {
-    // DateTime64(3, 'UTC') is encoded as i64 milliseconds; the chrono feature provides this serde helper.
-    #[serde(with = "clickhouse::serde::chrono::datetime64::millis")]
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime64,
     pub id: String,
     pub app: String,
     pub error_code: Option<String>,
@@ -195,7 +191,7 @@ async fn insert_to_clickhouse(
         actions.push(to_action_row(payload));
         if let Some(content) = &payload.trace_log {
             let trace = TraceRow {
-                timestamp: message.payload.date,
+                timestamp: message.payload.date.into(),
                 id: payload.id.clone(),
                 content: content.clone(),
                 app: payload.app.clone(),
@@ -268,7 +264,7 @@ fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
     }
 
     ActionRow {
-        timestamp: payload.date,
+        timestamp: payload.date.into(),
         id: payload.id.clone(),
         app: payload.app.clone(),
         host: payload.host.clone(),

@@ -1,3 +1,4 @@
+pub mod api;
 pub mod asset;
 #[macro_use]
 pub mod exception;

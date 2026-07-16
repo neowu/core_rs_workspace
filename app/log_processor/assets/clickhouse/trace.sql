@@ -12,3 +12,4 @@ ENGINE = MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (toStartOfHour(timestamp), app)
 TTL timestamp + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1

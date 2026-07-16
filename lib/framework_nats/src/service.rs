@@ -12,11 +12,11 @@ use async_nats::HeaderMap;
 use async_nats::HeaderValue;
 use async_nats::Message;
 use async_nats::RequestErrorKind;
+use framework::api::ErrorResponse;
 use framework::console;
 use framework::context;
 use framework::exception;
 use framework::exception::Exception;
-use framework::exception::Severity;
 use framework::json::from_json;
 use framework::json::to_json;
 use framework::log;
@@ -27,7 +27,6 @@ use framework::string::intern;
 use framework::task::TaskExecutor;
 use futures::StreamExt as _;
 use futures::stream::select_all;
-use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
@@ -36,14 +35,6 @@ use tokio_util::sync::CancellationToken;
 use crate::CLIENT;
 use crate::ERROR;
 use crate::REF_ID;
-
-// error reply body, mirrors framework::web::error::HttpErrorBody
-#[derive(Debug, Serialize, Deserialize)]
-struct ErrorBody {
-    severity: Severity,
-    code: Option<String>,
-    message: String,
-}
 
 #[derive(Clone, Copy)]
 pub struct ServiceConfig {
@@ -173,7 +164,7 @@ where
             }
             Err(e) => {
                 let body =
-                    ErrorBody { severity: e.severity, code: e.code.map(str::to_owned), message: e.message.clone() };
+                    ErrorResponse { severity: e.severity, code: e.code.map(str::to_owned), message: e.message.clone() };
                 let mut headers = HeaderMap::new();
                 headers.insert(ERROR, "true");
                 client.publish_with_headers(reply, headers, to_json(&body)?.into()).await?;
@@ -242,7 +233,7 @@ where
     let payload = String::from_utf8_lossy(&reply.payload);
     log!("reply, payload={payload}");
     if reply.headers.as_ref().is_some_and(|headers| headers.get(ERROR).is_some()) {
-        let error: ErrorBody = from_json(&payload)?;
+        let error: ErrorResponse = from_json(&payload)?;
         if let Some(ref code) = error.code {
             Err(exception!(
                 format!("failed to call service, subject={subject}, error={}", error.message),

@@ -1,10 +1,11 @@
 [package]
-name = "db_test"
+name = "clickhouse_test"
 version = "1.0.0"
 edition = "2024"
 
 [dependencies]
 framework = { workspace = true }
-framework_db = { workspace = true }
-framework_macro = { workspace = true }
+framework_clickhouse = { workspace = true }
+chrono.workspace = true
+serde.workspace = true
 tokio.workspace = true

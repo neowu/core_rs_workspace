@@ -1,11 +1,9 @@
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
 
+use crate::api::ErrorResponse;
 use crate::exception::Exception;
-use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::web::body::Json;
 
@@ -14,14 +12,7 @@ pub type HttpResult<T> = Result<T, HttpError>;
 #[derive(Debug)]
 pub struct HttpError {
     status_code: StatusCode,
-    body: HttpErrorBody,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct HttpErrorBody {
-    pub(crate) severity: Severity,
-    pub(crate) code: Option<String>,
-    pub(crate) message: String,
+    body: ErrorResponse,
 }
 
 impl IntoResponse for HttpError {
@@ -47,7 +38,7 @@ where
 
         Self {
             status_code,
-            body: HttpErrorBody { severity: e.severity, code: e.code.map(str::to_owned), message: e.message },
+            body: ErrorResponse { severity: e.severity, code: e.code.map(str::to_owned), message: e.message },
         }
     }
 }

@@ -10,6 +10,7 @@ use http::header;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::api::ErrorResponse;
 use crate::exception::Exception;
 use crate::http::HttpClient;
 use crate::http::HttpRequest;
@@ -21,7 +22,6 @@ use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::body::Json;
 use crate::web::error::HttpError;
-use crate::web::error::HttpErrorBody;
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 #[inline]
@@ -121,7 +121,7 @@ where
         }
     } else if let Some(content_type) = response.headers.get(&header::CONTENT_TYPE)
         && content_type == "application/json"
-        && let Ok(error) = json::from_json::<HttpErrorBody>(&response.body)
+        && let Ok(error) = json::from_json::<ErrorResponse>(&response.body)
     {
         if let Some(ref code) = error.code {
             Err(exception!(

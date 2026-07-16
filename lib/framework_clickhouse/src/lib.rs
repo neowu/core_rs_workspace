@@ -1,6 +1,3 @@
-// #[serde(with = "clickhouse::serde::...")] field paths resolve `clickhouse::` in the caller's
-// module scope, and the framework_macro::Row derive expands to `framework_clickhouse::clickhouse::`
-// paths, so apps use this re-export instead of depending on the clickhouse crate directly.
 use std::fmt::Debug;
 
 pub use clickhouse;
@@ -15,8 +12,9 @@ use framework::exception::Exception;
 use framework::log;
 use framework::span;
 use framework::stats;
+pub use framework_macro::Enum8;
 use serde::Serialize;
-pub use serde_repr::Serialize_repr;
+pub mod data_type;
 
 // local newtype so the impl doesn't conflict with the Serialize blanket impl
 #[derive(Debug)]
