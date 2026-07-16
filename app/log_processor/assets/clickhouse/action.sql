@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS log.action
     error_message Nullable(String),
     context Map(LowCardinality(String), String),
     multi_context Map(LowCardinality(String), Array(String)),
-    stats Map(LowCardinality(String), Int64),
+    stats Map(LowCardinality(String), Decimal64(3)),
 
     INDEX idx_id id TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_ref_id ref_id TYPE bloom_filter(0.01) GRANULARITY 1,

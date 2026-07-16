@@ -10,6 +10,7 @@ use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
 use framework_clickhouse::data_type::DateTime64;
+use framework_clickhouse::data_type::Decimal64;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -160,7 +161,7 @@ struct ActionRow {
     pub error_message: Option<String>,
     pub context: HashMap<String, String>,
     pub multi_context: HashMap<String, Vec<String>>,
-    pub stats: HashMap<String, i64>,
+    pub stats: HashMap<String, Decimal64<3>>,
 }
 
 // Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)
@@ -241,24 +242,24 @@ fn to_action_row(payload: &ActionLogMessage) -> ActionRow {
     };
 
     // elapsed and every perf_stat counter are flattened into the numeric stats map; f64 stats are rounded to i64.
-    let mut stats: HashMap<String, i64> =
-        payload.stats.iter().flatten().map(|(key, value)| (key.clone(), value.round() as i64)).collect();
-    stats.insert("elapsed".to_owned(), payload.elapsed);
+    let mut stats: HashMap<String, Decimal64<3>> =
+        payload.stats.iter().flatten().map(|(key, value)| (key.clone(), Decimal64::from(*value))).collect();
+    stats.insert("elapsed".to_owned(), Decimal64::from(payload.elapsed as f64));
     if let Some(perf_stats) = &payload.perf_stats {
         for (key, perf) in perf_stats {
-            stats.insert(format!("{key}_elapsed"), perf.total_elapsed);
-            stats.insert(format!("{key}_count"), perf.count);
+            stats.insert(format!("{key}_elapsed"), Decimal64::from(perf.total_elapsed as f64));
+            stats.insert(format!("{key}_count"), Decimal64::from(perf.count as f64));
             if let Some(value) = perf.read_entries {
-                stats.insert(format!("{key}_read_entries"), value);
+                stats.insert(format!("{key}_read_entries"), Decimal64::from(value as f64));
             }
             if let Some(value) = perf.write_entries {
-                stats.insert(format!("{key}_write_entries"), value);
+                stats.insert(format!("{key}_write_entries"), Decimal64::from(value as f64));
             }
             if let Some(value) = perf.read_bytes {
-                stats.insert(format!("{key}_read_bytes"), value);
+                stats.insert(format!("{key}_read_bytes"), Decimal64::from(value as f64));
             }
             if let Some(value) = perf.write_bytes {
-                stats.insert(format!("{key}_write_bytes"), value);
+                stats.insert(format!("{key}_write_bytes"), Decimal64::from(value as f64));
             }
         }
     }

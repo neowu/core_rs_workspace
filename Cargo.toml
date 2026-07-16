@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["app/*", "lib/*", "test/*"]
+default-members = ["app/*", "lib/*"]
 
 [workspace.package]
 version = "0.6.14"
@@ -27,9 +28,6 @@ opt-level = 3
 [profile.profiling]
 inherits = "release"
 debug = true
-
-[workspace.build]
-warnings = "deny"
 
 [workspace.lints.rust]
 unused_crate_dependencies = "warn"
