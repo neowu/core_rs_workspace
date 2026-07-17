@@ -21,21 +21,15 @@ jobs:
           file: app/log_exporter/Dockerfile
           tags: "neowu/log-exporter:${{ env.TAG }}-rust"
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       - uses: docker/build-push-action@v7
         with:
           context: .
           file: app/log_collector/Dockerfile
           tags: "neowu/log-collector:${{ env.TAG }}-rust"
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       - uses: docker/build-push-action@v7
         with:
           context: .
           file: app/log_processor/Dockerfile
           tags: "neowu/log-processor:${{ env.TAG }}-rust"
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
