@@ -4,6 +4,7 @@ use std::time::Duration;
 
 pub use cond::Cond;
 pub use field::Field;
+use framework::console;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log::metrics::Metrics;
@@ -77,6 +78,7 @@ pub struct DbConfig {
 
 impl Database {
     pub fn new(config: DbConfig) -> Result<Self, Exception> {
+        console!("create database client, uri={}, user={}", config.uri, config.user);
         let mut postgres_config =
             Config::from_str(&config.uri).map_err(|err| exception!("failed to parse postgres uri", source = err))?;
         postgres_config.user(config.user);

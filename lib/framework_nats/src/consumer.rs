@@ -99,6 +99,8 @@ where
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
         let Self { url, stream, durable, handlers, config } = self;
+        let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
+        console!("start nats consumer, url={url}, stream={stream}, subjects={subjects:?}");
 
         let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
         let context = jetstream::new(connection);
@@ -106,9 +108,6 @@ where
             .get_stream(stream)
             .await
             .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
-
-        let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
-        console!("nats consumer started, stream={stream}, subjects={subjects:?}");
 
         let consumer = stream_handle
             .get_or_create_consumer(

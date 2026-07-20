@@ -7,6 +7,7 @@ use clickhouse::RowRead;
 use clickhouse::RowWrite;
 use clickhouse::query::Query;
 use clickhouse::sql;
+use framework::console;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log;
@@ -44,6 +45,7 @@ pub struct ClickHouse {
 
 impl ClickHouse {
     pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
+        console!("create clickhouse client, uri={uri}, user={user}");
         // async_insert lets the server batch writes; wait_for_async_insert=0 returns once buffered, not flushed.
         // inserts added later inherit these settings from the shared client.
         let client = Client::default()

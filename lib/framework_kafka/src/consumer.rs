@@ -131,19 +131,22 @@ where
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
-        let handlers = self.handlers;
-        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer"); // fail fast on startup
-        let topics: Vec<&str> = handlers.keys().copied().collect();
-        consumer.subscribe(&topics).expect("failed to subscribe topic"); // fail fast on startup
+        let topics: Vec<&str> = self.handlers.keys().copied().collect();
+        console!(
+            "start kafka consumer, broker={}, topics={:?}",
+            self.config.get("bootstrap.servers").expect("broker must not be null"),
+            topics
+        );
 
-        console!("kafka consumer started, topics={:?}", topics);
+        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer"); // fail fast on startup
+        consumer.subscribe(&topics).expect("failed to subscribe topic"); // fail fast on startup
 
         loop {
             match poll_message_groups(&consumer, self.poll_max_wait_time, self.poll_max_records) {
                 Ok(topic_messages) => {
                     let mut handles = Vec::with_capacity(topic_messages.len());
                     for (topic, messages) in topic_messages {
-                        if let Some(handler) = handlers.get(topic.as_str()) {
+                        if let Some(handler) = self.handlers.get(topic.as_str()) {
                             handles.push(tokio::spawn(handler(state.clone(), messages)));
                         }
                     }

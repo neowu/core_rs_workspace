@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use async_nats::HeaderMap;
 use async_nats::jetstream;
 use async_nats::jetstream::Context;
+use framework::console;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
@@ -23,6 +24,7 @@ pub struct Producer {
 impl Producer {
     // client usually be env!("CARGO_BIN_NAME")
     pub async fn new(url: String, client: &'static str) -> Self {
+        console!("create nats producer, url={url}");
         let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
         Self { jetstream: jetstream::new(connection), client }
     }

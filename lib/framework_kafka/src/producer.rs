@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use chrono::Utc;
+use framework::console;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
@@ -27,6 +28,7 @@ pub struct Producer {
 impl Producer {
     // client usually be env!("CARGO_BIN_NAME")
     pub fn new(bootstrap_servers: String, client: &'static str) -> Self {
+        console!("create kafka producer, broker={bootstrap_servers}");
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_servers)
             .set("message.timeout.ms", "5000")
