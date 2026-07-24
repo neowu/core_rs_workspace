@@ -55,10 +55,6 @@ pub trait Insert {
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Entity {
-    type Id;
-    fn __id_conditions(ids: &Self::Id) -> Vec<Cond<'_, Self>>
-    where
-        Self: Sized;
     fn __table_name() -> &'static str;
     fn __select_sql() -> &'static str;
 }

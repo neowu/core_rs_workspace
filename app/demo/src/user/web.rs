@@ -46,7 +46,7 @@ impl UserService for UserServiceImpl {
     async fn get_by_name(&self, request: GetUserByNameRequest) -> Result<Option<GetUserResponse>, Exception> {
         request.validate()?;
 
-        let user = repository::select_one(&self.state.db, vec![User::FIELD_NAME.eq(&request.name)]).await?;
+        let user = repository::select_one(&self.state.db, vec![User::FIELD_NAME.eq(request.name)]).await?;
 
         Ok(user.map(|user| GetUserResponse { id: user.id, name: user.name, rating: user.rating, tags: user.tags.0 }))
     }
@@ -59,7 +59,7 @@ impl UserService for UserServiceImpl {
         if let Some(tags) = request.tags {
             updates.push(User::FIELD_TAGS.update(Json(tags)));
         }
-        repository::update(&self.state.db, &request.id, updates).await?;
+        repository::update(&self.state.db, updates, vec![User::FIELD_ID.eq(request.id)]).await?;
         Ok(())
     }
 

@@ -28,26 +28,26 @@ pub async fn main() -> Result<(), Exception> {
 
         // let profile = UserProfile { id1: "id1".to_string(), id2: Uuid::now_v7(), name: "neo".to_string() };
         // db::repository::insert(&db, &profile).await?;
-        let user = repository::get::<User>(&db, &Uuid::from_str("019dd6c2-3fe8-7501-a1a0-e69dc7c60346")?).await?;
+        let user = repository::select_one::<User>(
+            &db,
+            vec![User::FIELD_ID.eq(Uuid::from_str("019dd6c2-3fe8-7501-a1a0-e69dc7c60346")?)],
+        )
+        .await?;
         log!("{user:?}");
 
         let users = repository::select_all::<User>(
             &db,
             vec![
-                User::FIELD_NAME.is_in(vec![&"neo".to_owned(), &"neo2".to_owned()]),
-                User::FIELD_NAME.eq(&"neo".to_owned()),
+                User::FIELD_NAME.is_in(vec!["neo".to_owned(), "neo2".to_owned()]),
+                User::FIELD_NAME.eq("neo".to_owned()),
                 User::FIELD_NAME.not_null(),
             ],
         )
         .await?;
         log!("{users:?}");
 
-        repository::update_all(
-            &db,
-            vec![User::FIELD_RATING.update(Some(3))],
-            vec![User::FIELD_NAME.eq(&"neo".to_owned())],
-        )
-        .await?;
+        repository::update(&db, vec![User::FIELD_RATING.update(Some(3))], vec![User::FIELD_NAME.eq("neo".to_owned())])
+            .await?;
 
         // let user = db::select_one::<User>(&db, r#"SELECT * from "user" where id = $1"#, &[&11]).await?;
 

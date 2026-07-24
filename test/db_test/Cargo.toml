@@ -8,3 +8,4 @@ framework = { workspace = true }
 framework_db = { workspace = true }
 framework_macro = { workspace = true }
 tokio.workspace = true
+uuid.workspace = true

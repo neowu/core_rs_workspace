@@ -39,7 +39,6 @@ async fn data_type() {
 
         let clickhouse = client(Some(db));
 
-
         let time = DateTime64::from(Utc.with_ymd_and_hms(2026, 7, 16, 8, 30, 45).unwrap() + TimeDelta::milliseconds(123));
         let entities = [
             DataTypeEntity {

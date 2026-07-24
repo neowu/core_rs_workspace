@@ -20,7 +20,7 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// Derive `framework_db::Entity<T>` for a struct.
+/// Derive `framework_db::Entity` for a struct, plus a `FIELD_<NAME>` const per column.
 /// struct attributes
 /// ```
 /// #[table(name = "table_name")]

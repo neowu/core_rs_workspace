@@ -8,7 +8,7 @@
 
 # TODO
 
-- db entity generation Fields must be pub? better way
+- api client generation print url on creation
 
 # Thoughts on AI era
 

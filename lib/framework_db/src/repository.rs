@@ -67,14 +67,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
     Ok(id)
 }
 
-pub async fn get<T>(database: &Database, id: &T::Id) -> Result<Option<T>, Exception>
-where
-    T: Entity + FromRow,
-{
-    select_one(database, T::__id_conditions(id)).await
-}
-
-pub async fn select_one<T>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<Option<T>, Exception>
+pub async fn select_one<T>(database: &Database, conditions: Vec<Cond<T>>) -> Result<Option<T>, Exception>
 where
     T: Entity + FromRow,
 {
@@ -82,7 +75,7 @@ where
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = T::__select_sql().to_owned();
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(conditions, &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
     log!("select_one, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
@@ -90,7 +83,7 @@ where
     row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
 }
 
-pub async fn select_all<T>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<Vec<T>, Exception>
+pub async fn select_all<T>(database: &Database, conditions: Vec<Cond<T>>) -> Result<Vec<T>, Exception>
 where
     T: Entity + FromRow,
 {
@@ -98,7 +91,7 @@ where
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = T::__select_sql().to_owned();
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(conditions, &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
     log!("select, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.query(&statement, &params), database.query_timeout).await?;
@@ -109,35 +102,10 @@ where
         .map_err(|err| exception!("failed to map row", source = err))
 }
 
-pub async fn update_with_condition<T: Entity>(
-    database: &Database,
-    id: &T::Id,
-    updates: Vec<Update<T>>,
-    mut conditions: Vec<Cond<'_, T>>,
-) -> Result<bool, Exception> {
-    let _span = span!("db");
-    let mut conn = database.pool.get_with_timeout().await?;
-    let mut sql = format!("UPDATE \"{}\"", T::__table_name());
-    let mut params: Vec<&QueryParam> = vec![];
-    let mut param_index = 1;
-    build_update(&updates, &mut sql, &mut params, &mut param_index);
-    conditions.extend(T::__id_conditions(id));
-    build_conditions(conditions, &mut sql, &mut params, &mut param_index);
-    log!("update, sql={sql}, params={params:?}");
-    let statement = conn.prepared_statement(&sql).await?;
-    let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-    stats!(db_write_rows = rows);
-    Ok(rows == 1)
-}
-
-pub async fn update<T: Entity>(database: &Database, id: &T::Id, updates: Vec<Update<T>>) -> Result<bool, Exception> {
-    update_with_condition(database, id, updates, vec![]).await
-}
-
-pub async fn update_all<T: Entity>(
+pub async fn update<T: Entity>(
     database: &Database,
     updates: Vec<Update<T>>,
-    conditions: Vec<Cond<'_, T>>,
+    conditions: Vec<Cond<T>>,
 ) -> Result<u64, Exception> {
     let _span = span!("db");
     let mut conn = database.pool.get_with_timeout().await?;
@@ -145,34 +113,21 @@ pub async fn update_all<T: Entity>(
     let mut params: Vec<&QueryParam> = vec![];
     let mut param_index = 1;
     build_update(&updates, &mut sql, &mut params, &mut param_index);
-    build_conditions(conditions, &mut sql, &mut params, &mut param_index);
-    log!("update_all, sql={sql}, params={params:?}");
+    build_conditions(&conditions, &mut sql, &mut params, &mut param_index);
+    log!("update, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
     stats!(db_write_rows = rows);
     Ok(rows)
 }
 
-pub async fn delete<T: Entity>(database: &Database, id: &T::Id) -> Result<bool, Exception> {
+pub async fn delete<T: Entity>(database: &Database, conditions: Vec<Cond<T>>) -> Result<u64, Exception> {
     let _span = span!("db");
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = format!("DELETE FROM \"{}\"", T::__table_name());
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(T::__id_conditions(id), &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
     log!("delete, sql={sql}, params={params:?}");
-    let statement = conn.prepared_statement(&sql).await?;
-    let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
-    stats!(db_write_rows = rows);
-    Ok(rows != 0)
-}
-
-pub async fn delete_all<T: Entity>(database: &Database, conditions: Vec<Cond<'_, T>>) -> Result<u64, Exception> {
-    let _span = span!("db");
-    let mut conn = database.pool.get_with_timeout().await?;
-    let mut sql = format!("DELETE FROM \"{}\"", T::__table_name());
-    let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(conditions, &mut sql, &mut params, &mut 1);
-    log!("delete_all, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
     stats!(db_write_rows = rows);

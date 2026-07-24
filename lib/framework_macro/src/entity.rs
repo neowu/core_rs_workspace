@@ -7,7 +7,6 @@ use syn::Visibility;
 
 use crate::model;
 use crate::model::StructModel;
-use crate::util::to_snake_case;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
@@ -15,23 +14,17 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
     let from_row_impl = from_row_impl(&model);
 
-    let insert_impl = if model.has_primary_key {
-        if model.has_auto_increment_primary_key { insert_auto_increment_impl(&model) } else { insert_impl(&model) }
+    // a table without primary key cannot be inserted, since both insert_ignore and upsert need ON CONFLICT
+    let insert_impl = if model.has_auto_increment_primary_key {
+        insert_auto_increment_impl(&model)
+    } else if model.has_primary_key {
+        insert_impl(&model)
     } else {
         quote! {}
     };
 
-    let entity_impl = if model.has_primary_key {
-        entity_impl(&model)
-    } else {
-        quote! {}
-    };
-
-    let fields_impl = if model.has_primary_key {
-        fields_impl(&model)
-    } else {
-        quote! {}
-    };
+    let entity_impl = entity_impl(&model);
+    let fields_impl = fields_impl(&model);
 
     Ok(quote! {
         #from_row_impl
@@ -222,28 +215,10 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     let struct_ident = &model.struct_ident;
     let table = &model.table;
     let all_columns = model.columns.iter().map(|column| column.column.as_str()).collect::<Vec<_>>().join(", ");
-    let primary_key_columns: Vec<_> = model.columns.iter().filter(|column| column.primary_key).collect();
     let select_sql = format!("SELECT {all_columns} FROM \"{table}\"");
-
-    let id_types: Vec<TokenStream> = primary_key_columns.iter().map(|column| column_value_type(column)).collect();
-
-    let (id_type, id_conditions) = if primary_key_columns.len() == 1 {
-        let id_type = id_types.first();
-        let field_const = field_const_ident(primary_key_columns.first().expect("cannot be empty"));
-        (quote! { #id_type }, quote! { vec![#struct_ident::#field_const.eq(ids)] })
-    } else {
-        let id_indices: Vec<_> = (0..primary_key_columns.len()).map(syn::Index::from).collect();
-        let field_consts: Vec<_> = primary_key_columns.iter().map(|c| field_const_ident(c)).collect();
-        (quote! { (#(#id_types,)*) }, quote! { vec![#(#struct_ident::#field_consts.eq(&ids.#id_indices),)*] })
-    };
 
     quote! {
         impl framework_db::Entity for #struct_ident {
-            type Id = #id_type;
-            #[inline]
-            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
-                #id_conditions
-            }
             #[inline]
             fn __table_name() -> &'static str {
                 #table
@@ -263,7 +238,7 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
     let consts = model.columns.iter().map(|column| {
         let const_ident = field_const_ident(column);
         let column_name = &column.column;
-        let value_type = column_value_type(column);
+        let value_type = column_field_type(column);
         quote! {
             #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::new(#column_name);
         }
@@ -278,14 +253,14 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
 
 fn field_const_ident(column: &ColumnModel) -> proc_macro2::Ident {
     proc_macro2::Ident::new(
-        &format!("FIELD_{}", to_snake_case(&column.field_ident.to_string()).to_uppercase()),
+        &format!("FIELD_{}", column.field_ident.to_string().to_uppercase()),
         column.field_ident.span(),
     )
 }
 
-// query value type: an auto-increment primary key stores `Option<i64>` on the struct but is always
-// queried by its assigned `i64`, matching `Entity::Id`.
-fn column_value_type(column: &ColumnModel) -> TokenStream {
+// `Field<E, V>` value type is the field type, except for an auto-increment key: it stores `Option<i64>`
+// only because the id is unassigned before insert, the column itself is never null and is queried by `i64`.
+fn column_field_type(column: &ColumnModel) -> TokenStream {
     let type_str = if column.auto_increment { "i64" } else { column.field_type.as_str() };
     type_str.parse().expect("parse cannot fail")
 }
@@ -340,11 +315,6 @@ mod tests {
                 }
 
                 impl framework_db::Entity for TestEntity {
-                    type Id = i32;
-                    #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
-                        vec![TestEntity::FIELD_ID.eq(ids)]
-                    }
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
@@ -412,14 +382,6 @@ mod tests {
                 }
 
                 impl framework_db::Entity for TestEntity {
-                    type Id = (i32, String,);
-                    #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
-                        vec![
-                            TestEntity::FIELD_ID1.eq(&ids.0),
-                            TestEntity::FIELD_ID2.eq(&ids.1),
-                        ]
-                    }
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
@@ -480,11 +442,6 @@ mod tests {
                 }
 
                 impl framework_db::Entity for TestEntity {
-                    type Id = i64;
-                    #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
-                        vec![TestEntity::FIELD_ID.eq(ids)]
-                    }
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
