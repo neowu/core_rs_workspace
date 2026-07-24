@@ -4,7 +4,6 @@ use axum::Router;
 use chrono::Utc;
 use framework::exception::Exception;
 use framework::validate::Validator as _;
-use framework_db::Field as _;
 use framework_db::Json;
 use framework_db::repository;
 use uuid::Uuid;
@@ -47,7 +46,7 @@ impl UserService for UserServiceImpl {
     async fn get_by_name(&self, request: GetUserByNameRequest) -> Result<Option<GetUserResponse>, Exception> {
         request.validate()?;
 
-        let user = repository::select_one(&self.state.db, vec![User::FIELDS.name.eq(&request.name)]).await?;
+        let user = repository::select_one(&self.state.db, vec![User::FIELD_NAME.eq(&request.name)]).await?;
 
         Ok(user.map(|user| GetUserResponse { id: user.id, name: user.name, rating: user.rating, tags: user.tags.0 }))
     }
@@ -55,10 +54,10 @@ impl UserService for UserServiceImpl {
     async fn update(&self, request: UpdateUserRequest) -> Result<(), Exception> {
         let mut updates = vec![];
         if request.rating.is_some() {
-            updates.push(User::FIELDS.rating.update(request.rating));
+            updates.push(User::FIELD_RATING.update(request.rating));
         }
         if let Some(tags) = request.tags {
-            updates.push(User::FIELDS.tags.update(Json(tags)));
+            updates.push(User::FIELD_TAGS.update(Json(tags)));
         }
         repository::update(&self.state.db, &request.id, updates).await?;
         Ok(())

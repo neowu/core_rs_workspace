@@ -2,8 +2,9 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use cond::Cond;
+pub use field::Cond;
 pub use field::Field;
+pub use field::Update;
 use framework::console;
 use framework::exception;
 use framework::exception::Exception;
@@ -15,16 +16,13 @@ pub use tokio_postgres::Row;
 use tokio_postgres::types::FromSqlOwned;
 pub use tokio_postgres::types::Json;
 pub use tokio_postgres::types::ToSql;
-pub use update::Update;
 
 use crate::connection::ConnectionManager;
 
-mod cond;
 mod connection;
 pub mod database;
 mod field;
 pub mod repository;
-mod update;
 
 pub type QueryParam = dyn ToSql + Sync;
 
@@ -58,8 +56,9 @@ pub trait Insert {
 #[doc(hidden)] // disable auto complete, it's used by framework
 pub trait Entity {
     type Id;
-    type Type;
-    fn __id_conditions(ids: &Self::Id) -> Vec<Cond<'_, Self::Type>>;
+    fn __id_conditions(ids: &Self::Id) -> Vec<Cond<'_, Self>>
+    where
+        Self: Sized;
     fn __table_name() -> &'static str;
     fn __select_sql() -> &'static str;
 }

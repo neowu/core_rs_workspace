@@ -10,10 +10,10 @@ use crate::FromRow;
 use crate::Insert;
 use crate::InsertWithAutoIncrementId;
 use crate::QueryParam;
-use crate::cond::Cond;
-use crate::cond::build_conditions;
-use crate::update::Update;
-use crate::update::build_update;
+use crate::field::Cond;
+use crate::field::Update;
+use crate::field::build_conditions;
+use crate::field::build_update;
 
 pub async fn insert<T: Insert>(database: &Database, entity: &T) -> Result<(), Exception> {
     let _span = span!("db");
@@ -69,7 +69,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
 
 pub async fn get<T>(database: &Database, id: &T::Id) -> Result<Option<T>, Exception>
 where
-    T: Entity<Type = T> + FromRow,
+    T: Entity + FromRow,
 {
     select_one(database, T::__id_conditions(id)).await
 }
@@ -109,7 +109,7 @@ where
         .map_err(|err| exception!("failed to map row", source = err))
 }
 
-pub async fn update_with_condition<T: Entity<Type = T>>(
+pub async fn update_with_condition<T: Entity>(
     database: &Database,
     id: &T::Id,
     updates: Vec<Update<T>>,
@@ -130,11 +130,7 @@ pub async fn update_with_condition<T: Entity<Type = T>>(
     Ok(rows == 1)
 }
 
-pub async fn update<T: Entity<Type = T>>(
-    database: &Database,
-    id: &T::Id,
-    updates: Vec<Update<T>>,
-) -> Result<bool, Exception> {
+pub async fn update<T: Entity>(database: &Database, id: &T::Id, updates: Vec<Update<T>>) -> Result<bool, Exception> {
     update_with_condition(database, id, updates, vec![]).await
 }
 

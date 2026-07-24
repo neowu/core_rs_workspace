@@ -7,7 +7,6 @@ use syn::Visibility;
 
 use crate::model;
 use crate::model::StructModel;
-use crate::util::to_pascal_case;
 use crate::util::to_snake_case;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
@@ -28,8 +27,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
-    let has_non_pk_columns = model.columns.iter().any(|c| !c.primary_key);
-    let fields_impl = if model.has_primary_key && has_non_pk_columns {
+    let fields_impl = if model.has_primary_key {
         fields_impl(&model)
     } else {
         quote! {}
@@ -227,33 +225,23 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     let primary_key_columns: Vec<_> = model.columns.iter().filter(|column| column.primary_key).collect();
     let select_sql = format!("SELECT {all_columns} FROM \"{table}\"");
 
-    let id_types: Vec<proc_macro2::TokenStream> = primary_key_columns
-        .iter()
-        .map(|column| {
-            let field_type = if column.auto_increment { "i64" } else { column.field_type.as_ref() };
-            field_type.parse().expect("parse cannot fail")
-        })
-        .collect();
+    let id_types: Vec<TokenStream> = primary_key_columns.iter().map(|column| column_value_type(column)).collect();
 
     let (id_type, id_conditions) = if primary_key_columns.len() == 1 {
         let id_type = id_types.first();
-        let col = primary_key_columns.first().expect("cannot be empty").column.as_str();
-        (quote! { #id_type }, quote! { vec![framework_db::Cond::eq(#col, ids as &framework_db::QueryParam)] })
+        let field_const = field_const_ident(primary_key_columns.first().expect("cannot be empty"));
+        (quote! { #id_type }, quote! { vec![#struct_ident::#field_const.eq(ids)] })
     } else {
         let id_indices: Vec<_> = (0..primary_key_columns.len()).map(syn::Index::from).collect();
-        let cols: Vec<_> = primary_key_columns.iter().map(|c| c.column.as_str()).collect();
-        (
-            quote! { (#(#id_types,)*) },
-            quote! { vec![#(framework_db::Cond::eq(#cols, &ids.#id_indices as &framework_db::QueryParam),)*] },
-        )
+        let field_consts: Vec<_> = primary_key_columns.iter().map(|c| field_const_ident(c)).collect();
+        (quote! { (#(#id_types,)*) }, quote! { vec![#(#struct_ident::#field_consts.eq(&ids.#id_indices),)*] })
     };
 
     quote! {
         impl framework_db::Entity for #struct_ident {
             type Id = #id_type;
-            type Type = #struct_ident;
             #[inline]
-            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
+            fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
                 #id_conditions
             }
             #[inline]
@@ -271,56 +259,35 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
 fn fields_impl(model: &EntityModel) -> TokenStream {
     let entity = &model.struct_ident;
     let vis = &model.struct_vis;
-    let mod_ident = proc_macro2::Ident::new(&format!("__{}_fields", to_snake_case(&entity.to_string())), entity.span());
 
-    let non_pk_columns: Vec<_> = model.columns.iter().filter(|c| !c.primary_key).collect();
-
-    let field_structs = non_pk_columns.iter().map(|column| {
-        let struct_ident =
-            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
+    let consts = model.columns.iter().map(|column| {
+        let const_ident = field_const_ident(column);
         let column_name = &column.column;
-        let value_type: TokenStream = column.field_type.parse().expect("parse cannot fail");
+        let value_type = column_value_type(column);
         quote! {
-            #[derive(Copy, Clone)]
-            #vis struct #struct_ident;
-            impl framework_db::Field for #struct_ident {
-                const COLUMN: &'static str = #column_name;
-                type Value = #value_type;
-                type Entity = super::#entity;
-            }
+            #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::new(#column_name);
         }
-    });
-
-    let fields_struct_members = non_pk_columns.iter().map(|column| {
-        let field_ident = &column.field_ident;
-        let struct_ident =
-            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
-        quote! { #vis #field_ident: #struct_ident, }
-    });
-
-    let fields_struct_init = non_pk_columns.iter().map(|column| {
-        let field_ident = &column.field_ident;
-        let struct_ident =
-            proc_macro2::Ident::new(&to_pascal_case(&column.field_ident.to_string()), column.field_ident.span());
-        quote! { #field_ident: #mod_ident::#struct_ident, }
     });
 
     quote! {
-        #[doc(hidden)]
-        #vis mod #mod_ident {
-            use super::*;
-            #(#field_structs)*
-            #[derive(Copy, Clone)]
-            #vis struct Fields {
-                #(#fields_struct_members)*
-            }
-        }
         impl #entity {
-            #vis const FIELDS: #mod_ident::Fields = #mod_ident::Fields {
-                #(#fields_struct_init)*
-            };
+            #(#consts)*
         }
     }
+}
+
+fn field_const_ident(column: &ColumnModel) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(
+        &format!("FIELD_{}", to_snake_case(&column.field_ident.to_string()).to_uppercase()),
+        column.field_ident.span(),
+    )
+}
+
+// query value type: an auto-increment primary key stores `Option<i64>` on the struct but is always
+// queried by its assigned `i64`, matching `Entity::Id`.
+fn column_value_type(column: &ColumnModel) -> TokenStream {
+    let type_str = if column.auto_increment { "i64" } else { column.field_type.as_str() };
+    type_str.parse().expect("parse cannot fail")
 }
 
 #[cfg(test)]
@@ -374,10 +341,9 @@ mod tests {
 
                 impl framework_db::Entity for TestEntity {
                     type Id = i32;
-                    type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
-                        vec![framework_db::Cond::eq("id", ids as &framework_db::QueryParam)]
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
+                        vec![TestEntity::FIELD_ID.eq(ids)]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {
@@ -389,25 +355,9 @@ mod tests {
                     }
                 }
 
-                #[doc(hidden)]
-                mod __test_entity_fields {
-                    use super::*;
-                    #[derive(Copy, Clone)]
-                    struct Col1;
-                    impl framework_db::Field for Col1 {
-                        const COLUMN: &'static str = "col1";
-                        type Value = String;
-                        type Entity = super::TestEntity;
-                    }
-                    #[derive(Copy, Clone)]
-                    struct Fields {
-                        col1: Col1,
-                    }
-                }
                 impl TestEntity {
-                    const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
-                        col1: __test_entity_fields::Col1,
-                    };
+                    const FIELD_ID: framework_db::Field<TestEntity, i32> = framework_db::Field::new("id");
+                    const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
                 }
             }
             .to_string()
@@ -463,12 +413,11 @@ mod tests {
 
                 impl framework_db::Entity for TestEntity {
                     type Id = (i32, String,);
-                    type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
                         vec![
-                            framework_db::Cond::eq("id1", &ids.0 as &framework_db::QueryParam),
-                            framework_db::Cond::eq("id2", &ids.1 as &framework_db::QueryParam),
+                            TestEntity::FIELD_ID1.eq(&ids.0),
+                            TestEntity::FIELD_ID2.eq(&ids.1),
                         ]
                     }
                     #[inline]
@@ -481,25 +430,10 @@ mod tests {
                     }
                 }
 
-                #[doc(hidden)]
-                pub mod __test_entity_fields {
-                    use super::*;
-                    #[derive(Copy, Clone)]
-                    pub struct Col1;
-                    impl framework_db::Field for Col1 {
-                        const COLUMN: &'static str = "col1";
-                        type Value = String;
-                        type Entity = super::TestEntity;
-                    }
-                    #[derive(Copy, Clone)]
-                    pub struct Fields {
-                        pub col1: Col1,
-                    }
-                }
                 impl TestEntity {
-                    pub const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
-                        col1: __test_entity_fields::Col1,
-                    };
+                    pub const FIELD_ID1: framework_db::Field<TestEntity, i32> = framework_db::Field::new("id1");
+                    pub const FIELD_ID2: framework_db::Field<TestEntity, String> = framework_db::Field::new("id2");
+                    pub const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
                 }
             }
             .to_string()
@@ -547,10 +481,9 @@ mod tests {
 
                 impl framework_db::Entity for TestEntity {
                     type Id = i64;
-                    type Type = TestEntity;
                     #[inline]
-                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self::Type>> {
-                        vec![framework_db::Cond::eq("id", ids as &framework_db::QueryParam)]
+                    fn __id_conditions(ids: &Self::Id) -> ::std::vec::Vec<framework_db::Cond<'_, Self>> {
+                        vec![TestEntity::FIELD_ID.eq(ids)]
                     }
                     #[inline]
                     fn __table_name() -> &'static str {
@@ -562,25 +495,9 @@ mod tests {
                     }
                 }
 
-                #[doc(hidden)]
-                mod __test_entity_fields {
-                    use super::*;
-                    #[derive(Copy, Clone)]
-                    struct Col1;
-                    impl framework_db::Field for Col1 {
-                        const COLUMN: &'static str = "col1";
-                        type Value = Option<String>;
-                        type Entity = super::TestEntity;
-                    }
-                    #[derive(Copy, Clone)]
-                    struct Fields {
-                        col1: Col1,
-                    }
-                }
                 impl TestEntity {
-                    const FIELDS: __test_entity_fields::Fields = __test_entity_fields::Fields {
-                        col1: __test_entity_fields::Col1,
-                    };
+                    const FIELD_ID: framework_db::Field<TestEntity, i64> = framework_db::Field::new("id");
+                    const FIELD_COL1: framework_db::Field<TestEntity, Option<String> > = framework_db::Field::new("col1");
                 }
             }
             .to_string()

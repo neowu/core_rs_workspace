@@ -7,7 +7,6 @@ use framework::load_config;
 use framework::log;
 use framework::warn;
 use framework_db::DbConfig;
-use framework_db::Field;
 use framework_db::database;
 use framework_db::repository;
 use uuid::Uuid;
@@ -35,9 +34,9 @@ pub async fn main() -> Result<(), Exception> {
         let users = repository::select_all::<User>(
             &db,
             vec![
-                User::FIELDS.name.is_in(vec![&"neo".to_owned(), &"neo2".to_owned()]),
-                User::FIELDS.name.eq(&"neo".to_owned()),
-                User::FIELDS.name.not_null(),
+                User::FIELD_NAME.is_in(vec![&"neo".to_owned(), &"neo2".to_owned()]),
+                User::FIELD_NAME.eq(&"neo".to_owned()),
+                User::FIELD_NAME.not_null(),
             ],
         )
         .await?;
@@ -45,8 +44,8 @@ pub async fn main() -> Result<(), Exception> {
 
         repository::update_all(
             &db,
-            vec![User::FIELDS.rating.update(Some(3))],
-            vec![User::FIELDS.name.eq(&"neo".to_owned())],
+            vec![User::FIELD_RATING.update(Some(3))],
+            vec![User::FIELD_NAME.eq(&"neo".to_owned())],
         )
         .await?;
 
