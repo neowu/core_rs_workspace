@@ -19,7 +19,7 @@ impl<E, V: ToSql + Sync + Send + 'static> Field<E, V> {
 
     #[inline]
     pub const fn not_null(&self) -> Cond<E> {
-        Cond { inner: CondInner::NotNull { column: self.column }, _entity: PhantomData }
+        Cond { column: self.column, inner: CondInner::NotNull, _entity: PhantomData }
     }
 
     #[inline]
@@ -29,30 +29,27 @@ impl<E, V: ToSql + Sync + Send + 'static> Field<E, V> {
 
     #[inline]
     pub fn eq(&self, value: V) -> Cond<E> {
-        Cond { inner: CondInner::Eq { column: self.column, value: Box::new(value) }, _entity: PhantomData }
+        Cond { column: self.column, inner: CondInner::Eq(Box::new(value)), _entity: PhantomData }
     }
 
     #[inline]
     pub fn is_in(&self, values: Vec<V>) -> Cond<E> {
-        Cond {
-            inner: CondInner::In {
-                column: self.column,
-                values: values.into_iter().map(|value| Box::new(value) as Box<dyn ToSql + Sync + Send>).collect(),
-            },
-            _entity: PhantomData,
-        }
+        let values =
+            values.into_iter().map(|value| Box::new(value) as Box<dyn ToSql + Sync + Send + 'static>).collect();
+        Cond { column: self.column, inner: CondInner::In(values), _entity: PhantomData }
     }
 }
 
 pub struct Cond<E> {
+    column: &'static str,
     inner: CondInner,
     _entity: PhantomData<E>,
 }
 
 enum CondInner {
-    Eq { column: &'static str, value: Box<dyn ToSql + Sync + Send> },
-    In { column: &'static str, values: Vec<Box<dyn ToSql + Sync + Send>> },
-    NotNull { column: &'static str },
+    Eq(Box<dyn ToSql + Sync + Send + 'static>),
+    In(Vec<Box<dyn ToSql + Sync + Send + 'static>>),
+    NotNull,
 }
 
 pub(crate) fn build_conditions<'a, T>(
@@ -67,13 +64,14 @@ pub(crate) fn build_conditions<'a, T>(
         } else {
             sql.push_str(" AND ");
         }
+        let column = cond.column;
         match cond.inner {
-            CondInner::Eq { column, ref value } => {
+            CondInner::Eq(ref value) => {
                 write_str!(sql, "{column} = ${param_index}");
                 *param_index += 1;
                 params.push(value.as_ref());
             }
-            CondInner::In { column, ref values } => {
+            CondInner::In(ref values) => {
                 write_str!(sql, "{column} IN (");
                 for (i, _) in values.iter().enumerate() {
                     if i > 0 {
@@ -86,7 +84,7 @@ pub(crate) fn build_conditions<'a, T>(
 
                 params.extend(values.iter().map(|v| v.as_ref() as &QueryParam));
             }
-            CondInner::NotNull { column } => {
+            CondInner::NotNull => {
                 write_str!(sql, "{column} IS NOT NULL");
             }
         }
@@ -95,7 +93,7 @@ pub(crate) fn build_conditions<'a, T>(
 
 pub struct Update<E> {
     column: &'static str,
-    value: Box<dyn ToSql + Sync + Send>,
+    value: Box<dyn ToSql + Sync + Send + 'static>,
     _entity: PhantomData<E>,
 }
 
@@ -121,37 +119,13 @@ pub(crate) fn build_update<'a, T>(
 mod tests {
     use super::*;
 
-    struct E;
+    struct TestEntity;
 
-    fn eq<V>(column: &'static str, value: V) -> Cond<E>
-    where
-        V: ToSql + Sync + Send + 'static,
-    {
-        Cond { inner: CondInner::Eq { column, value: Box::new(value) }, _entity: PhantomData }
-    }
-
-    fn is_in<V>(column: &'static str, values: Vec<V>) -> Cond<E>
-    where
-        V: ToSql + Sync + Send + 'static,
-    {
-        Cond {
-            inner: CondInner::In {
-                column,
-                values: values.into_iter().map(|value| Box::new(value) as Box<dyn ToSql + Sync + Send>).collect(),
-            },
-            _entity: PhantomData,
-        }
-    }
-
-    fn not_null(column: &'static str) -> Cond<E> {
-        Cond { inner: CondInner::NotNull { column }, _entity: PhantomData }
-    }
-
-    fn update<V>(column: &'static str, value: V) -> Update<E>
-    where
-        V: ToSql + Sync + Send + 'static,
-    {
-        Update { column, value: Box::new(value), _entity: PhantomData }
+    impl TestEntity {
+        const FIELD_ID: Field<TestEntity, i64> = Field::new("id");
+        const FIELD_COL1: Field<TestEntity, String> = Field::new("col1");
+        const FIELD_COL2: Field<TestEntity, i32> = Field::new("col2");
+        const FIELD_COL3: Field<TestEntity, Option<String>> = Field::new("col3");
     }
 
     #[test]
@@ -159,7 +133,7 @@ mod tests {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
         let conditions = vec![];
-        build_conditions::<E>(&conditions, &mut sql, &mut params, &mut 1);
+        build_conditions::<TestEntity>(&conditions, &mut sql, &mut params, &mut 1);
         assert_eq!(sql, "SELECT 1");
         assert!(params.is_empty());
     }
@@ -168,7 +142,7 @@ mod tests {
     fn build_conditions_in() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
-        let conditions = vec![is_in("id", vec![1, 2, 3])];
+        let conditions = vec![TestEntity::FIELD_ID.is_in(vec![1, 2, 3])];
         build_conditions(&conditions, &mut sql, &mut params, &mut 1);
         assert_eq!(sql, "SELECT 1 WHERE id IN ($1, $2, $3)");
         assert_eq!(params.len(), 3);
@@ -178,9 +152,13 @@ mod tests {
     fn build_conditions_multiple() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
-        let conditions = vec![eq("id", 10), eq("name", "name"), not_null("deleted_at")];
+        let conditions = vec![
+            TestEntity::FIELD_ID.eq(10),
+            TestEntity::FIELD_COL1.eq("value".to_owned()),
+            TestEntity::FIELD_COL3.not_null(),
+        ];
         build_conditions(&conditions, &mut sql, &mut params, &mut 1);
-        assert_eq!(sql, "SELECT 1 WHERE id = $1 AND name = $2 AND deleted_at IS NOT NULL");
+        assert_eq!(sql, "SELECT 1 WHERE id = $1 AND col1 = $2 AND col3 IS NOT NULL");
         assert_eq!(params.len(), 2);
     }
 
@@ -189,34 +167,35 @@ mod tests {
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
-        let updates = vec![update("col1", 99)];
+        let updates = vec![TestEntity::FIELD_COL2.update(99)];
         build_update(&updates, &mut sql, &mut params, &mut index);
-        let conditions = vec![eq("id", 10)];
+        let conditions = vec![TestEntity::FIELD_ID.eq(10)];
         build_conditions(&conditions, &mut sql, &mut params, &mut index);
-        assert_eq!(sql, "UPDATE t SET col1 = $1 WHERE id = $2");
+        assert_eq!(sql, "UPDATE t SET col2 = $1 WHERE id = $2");
         assert_eq!(params.len(), 2);
     }
 
     #[test]
     fn build_update_single() {
-        let updates = vec![update("col1", 42)];
+        let updates = vec![TestEntity::FIELD_COL2.update(42)];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
         build_update(&updates, &mut sql, &mut params, &mut index);
-        assert_eq!(sql, "UPDATE t SET col1 = $1");
+        assert_eq!(sql, "UPDATE t SET col2 = $1");
         assert_eq!(index, 2);
         assert_eq!(params.len(), 1);
     }
 
     #[test]
     fn build_update_multiple() {
-        let updates = vec![update("col1", 1), update("col2", "value")];
+        // a nullable column is set to NULL with update(None)
+        let updates = vec![TestEntity::FIELD_COL1.update("value".to_owned()), TestEntity::FIELD_COL3.update(None)];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
         build_update(&updates, &mut sql, &mut params, &mut index);
-        assert_eq!(sql, "UPDATE t SET col1 = $1, col2 = $2");
+        assert_eq!(sql, "UPDATE t SET col1 = $1, col3 = $2");
         assert_eq!(index, 3);
         assert_eq!(params.len(), 2);
     }

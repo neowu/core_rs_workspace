@@ -148,20 +148,25 @@ async fn composite_id_entity() {
         create_composite_table(&db).await?;
 
         let uuid = Uuid::now_v7();
-        let entity = CompositeIdEntity { id1: 1, id2: "a".to_owned(), uuid_col: uuid, bool_col: true };
-        // Cond is not reusable across queries, so build the composite key conditions on each call
-        let id = || vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("a".to_owned())];
+        let entity = CompositeIdEntity { id1: 1, id2: "id".to_owned(), uuid_col: uuid, bool_col: true };
 
         // insert
         repository::insert(&db, &entity).await?;
 
         // select by composite primary key
-        assert_eq!(repository::select_one(&db, id()).await?, Some(entity));
+        assert_eq!(
+            repository::select_one(
+                &db,
+                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
+            )
+            .await?,
+            Some(entity)
+        );
 
         // insert_ignore on conflict returns false (already present)
         let inserted = repository::insert_ignore(
             &db,
-            &CompositeIdEntity { id1: 1, id2: "a".to_owned(), uuid_col: uuid, bool_col: false },
+            &CompositeIdEntity { id1: 1, id2: "id".to_owned(), uuid_col: uuid, bool_col: false },
         )
         .await?;
         assert!(!inserted);
@@ -169,7 +174,7 @@ async fn composite_id_entity() {
         // upsert existing row -> update, returns false (not inserted)
         let inserted = repository::upsert(
             &db,
-            &CompositeIdEntity { id1: 1, id2: "a".to_owned(), uuid_col: uuid, bool_col: false },
+            &CompositeIdEntity { id1: 1, id2: "id".to_owned(), uuid_col: uuid, bool_col: false },
         )
         .await?;
         assert!(!inserted);
@@ -183,17 +188,44 @@ async fn composite_id_entity() {
         assert!(inserted);
 
         // update
-        let updated = repository::update(&db, vec![CompositeIdEntity::FIELD_BOOL_COL.update(true)], id()).await?;
+        let updated = repository::update(
+            &db,
+            vec![CompositeIdEntity::FIELD_BOOL_COL.update(true)],
+            vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())],
+        )
+        .await?;
         assert_eq!(updated, 1);
-        assert_eq!(repository::select_one(&db, id()).await?.map(|e| e.bool_col), Some(true));
+        assert_eq!(
+            repository::select_one(
+                &db,
+                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
+            )
+            .await?
+            .map(|e| e.bool_col),
+            Some(true)
+        );
 
         // select_all
         let rows = repository::select_all::<CompositeIdEntity>(&db, vec![]).await?;
         assert_eq!(rows.len(), 2);
 
         // delete
-        assert_eq!(repository::delete(&db, id()).await?, 1);
-        assert_eq!(repository::select_one(&db, id()).await?, None);
+        assert_eq!(
+            repository::delete(
+                &db,
+                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
+            )
+            .await?,
+            1
+        );
+        assert_eq!(
+            repository::select_one(
+                &db,
+                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
+            )
+            .await?,
+            None
+        );
 
         // delete remaining
         let deleted = repository::delete::<CompositeIdEntity>(&db, vec![]).await?;
