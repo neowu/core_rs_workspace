@@ -16,15 +16,15 @@ pub mod web;
 pub struct User {
     #[primary_key]
     #[column(name = "id")]
-    id: Uuid,
+    pub id: Uuid,
     #[column(name = "name")]
-    name: String,
+    pub name: String,
     #[column(name = "rating")]
-    rating: Option<i32>,
+    pub rating: Option<i32>,
     #[column(name = "tags")]
-    tags: Json<Vec<String>>,
+    pub tags: Json<Vec<String>>,
     #[column(name = "created_date")]
-    created_date: DateTime<Utc>,
+    pub created_date: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

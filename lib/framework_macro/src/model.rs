@@ -21,7 +21,6 @@ use syn::token::Comma;
 
 pub(crate) struct StructModel {
     pub(crate) ident: Ident,
-    pub(crate) vis: Visibility,
     attrs: Vec<AttributeModel>,
     pub(crate) fields: Vec<FieldModel>,
 }
@@ -37,6 +36,7 @@ impl StructModel {
 
 pub(crate) struct FieldModel {
     pub(crate) ident: Ident,
+    pub(crate) vis: Visibility,
     pub(crate) field_type: String,
     attrs: Vec<AttributeModel>,
 }
@@ -116,7 +116,6 @@ impl AttributeModel {
 pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
     let ast: DeriveInput = parse2(tokens)?;
     let ident = ast.ident;
-    let vis = ast.vis;
     let attrs = ast.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
 
     let fields: Punctuated<Field, Comma> = if let Struct(data_struct) = ast.data {
@@ -135,11 +134,11 @@ pub(crate) fn parse_struct(tokens: TokenStream) -> Result<StructModel> {
             let field_ident = field.ident.expect("field must be named");
             let field_attrs = field.attrs.into_iter().map(|attr| AttributeModel { attr }).collect();
             let field_type = field.ty.to_token_stream().to_string().replace(' ', "");
-            FieldModel { ident: field_ident, field_type, attrs: field_attrs }
+            FieldModel { ident: field_ident, vis: field.vis, field_type, attrs: field_attrs }
         })
         .collect();
 
-    Ok(StructModel { ident, vis, attrs, fields })
+    Ok(StructModel { ident, attrs, fields })
 }
 
 #[cfg(test)]

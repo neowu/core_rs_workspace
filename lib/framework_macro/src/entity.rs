@@ -36,7 +36,6 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
 struct EntityModel {
     struct_ident: Ident,
-    struct_vis: Visibility,
     table: String,
     columns: Vec<ColumnModel>,
     has_primary_key: bool,
@@ -46,6 +45,7 @@ struct EntityModel {
 struct ColumnModel {
     field_ident: Ident,
     field_type: String,
+    field_vis: Visibility,
     column: String,
     primary_key: bool,
     auto_increment: bool,
@@ -96,6 +96,7 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
         columns.push(ColumnModel {
             field_ident: field.ident,
             field_type: field.field_type,
+            field_vis: field.vis,
             column,
             primary_key,
             auto_increment,
@@ -104,7 +105,6 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
 
     Ok(EntityModel {
         struct_ident: model.ident,
-        struct_vis: model.vis,
         table,
         columns,
         has_primary_key: primary_key_fields > 0,
@@ -233,12 +233,12 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
 
 fn fields_impl(model: &EntityModel) -> TokenStream {
     let entity = &model.struct_ident;
-    let vis = &model.struct_vis;
 
     let consts = model.columns.iter().map(|column| {
         let const_ident = field_const_ident(column);
         let column_name = &column.column;
         let value_type = column_field_type(column);
+        let vis = &column.field_vis;
         quote! {
             #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::new(#column_name);
         }
@@ -342,10 +342,10 @@ mod tests {
             pub struct TestEntity {
                 #[primary_key]
                 #[column(name = "id1")]
-                id1: i32,
+                pub id1: i32,
                 #[primary_key]
                 #[column(name = "id2")]
-                id2: String,
+                pub(crate) id2: String,
                 #[column(name = "col1")]
                 col1: String,
             }
@@ -394,8 +394,8 @@ mod tests {
 
                 impl TestEntity {
                     pub const FIELD_ID1: framework_db::Field<TestEntity, i32> = framework_db::Field::new("id1");
-                    pub const FIELD_ID2: framework_db::Field<TestEntity, String> = framework_db::Field::new("id2");
-                    pub const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
+                    pub(crate) const FIELD_ID2: framework_db::Field<TestEntity, String> = framework_db::Field::new("id2");
+                    const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
                 }
             }
             .to_string()
