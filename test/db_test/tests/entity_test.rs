@@ -83,7 +83,7 @@ async fn auto_increment_id_entity() {
         assert!(id > 0);
 
         // get by primary key
-        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id)]).await?;
+        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::ID.eq(id)]).await?;
         assert_eq!(
             entity,
             Some(AutoIncrementIdEntity { id: Some(id), text_col: Some("hello".to_owned()), decimal_col: 1.5 })
@@ -97,44 +97,43 @@ async fn auto_increment_id_entity() {
         .await?;
 
         // select_all with a condition
-        let rows = repository::select_all(&db, vec![AutoIncrementIdEntity::FIELD_TEXT_COL.not_null()]).await?;
+        let rows = repository::select_all(&db, vec![AutoIncrementIdEntity::TEXT_COL.not_null()]).await?;
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, Some(id));
 
         let rows =
-            repository::select_all(&db, vec![AutoIncrementIdEntity::FIELD_TEXT_COL.eq(Some("hello".to_owned()))])
-                .await?;
+            repository::select_all(&db, vec![AutoIncrementIdEntity::TEXT_COL.eq(Some("hello".to_owned()))]).await?;
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, Some(id));
 
         // update
         let updated = repository::update(
             &db,
-            vec![AutoIncrementIdEntity::FIELD_TEXT_COL.update(Some("world".to_owned()))],
-            vec![AutoIncrementIdEntity::FIELD_ID.eq(id)],
+            vec![AutoIncrementIdEntity::TEXT_COL.update(Some("world".to_owned()))],
+            vec![AutoIncrementIdEntity::ID.eq(id)],
         )
         .await?;
         assert_eq!(updated, 1);
 
-        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id)]).await?;
+        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::ID.eq(id)]).await?;
         assert_eq!(entity.and_then(|e| e.text_col), Some("world".to_owned()));
 
         // a nullable column is set to NULL with update(None)
         let updated = repository::update(
             &db,
-            vec![AutoIncrementIdEntity::FIELD_TEXT_COL.update(None)],
-            vec![AutoIncrementIdEntity::FIELD_ID.eq(id)],
+            vec![AutoIncrementIdEntity::TEXT_COL.update(None)],
+            vec![AutoIncrementIdEntity::ID.eq(id)],
         )
         .await?;
         assert_eq!(updated, 1);
 
-        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id)]).await?;
+        let entity = repository::select_one(&db, vec![AutoIncrementIdEntity::ID.eq(id)]).await?;
         assert_eq!(entity.and_then(|e| e.text_col), None);
 
         // delete
-        assert_eq!(repository::delete(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id)]).await?, 1);
-        assert_eq!(repository::delete(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id2)]).await?, 1);
-        assert_eq!(repository::select_one(&db, vec![AutoIncrementIdEntity::FIELD_ID.eq(id)]).await?, None);
+        assert_eq!(repository::delete(&db, vec![AutoIncrementIdEntity::ID.eq(id)]).await?, 1);
+        assert_eq!(repository::delete(&db, vec![AutoIncrementIdEntity::ID.eq(id2)]).await?, 1);
+        assert_eq!(repository::select_one(&db, vec![AutoIncrementIdEntity::ID.eq(id)]).await?, None);
 
         Ok(())
     })
@@ -155,11 +154,8 @@ async fn composite_id_entity() {
 
         // select by composite primary key
         assert_eq!(
-            repository::select_one(
-                &db,
-                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
-            )
-            .await?,
+            repository::select_one(&db, vec![CompositeIdEntity::ID1.eq(1), CompositeIdEntity::ID2.eq("id".to_owned())])
+                .await?,
             Some(entity)
         );
 
@@ -190,18 +186,15 @@ async fn composite_id_entity() {
         // update
         let updated = repository::update(
             &db,
-            vec![CompositeIdEntity::FIELD_BOOL_COL.update(true)],
-            vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())],
+            vec![CompositeIdEntity::BOOL_COL.update(true)],
+            vec![CompositeIdEntity::ID1.eq(1), CompositeIdEntity::ID2.eq("id".to_owned())],
         )
         .await?;
         assert_eq!(updated, 1);
         assert_eq!(
-            repository::select_one(
-                &db,
-                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
-            )
-            .await?
-            .map(|e| e.bool_col),
+            repository::select_one(&db, vec![CompositeIdEntity::ID1.eq(1), CompositeIdEntity::ID2.eq("id".to_owned())])
+                .await?
+                .map(|e| e.bool_col),
             Some(true)
         );
 
@@ -211,19 +204,13 @@ async fn composite_id_entity() {
 
         // delete
         assert_eq!(
-            repository::delete(
-                &db,
-                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
-            )
-            .await?,
+            repository::delete(&db, vec![CompositeIdEntity::ID1.eq(1), CompositeIdEntity::ID2.eq("id".to_owned())])
+                .await?,
             1
         );
         assert_eq!(
-            repository::select_one(
-                &db,
-                vec![CompositeIdEntity::FIELD_ID1.eq(1), CompositeIdEntity::FIELD_ID2.eq("id".to_owned())]
-            )
-            .await?,
+            repository::select_one(&db, vec![CompositeIdEntity::ID1.eq(1), CompositeIdEntity::ID2.eq("id".to_owned())])
+                .await?,
             None
         );
 

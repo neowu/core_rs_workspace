@@ -235,12 +235,13 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
     let entity = &model.struct_ident;
 
     let consts = model.columns.iter().map(|column| {
-        let const_ident = field_const_ident(column);
+        let const_ident =
+            proc_macro2::Ident::new(&column.field_ident.to_string().to_uppercase(), column.field_ident.span());
         let column_name = &column.column;
         let value_type = column_field_type(column);
         let vis = &column.field_vis;
         quote! {
-            #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::new(#column_name);
+            #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::__new(#column_name);
         }
     });
 
@@ -249,13 +250,6 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
             #(#consts)*
         }
     }
-}
-
-fn field_const_ident(column: &ColumnModel) -> proc_macro2::Ident {
-    proc_macro2::Ident::new(
-        &format!("FIELD_{}", column.field_ident.to_string().to_uppercase()),
-        column.field_ident.span(),
-    )
 }
 
 // `Field<E, V>` value type is the field type, except for an auto-increment key: it stores `Option<i64>`
@@ -326,8 +320,8 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    const FIELD_ID: framework_db::Field<TestEntity, i32> = framework_db::Field::new("id");
-                    const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
+                    const ID: framework_db::Field<TestEntity, i32> = framework_db::Field::__new("id");
+                    const COL1: framework_db::Field<TestEntity, String> = framework_db::Field::__new("col1");
                 }
             }
             .to_string()
@@ -393,9 +387,9 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    pub const FIELD_ID1: framework_db::Field<TestEntity, i32> = framework_db::Field::new("id1");
-                    pub(crate) const FIELD_ID2: framework_db::Field<TestEntity, String> = framework_db::Field::new("id2");
-                    const FIELD_COL1: framework_db::Field<TestEntity, String> = framework_db::Field::new("col1");
+                    pub const ID1: framework_db::Field<TestEntity, i32> = framework_db::Field::__new("id1");
+                    pub(crate) const ID2: framework_db::Field<TestEntity, String> = framework_db::Field::__new("id2");
+                    const COL1: framework_db::Field<TestEntity, String> = framework_db::Field::__new("col1");
                 }
             }
             .to_string()
@@ -453,8 +447,8 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    const FIELD_ID: framework_db::Field<TestEntity, i64> = framework_db::Field::new("id");
-                    const FIELD_COL1: framework_db::Field<TestEntity, Option<String> > = framework_db::Field::new("col1");
+                    const ID: framework_db::Field<TestEntity, i64> = framework_db::Field::__new("id");
+                    const COL1: framework_db::Field<TestEntity, Option<String> > = framework_db::Field::__new("col1");
                 }
             }
             .to_string()

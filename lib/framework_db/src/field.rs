@@ -5,15 +5,14 @@ use tokio_postgres::types::ToSql;
 
 use crate::QueryParam;
 
-// `V` is the entity field type, so call sites pass an owned value, e.g. `FIELD_NAME.eq(name)` or
-// `FIELD_NAME.eq("value".to_owned())`. A nullable column is set to NULL with `update(None)`.
 pub struct Field<E, V> {
     column: &'static str,
     _marker: PhantomData<(E, V)>,
 }
 
 impl<E, V: ToSql + Sync + Send + 'static> Field<E, V> {
-    pub const fn new(column: &'static str) -> Self {
+    #[doc(hidden)]
+    pub const fn __new(column: &'static str) -> Self {
         Field { column, _marker: PhantomData }
     }
 
@@ -122,10 +121,10 @@ mod tests {
     struct TestEntity;
 
     impl TestEntity {
-        const FIELD_ID: Field<TestEntity, i64> = Field::new("id");
-        const FIELD_COL1: Field<TestEntity, String> = Field::new("col1");
-        const FIELD_COL2: Field<TestEntity, i32> = Field::new("col2");
-        const FIELD_COL3: Field<TestEntity, Option<String>> = Field::new("col3");
+        const ID: Field<TestEntity, i64> = Field::__new("id");
+        const COL1: Field<TestEntity, String> = Field::__new("col1");
+        const COL2: Field<TestEntity, i32> = Field::__new("col2");
+        const COL3: Field<TestEntity, Option<String>> = Field::__new("col3");
     }
 
     #[test]
@@ -142,7 +141,7 @@ mod tests {
     fn build_conditions_in() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
-        let conditions = vec![TestEntity::FIELD_ID.is_in(vec![1, 2, 3])];
+        let conditions = vec![TestEntity::ID.is_in(vec![1, 2, 3])];
         build_conditions(&conditions, &mut sql, &mut params, &mut 1);
         assert_eq!(sql, "SELECT 1 WHERE id IN ($1, $2, $3)");
         assert_eq!(params.len(), 3);
@@ -152,11 +151,8 @@ mod tests {
     fn build_conditions_multiple() {
         let mut sql = String::from("SELECT 1");
         let mut params: Vec<&QueryParam> = vec![];
-        let conditions = vec![
-            TestEntity::FIELD_ID.eq(10),
-            TestEntity::FIELD_COL1.eq("value".to_owned()),
-            TestEntity::FIELD_COL3.not_null(),
-        ];
+        let conditions =
+            vec![TestEntity::ID.eq(10), TestEntity::COL1.eq("value".to_owned()), TestEntity::COL3.not_null()];
         build_conditions(&conditions, &mut sql, &mut params, &mut 1);
         assert_eq!(sql, "SELECT 1 WHERE id = $1 AND col1 = $2 AND col3 IS NOT NULL");
         assert_eq!(params.len(), 2);
@@ -167,9 +163,9 @@ mod tests {
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
-        let updates = vec![TestEntity::FIELD_COL2.update(99)];
+        let updates = vec![TestEntity::COL2.update(99)];
         build_update(&updates, &mut sql, &mut params, &mut index);
-        let conditions = vec![TestEntity::FIELD_ID.eq(10)];
+        let conditions = vec![TestEntity::ID.eq(10)];
         build_conditions(&conditions, &mut sql, &mut params, &mut index);
         assert_eq!(sql, "UPDATE t SET col2 = $1 WHERE id = $2");
         assert_eq!(params.len(), 2);
@@ -177,7 +173,7 @@ mod tests {
 
     #[test]
     fn build_update_single() {
-        let updates = vec![TestEntity::FIELD_COL2.update(42)];
+        let updates = vec![TestEntity::COL2.update(42)];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
@@ -190,7 +186,7 @@ mod tests {
     #[test]
     fn build_update_multiple() {
         // a nullable column is set to NULL with update(None)
-        let updates = vec![TestEntity::FIELD_COL1.update("value".to_owned()), TestEntity::FIELD_COL3.update(None)];
+        let updates = vec![TestEntity::COL1.update("value".to_owned()), TestEntity::COL3.update(None)];
         let mut sql = String::from("UPDATE t");
         let mut params: Vec<&QueryParam> = vec![];
         let mut index = 1;
