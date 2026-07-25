@@ -53,7 +53,6 @@ impl ApiClient {
         Self { http_client, api_url, client }
     }
 
-    // TODO: add current action id
     #[inline]
     pub async fn get<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where

@@ -15,11 +15,10 @@ use crate::user::GetUserResponse;
 use crate::user::UpdateUserRequest;
 use crate::user::User;
 use crate::user::UserService;
-use crate::user::user_service;
 
 pub fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { state };
-    user_service::route(Arc::new(service))
+    UserService::route(Arc::new(service))
 }
 
 struct UserServiceImpl {

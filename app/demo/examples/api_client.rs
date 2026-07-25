@@ -5,7 +5,7 @@ use demo::user::CreateUserRequest;
 use demo::user::GetUserByNameRequest;
 use demo::user::UpdateUserRequest;
 use demo::user::UserService;
-use demo::user::user_service;
+use demo::user::UserServiceClient;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let client = user_service::client(
+    let client = UserServiceClient::new(
         HttpClient::new(HttpClientConfig::internal_only()),
         "http://localhost:8080".to_owned(),
         env!("CARGO_BIN_NAME"),

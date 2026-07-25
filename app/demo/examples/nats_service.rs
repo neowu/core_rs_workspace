@@ -49,8 +49,8 @@ pub async fn main() -> Result<(), Exception> {
 
     let nats_client = framework_nats::connect("dev.internal:4222".to_owned()).await;
 
-    let service = greeting_service::service(nats_client.clone(), Arc::new(GreetingServiceImpl));
-    let client = greeting_service::client(nats_client, env!("CARGO_BIN_NAME"));
+    let service = GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl));
+    let client = GreetingServiceClient::new(nats_client, env!("CARGO_BIN_NAME"));
 
     let mut system = System::new();
     system.spawn(service.start(system.shutdown_signal()));

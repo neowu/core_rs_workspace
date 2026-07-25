@@ -13,7 +13,7 @@ use crate::service::upload_archive;
 
 pub(crate) fn routes(state: Arc<AppState>) -> Router {
     let service = OperationWebServiceImpl { state };
-    operation_web_service::route(Arc::new(service))
+    OperationWebService::route(Arc::new(service))
 }
 
 #[api]

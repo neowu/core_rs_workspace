@@ -15,13 +15,11 @@ use syn::parse_quote;
 use syn::parse2;
 use syn::token::RArrow;
 
-use crate::util;
-
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let mut trait_def: ItemTrait = parse2(tokens)?;
     let trait_ident = trait_def.ident.clone();
     let trait_vis = trait_def.vis.clone();
-    let mod_ident = format_ident!("{}", util::to_snake_case(&trait_ident.to_string()));
+    let client_ident = format_ident!("{trait_ident}Client");
 
     let mut route_statements = vec![];
     let mut client_methods = vec![];
@@ -43,42 +41,42 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         client_methods.push(build_client_method(&model));
     }
 
-    Ok(quote! {
-        #trait_def
-
-        #trait_vis mod #mod_ident {
+    trait_def.items.push(TraitItem::Fn(parse_quote! {
+        fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
+        where
+            Self: Sized + Send + Sync + 'static,
+        {
             use std::sync::Arc;
 
             use axum::Router;
             use axum::routing::MethodFilter;
             use axum::routing::on;
             use framework::context;
-            use framework::http::HttpClient;
-            use framework::web::api::ApiClient;
             use framework::web::api::__into_response;
             use framework::web::body::Json;
             use framework::web::body::Query;
 
-            use super::*;
+            let router = Router::new();
+            #(#route_statements)*
+            router
+        }
+    }));
 
-            pub fn route<T>(service: Arc<T>) -> Router
-            where
-                T: #trait_ident + Send + Sync + 'static,
-            {
-                let router = Router::new();
-                #(#route_statements)*
-                router
-            }
+    Ok(quote! {
+        #trait_def
 
-            pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl #trait_ident {
-                struct Client {
-                    client: ApiClient,
-                }
-                impl #trait_ident for Client {
-                    #(#client_methods)*
-                }
-                Client { client: ApiClient::new(http_client, api_url, client) }
+        #trait_vis struct #client_ident {
+            client: ::framework::web::api::ApiClient,
+        }
+
+        impl #client_ident {
+            #trait_vis fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
+                Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
             }
+        }
+
+        impl #trait_ident for #client_ident {
+            #(#client_methods)*
         }
     })
 }
@@ -99,6 +97,10 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
 
     if method.sig.asyncness.is_none() {
         return Err(Error::new_spanned(method, "method must be `async fn`"));
+    }
+
+    if method_ident == "route" {
+        return Err(Error::new_spanned(method, "method name `route` is reserved by #[api]"));
     }
 
     let mut http_method = None;
@@ -158,7 +160,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
         let extractor = &model.extractor;
         quote! {
             async move |#extractor(req): #extractor<#request_type>| {
-                context!(fn = format!(#fn_format, std::any::type_name::<T>()));
+                context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
                 let result = svc.#method_ident(req).await;
                 __into_response(result)
             }
@@ -166,7 +168,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     } else {
         quote! {
             async move || {
-                context!(fn = format!(#fn_format, std::any::type_name::<T>()));
+                context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
                 let result = svc.#method_ident().await;
                 __into_response(result)
             }
@@ -238,33 +240,27 @@ mod tests {
                     fn search(&self, request: SearchUserRequest) -> impl ::core::future::Future<Output = Result<SearchUserResponse, Exception> > + Send;
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<CreateUserResponse, Exception> > + Send;
                     fn update(&self, request: UpdateUserRequest) -> impl ::core::future::Future<Output = Result<UpdateUserResponse, Exception> > + Send;
-                }
 
-                pub mod user_service {
-                    use std::sync::Arc;
-
-                    use axum::Router;
-                    use axum::routing::MethodFilter;
-                    use axum::routing::on;
-                    use framework::context;
-                    use framework::http::HttpClient;
-                    use framework::web::api::ApiClient;
-                    use framework::web::api::__into_response;
-                    use framework::web::body::Json;
-                    use framework::web::body::Query;
-
-                    use super::*;
-
-                    pub fn route<T>(service: Arc<T>) -> Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
                     where
-                        T: UserService + Send + Sync + 'static,
+                        Self: Sized + Send + Sync + 'static,
                     {
+                        use std::sync::Arc;
+
+                        use axum::Router;
+                        use axum::routing::MethodFilter;
+                        use axum::routing::on;
+                        use framework::context;
+                        use framework::web::api::__into_response;
+                        use framework::web::body::Json;
+                        use framework::web::body::Query;
+
                         let router = Router::new();
                         let svc = Arc::clone(&service);
                         let router = router.route(
                             "/user/search",
                             on(MethodFilter::GET, async move |Query(req): Query<SearchUserRequest>| {
-                                context!(fn = format!("{}::search", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::search", std::any::type_name::<Self>()));
                                 let result = svc.search(req).await;
                                 __into_response(result)
                             }),
@@ -273,7 +269,7 @@ mod tests {
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = format!("{}::create", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::create", std::any::type_name::<Self>()));
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
@@ -282,30 +278,34 @@ mod tests {
                         let router = router.route(
                             "/user/update",
                             on(MethodFilter::PUT, async move |Json(req): Json<UpdateUserRequest>| {
-                                context!(fn = format!("{}::update", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::update", std::any::type_name::<Self>()));
                                 let result = svc.update(req).await;
                                 __into_response(result)
                             }),
                         );
                         router
                     }
+                }
 
-                    pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl UserService {
-                        struct Client {
-                            client: ApiClient,
-                        }
-                        impl UserService for Client {
-                            async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception> {
-                                self.client.get("/user/search", request).await
-                            }
-                            async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
-                                self.client.post("/user/create", request).await
-                            }
-                            async fn update(&self, request: UpdateUserRequest) -> Result<UpdateUserResponse, Exception> {
-                                self.client.put("/user/update", request).await
-                            }
-                        }
-                        Client { client: ApiClient::new(http_client, api_url, client) }
+                pub struct UserServiceClient {
+                    client: ::framework::web::api::ApiClient,
+                }
+
+                impl UserServiceClient {
+                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
+                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
+                    }
+                }
+
+                impl UserService for UserServiceClient {
+                    async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception> {
+                        self.client.get("/user/search", request).await
+                    }
+                    async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
+                        self.client.post("/user/create", request).await
+                    }
+                    async fn update(&self, request: UpdateUserRequest) -> Result<UpdateUserResponse, Exception> {
+                        self.client.put("/user/update", request).await
                     }
                 }
             }
@@ -337,33 +337,27 @@ mod tests {
                 pub trait UserService {
                     fn get_all(&self) -> impl ::core::future::Future<Output = Result<GetAllUserResponse, Exception> > + Send;
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
-                }
 
-                pub mod user_service {
-                    use std::sync::Arc;
-
-                    use axum::Router;
-                    use axum::routing::MethodFilter;
-                    use axum::routing::on;
-                    use framework::context;
-                    use framework::http::HttpClient;
-                    use framework::web::api::ApiClient;
-                    use framework::web::api::__into_response;
-                    use framework::web::body::Json;
-                    use framework::web::body::Query;
-
-                    use super::*;
-
-                    pub fn route<T>(service: Arc<T>) -> Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
                     where
-                        T: UserService + Send + Sync + 'static,
+                        Self: Sized + Send + Sync + 'static,
                     {
+                        use std::sync::Arc;
+
+                        use axum::Router;
+                        use axum::routing::MethodFilter;
+                        use axum::routing::on;
+                        use framework::context;
+                        use framework::web::api::__into_response;
+                        use framework::web::body::Json;
+                        use framework::web::body::Query;
+
                         let router = Router::new();
                         let svc = Arc::clone(&service);
                         let router = router.route(
                             "/user/get_all",
-                            on(MethodFilter::GET, async move || {
-                                context!(fn = format!("{}::get_all", std::any::type_name::<T>()));
+                            on(MethodFilter::GET, async move | | {
+                                context!(fn = format!("{}::get_all", std::any::type_name::<Self>()));
                                 let result = svc.get_all().await;
                                 __into_response(result)
                             }),
@@ -372,31 +366,49 @@ mod tests {
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = format!("{}::create", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::create", std::any::type_name::<Self>()));
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
                         );
                         router
                     }
+                }
 
-                    pub fn client(http_client: HttpClient, api_url: String, client: &'static str) -> impl UserService {
-                        struct Client {
-                            client: ApiClient,
-                        }
-                        impl UserService for Client {
-                            async fn get_all(&self) -> Result<GetAllUserResponse, Exception> {
-                                self.client.get("/user/get_all", ()).await
-                            }
-                            async fn create(&self, request: CreateUserRequest) -> Result<(), Exception> {
-                                self.client.post("/user/create", request).await
-                            }
-                        }
-                        Client { client: ApiClient::new(http_client, api_url, client) }
+                pub struct UserServiceClient {
+                    client: ::framework::web::api::ApiClient,
+                }
+
+                impl UserServiceClient {
+                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
+                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
+                    }
+                }
+
+                impl UserService for UserServiceClient {
+                    async fn get_all(&self) -> Result<GetAllUserResponse, Exception> {
+                        self.client.get("/user/get_all", ()).await
+                    }
+                    async fn create(&self, request: CreateUserRequest) -> Result<(), Exception> {
+                        self.client.post("/user/create", request).await
                     }
                 }
             }
             .to_string()
         );
+    }
+
+    #[test]
+    fn build_api_with_reserved_method_name() {
+        let source = quote! {
+            pub trait UserService {
+                #[get]
+                #[path("/user/route")]
+                async fn route(&self) -> Result<(), Exception>;
+            }
+        };
+
+        let error = build(source).unwrap_err();
+        assert_eq!(error.to_string(), "method name `route` is reserved by #[api]");
     }
 }

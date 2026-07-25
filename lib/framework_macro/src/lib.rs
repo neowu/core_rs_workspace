@@ -5,7 +5,6 @@ mod entity;
 mod enum8;
 mod model;
 mod nats_api;
-mod util;
 mod validate;
 
 /// `#[derive(Validate)]` supports following field validations:
@@ -46,7 +45,12 @@ pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// `#[api]` derives an axum route builder and an HTTP client from a trait.
 /// Each method must be `async fn`, annotated with one of `#[get]`, `#[post]`, `#[put]` plus `#[path("/...")]`,
 /// take `&self` and a single request parameter, and return `Result<..., Exception>`.
-/// Generates a sibling module (snake_case of the trait name) exposing `route(service)` and `client(http_client, api_url)`.
+/// Adds a `route(service)` associated fn to the trait, and generates a sibling `<Trait>Client` struct
+/// implementing the trait, both with the trait's own visibility.
+/// ```text
+/// let router = UserService::route(Arc::new(service));
+/// let client = UserServiceClient::new(http_client, api_url, client);
+/// ```
 #[proc_macro_attribute]
 pub fn api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
@@ -55,7 +59,12 @@ pub fn api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> pro
 /// `#[nats_api]` derives a NATS request/reply service builder and client from a trait.
 /// Each method must be `async fn`, annotated with `#[subject = "..."]`,
 /// take `&self` and at most one request parameter, and return `Result<..., Exception>`.
-/// Generates a sibling module (snake_case of the trait name) exposing `service(nats_client, service)` and `client(nats_client, client)`.
+/// Adds a `service(nats_client, service)` associated fn to the trait, and generates a sibling `<Trait>Client`
+/// struct implementing the trait, both with the trait's own visibility.
+/// ```text
+/// let service = GreetingService::service(nats_client.clone(), Arc::new(service));
+/// let client = GreetingServiceClient::new(nats_client, client);
+/// ```
 #[proc_macro_attribute]
 pub fn nats_api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     nats_api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()

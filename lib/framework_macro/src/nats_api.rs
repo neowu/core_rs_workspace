@@ -20,13 +20,11 @@ use syn::parse_quote;
 use syn::parse2;
 use syn::token::RArrow;
 
-use crate::util;
-
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let mut trait_def: ItemTrait = parse2(tokens)?;
     let trait_ident = trait_def.ident.clone();
     let trait_vis = trait_def.vis.clone();
-    let mod_ident = format_ident!("{}", util::to_snake_case(&trait_ident.to_string()));
+    let client_ident = format_ident!("{trait_ident}Client");
 
     let mut handler_statements = vec![];
     let mut client_methods = vec![];
@@ -45,37 +43,40 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         client_methods.push(build_client_method(&model));
     }
 
-    Ok(quote! {
-        #trait_def
-
-        #trait_vis mod #mod_ident {
+    trait_def.items.push(TraitItem::Fn(parse_quote! {
+        fn service(
+            nats_client: ::framework_nats::async_nats::Client,
+            service: ::std::sync::Arc<Self>,
+        ) -> ::framework_nats::service::Service
+        where
+            Self: Sized + Send + Sync + 'static,
+        {
             use std::sync::Arc;
 
             use framework::context;
-            use framework_nats::async_nats;
             use framework_nats::service::Service;
-            use framework_nats::service::ServiceClient;
 
-            use super::*;
+            let mut nats_service = Service::new(nats_client);
+            #(#handler_statements)*
+            nats_service
+        }
+    }));
 
-            pub fn service<T>(nats_client: async_nats::Client, service: Arc<T>) -> Service
-            where
-                T: #trait_ident + Send + Sync + 'static,
-            {
-                let mut nats_service = Service::new(nats_client);
-                #(#handler_statements)*
-                nats_service
+    Ok(quote! {
+        #trait_def
+
+        #trait_vis struct #client_ident {
+            client: ::framework_nats::service::ServiceClient,
+        }
+
+        impl #client_ident {
+            #trait_vis fn new(nats_client: ::framework_nats::async_nats::Client, client: &'static str) -> Self {
+                Self { client: ::framework_nats::service::ServiceClient::new(nats_client, client) }
             }
+        }
 
-            pub fn client(nats_client: async_nats::Client, client: &'static str) -> impl #trait_ident {
-                struct Client {
-                    client: ServiceClient,
-                }
-                impl #trait_ident for Client {
-                    #(#client_methods)*
-                }
-                Client { client: ServiceClient::new(nats_client, client) }
-            }
+        impl #trait_ident for #client_ident {
+            #(#client_methods)*
         }
     })
 }
@@ -92,6 +93,10 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
 
     if method.sig.asyncness.is_none() {
         return Err(Error::new_spanned(method, "method must be `async fn`"));
+    }
+
+    if method_ident == "service" {
+        return Err(Error::new_spanned(method, "method name `service` is reserved by #[nats_api]"));
     }
 
     let mut subject = None;
@@ -152,7 +157,7 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
             move |request: #request_type| {
                 let svc = Arc::clone(&svc);
                 async move {
-                    context!(fn = format!(#fn_format, std::any::type_name::<T>()));
+                    context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
                     svc.#method_ident(request).await
                 }
             }
@@ -162,7 +167,7 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
             move |(): ()| {
                 let svc = Arc::clone(&svc);
                 async move {
-                    context!(fn = format!(#fn_format, std::any::type_name::<T>()));
+                    context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
                     svc.#method_ident().await
                 }
             }
@@ -223,28 +228,25 @@ mod tests {
                 pub trait UserService {
                     fn get_user_by_id(&self, request: GetUserRequest) -> impl ::core::future::Future<Output = Result<GetUserResponse, Exception> > + Send;
                     fn create_user(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<CreateUserResponse, Exception> > + Send;
-                }
 
-                pub mod user_service {
-                    use std::sync::Arc;
-
-                    use framework::context;
-                    use framework_nats::async_nats;
-                    use framework_nats::service::Service;
-                    use framework_nats::service::ServiceClient;
-
-                    use super::*;
-
-                    pub fn service<T>(nats_client: async_nats::Client, service: Arc<T>) -> Service
+                    fn service(
+                        nats_client: ::framework_nats::async_nats::Client,
+                        service: ::std::sync::Arc<Self>,
+                    ) -> ::framework_nats::service::Service
                     where
-                        T: UserService + Send + Sync + 'static,
+                        Self: Sized + Send + Sync + 'static,
                     {
+                        use std::sync::Arc;
+
+                        use framework::context;
+                        use framework_nats::service::Service;
+
                         let mut nats_service = Service::new(nats_client);
                         let svc = Arc::clone(&service);
                         nats_service.add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
-                                context!(fn = format!("{}::get_user_by_id", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::get_user_by_id", std::any::type_name::<Self>()));
                                 svc.get_user_by_id(request).await
                             }
                         });
@@ -252,26 +254,30 @@ mod tests {
                         nats_service.add_handler("api.user.create_user", move |request: CreateUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
-                                context!(fn = format!("{}::create_user", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::create_user", std::any::type_name::<Self>()));
                                 svc.create_user(request).await
                             }
                         });
                         nats_service
                     }
+                }
 
-                    pub fn client(nats_client: async_nats::Client, client: &'static str) -> impl UserService {
-                        struct Client {
-                            client: ServiceClient,
-                        }
-                        impl UserService for Client {
-                            async fn get_user_by_id(&self, request: GetUserRequest) -> Result<GetUserResponse, Exception> {
-                                self.client.request("api.user.get_user_by_id", &request).await
-                            }
-                            async fn create_user(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
-                                self.client.request("api.user.create_user", &request).await
-                            }
-                        }
-                        Client { client: ServiceClient::new(nats_client, client) }
+                pub struct UserServiceClient {
+                    client: ::framework_nats::service::ServiceClient,
+                }
+
+                impl UserServiceClient {
+                    pub fn new(nats_client: ::framework_nats::async_nats::Client, client: &'static str) -> Self {
+                        Self { client: ::framework_nats::service::ServiceClient::new(nats_client, client) }
+                    }
+                }
+
+                impl UserService for UserServiceClient {
+                    async fn get_user_by_id(&self, request: GetUserRequest) -> Result<GetUserResponse, Exception> {
+                        self.client.request("api.user.get_user_by_id", &request).await
+                    }
+                    async fn create_user(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
+                        self.client.request("api.user.create_user", &request).await
                     }
                 }
             }
@@ -301,28 +307,25 @@ mod tests {
                 pub trait UserService {
                     fn get_all_users(&self) -> impl ::core::future::Future<Output = Result<GetAllUsersResponse, Exception> > + Send;
                     fn delete_user(&self, request: DeleteUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
-                }
 
-                pub mod user_service {
-                    use std::sync::Arc;
-
-                    use framework::context;
-                    use framework_nats::async_nats;
-                    use framework_nats::service::Service;
-                    use framework_nats::service::ServiceClient;
-
-                    use super::*;
-
-                    pub fn service<T>(nats_client: async_nats::Client, service: Arc<T>) -> Service
+                    fn service(
+                        nats_client: ::framework_nats::async_nats::Client,
+                        service: ::std::sync::Arc<Self>,
+                    ) -> ::framework_nats::service::Service
                     where
-                        T: UserService + Send + Sync + 'static,
+                        Self: Sized + Send + Sync + 'static,
                     {
+                        use std::sync::Arc;
+
+                        use framework::context;
+                        use framework_nats::service::Service;
+
                         let mut nats_service = Service::new(nats_client);
                         let svc = Arc::clone(&service);
                         nats_service.add_handler("api.user.get_all_users", move |(): ()| {
                             let svc = Arc::clone(&svc);
                             async move {
-                                context!(fn = format!("{}::get_all_users", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::get_all_users", std::any::type_name::<Self>()));
                                 svc.get_all_users().await
                             }
                         });
@@ -330,26 +333,30 @@ mod tests {
                         nats_service.add_handler("api.user.delete_user", move |request: DeleteUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
-                                context!(fn = format!("{}::delete_user", std::any::type_name::<T>()));
+                                context!(fn = format!("{}::delete_user", std::any::type_name::<Self>()));
                                 svc.delete_user(request).await
                             }
                         });
                         nats_service
                     }
+                }
 
-                    pub fn client(nats_client: async_nats::Client, client: &'static str) -> impl UserService {
-                        struct Client {
-                            client: ServiceClient,
-                        }
-                        impl UserService for Client {
-                            async fn get_all_users(&self) -> Result<GetAllUsersResponse, Exception> {
-                                self.client.request("api.user.get_all_users", &()).await
-                            }
-                            async fn delete_user(&self, request: DeleteUserRequest) -> Result<(), Exception> {
-                                self.client.request("api.user.delete_user", &request).await
-                            }
-                        }
-                        Client { client: ServiceClient::new(nats_client, client) }
+                pub struct UserServiceClient {
+                    client: ::framework_nats::service::ServiceClient,
+                }
+
+                impl UserServiceClient {
+                    pub fn new(nats_client: ::framework_nats::async_nats::Client, client: &'static str) -> Self {
+                        Self { client: ::framework_nats::service::ServiceClient::new(nats_client, client) }
+                    }
+                }
+
+                impl UserService for UserServiceClient {
+                    async fn get_all_users(&self) -> Result<GetAllUsersResponse, Exception> {
+                        self.client.request("api.user.get_all_users", &()).await
+                    }
+                    async fn delete_user(&self, request: DeleteUserRequest) -> Result<(), Exception> {
+                        self.client.request("api.user.delete_user", &request).await
                     }
                 }
             }
@@ -367,5 +374,18 @@ mod tests {
 
         let error = build(source).unwrap_err();
         assert_eq!(error.to_string(), r#"missing #[subject = "..."] attribute"#);
+    }
+
+    #[test]
+    fn build_nats_api_with_reserved_method_name() {
+        let source = quote! {
+            pub trait UserService {
+                #[subject = "api.user.service"]
+                async fn service(&self) -> Result<(), Exception>;
+            }
+        };
+
+        let error = build(source).unwrap_err();
+        assert_eq!(error.to_string(), "method name `service` is reserved by #[nats_api]");
     }
 }
