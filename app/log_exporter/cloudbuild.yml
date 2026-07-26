@@ -1,20 +1,13 @@
 steps:
   - name: gcr.io/cloud-builders/docker
-    args:
-      - build
-      - -f
-      - app/${_APP}/Dockerfile
-      - -t
-      - ${_REPOSITORY}/${_APP}:${_VERSION}
-      - -t
-      - ${_REPOSITORY}/${_APP}:latest
-      - .
+    args: ["build", "-f", "app/log_exporter/Dockerfile", "-t", "${_IMAGE}:${_VERSION}", "-t", "${_IMAGE}:latest", "."]
 images:
-  - ${_REPOSITORY}/${_APP}:${_VERSION}
-  - ${_REPOSITORY}/${_APP}:latest
+  - ${_IMAGE}:${_VERSION}
+  - ${_IMAGE}:latest
 timeout: 3600s
 options:
   machineType: E2_HIGHCPU_8
-tags: ["${_APP}"]
+  dynamicSubstitutions: true
+tags: ["log-exporter"]
 substitutions:
-  _APP: log_exporter
+  _IMAGE: ${_REPOSITORY}/log-exporter

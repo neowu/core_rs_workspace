@@ -16,6 +16,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::AppState;
+use crate::elasticsearch::Elasticsearch;
 
 // action log message schema from java core-ng framework
 #[derive(Debug, Deserialize)]
@@ -56,7 +57,7 @@ pub(crate) async fn action_log_message_handler(
         insert_to_clickhouse(clickhouse, &messages).await?;
     }
 
-    index_to_elasticsearch(&state, messages).await?;
+    index_to_elasticsearch(&state.elasticsearch, messages).await?;
     Ok(())
 }
 
@@ -94,7 +95,7 @@ struct TraceDocument {
 }
 
 async fn index_to_elasticsearch(
-    state: &Arc<AppState>,
+    elasticsearch: &Elasticsearch,
     messages: Vec<Message<ActionLogMessage>>,
 ) -> Result<(), Exception> {
     let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
@@ -132,9 +133,9 @@ async fn index_to_elasticsearch(
         }
     }
     let now = Utc::now().date_naive();
-    state.elasticsearch.bulk_index(&action_index(now), documents).await?;
+    elasticsearch.bulk_index(&action_index(now), documents).await?;
     if !traces.is_empty() {
-        state.elasticsearch.bulk_index(&trace_index(now), traces).await?;
+        elasticsearch.bulk_index(&trace_index(now), traces).await?;
     }
     Ok(())
 }
