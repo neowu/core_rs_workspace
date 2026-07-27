@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::http::StatusCode;
-use axum::routing::get;
 use framework::asset_path;
 use framework::exception::Exception;
+use framework::web::route::get;
 use framework::web::server::ServeDir;
 use framework::web::server::ServeFile;
 use tokio::time::sleep;

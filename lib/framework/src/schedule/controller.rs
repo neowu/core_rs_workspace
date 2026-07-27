@@ -5,7 +5,6 @@ use std::sync::Mutex;
 use axum::Router;
 use axum::extract::Path;
 use axum::extract::State;
-use axum::routing::put;
 use chrono::SecondsFormat;
 use chrono::Utc;
 use http::StatusCode;
@@ -18,6 +17,7 @@ use crate::schedule::Scheduler;
 use crate::task::TaskExecutor;
 use crate::web::SystemRoute;
 use crate::web::error::HttpResult;
+use crate::web::route::put;
 
 #[derive(Clone)]
 struct JobState<S> {
