@@ -3,6 +3,7 @@ use syn::Error;
 mod api;
 mod entity;
 mod enum8;
+mod integration_test;
 mod model;
 mod nats_api;
 mod validate;
@@ -68,4 +69,19 @@ pub fn api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> pro
 #[proc_macro_attribute]
 pub fn nats_api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     nats_api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// `#[integration_test]` wraps an e2e test with `#[tokio::test]`, initializes the console log appender once per test
+/// binary, and runs the body within a log action named after the fn, so all logs of one test are grouped and the test
+/// fails with the exception backtrace.
+/// The fn must be `async`, take no argument, and return `Result<(), Exception>`.
+/// ```text
+/// #[integration_test]
+/// async fn insert_entity() -> Result<(), Exception> {
+///     Ok(())
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn integration_test(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    integration_test::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
 }

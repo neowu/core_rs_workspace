@@ -6,7 +6,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::read_to_string;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::de;
@@ -30,62 +30,58 @@ macro_rules! load_config {
 }
 
 #[doc(hidden)]
-#[cfg_attr(not(debug_assertions), allow(unused_variables))]
+#[cfg_attr(not(debug_assertions), allow(unused_variables))] // manifest_dir is only used with debug_assertions
 pub fn __load_config<T>(path: &'static str, manifest_dir: &'static str) -> T
 where
     T: DeserializeOwned,
 {
+    let mut target_config_path: Option<PathBuf> = None;
+
     let exe_path = current_exe().expect("cannot get current exe path");
     let config_path = exe_path.with_file_name(path);
     if config_path.exists() {
         console!("load config from exe path, path={}", config_path.display());
-        return parse_config(&config_path);
-    }
-
-    #[cfg(debug_assertions)]
-    {
-        use std::path::PathBuf;
-
-        let dev_config_path = PathBuf::from(manifest_dir).join(path);
-        if dev_config_path.exists() {
-            load_dev_env(manifest_dir);
-            console!("load config from source code folder, path={}", dev_config_path.display());
-            return parse_config(&dev_config_path);
+        target_config_path = Some(config_path);
+    } else {
+        #[cfg(debug_assertions)]
+        {
+            let dev_config_path = PathBuf::from(manifest_dir).join(path);
+            if dev_config_path.exists() {
+                load_dev_env(manifest_dir);
+                console!("load config from source code folder, path={}", dev_config_path.display());
+                target_config_path = Some(dev_config_path);
+            }
         }
     }
 
-    panic!("config not found, path={}, exe={}", config_path.display(), exe_path.display());
-}
-
-fn parse_config<T>(path: &Path) -> T
-where
-    T: DeserializeOwned,
-{
-    let json =
-        read_to_string(path).unwrap_or_else(|err| panic!("failed to read file, path={}, err={err}", path.display()));
-    serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to deserialize, json={json}, err={err}"))
+    if let Some(target_config_path) = target_config_path {
+        let json = read_to_string(&target_config_path)
+            .unwrap_or_else(|err| panic!("failed to read config, path={}, err={err}", target_config_path.display()));
+        console!("config:\n{json}");
+        serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to parse config, err={err}"))
+    } else {
+        panic!("config not found, path={}, exe={}", exe_path.with_file_name(path).display(), exe_path.display());
+    }
 }
 
 #[cfg(debug_assertions)]
 fn load_dev_env(manifest_dir: &str) {
-    use std::path::PathBuf;
-
     let path = PathBuf::from(manifest_dir).join(".env");
     if !path.exists() {
         return;
     }
 
     let content = read_to_string(&path)
-        .unwrap_or_else(|err| panic!("failed to read env file, file={}, err={}", path.display(), err));
+        .unwrap_or_else(|err| panic!("failed to read env file, path={}, err={err}", path.display()));
 
-    console!("load env vars, file={}", path.display());
+    console!("load dev env vars, path={}", path.display());
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
-            panic!("invalid env line, file={}, line={line}", path.display());
+            panic!("invalid env line, path={}, line={line}", path.display());
         };
         unsafe {
             env::set_var(key.trim(), value.trim());

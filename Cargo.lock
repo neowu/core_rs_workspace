@@ -413,6 +413,7 @@ dependencies = [
  "chrono",
  "framework",
  "framework_clickhouse",
+ "framework_macro",
  "serde",
  "tokio",
 ]

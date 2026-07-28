@@ -58,7 +58,7 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_BIN_NAME"));
+    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
     let mut system = System::new();
     let mut collector = MetricsCollector::new();

@@ -31,14 +31,15 @@ macro_rules! console {
 }
 
 pub fn init(appender: &str, app: &'static str) {
-    console!("init log appender, appender={appender}");
-    let appender = match appender {
-        "console" => Appender::Console,
-        "gcloud" => Appender::GoogleCloud,
-        _ => panic!("unknown appender, value={appender}"),
-    };
-
-    CONTEXT.set(Context { app, appender }).unwrap_or_else(|_| panic!("init can only be called once"));
+    CONTEXT.get_or_init(|| {
+        console!("init log appender, appender={appender}");
+        let appender = match appender {
+            "console" => Appender::Console,
+            "gcloud" => Appender::GoogleCloud,
+            _ => panic!("unknown appender, value={appender}"),
+        };
+        Context { app, appender }
+    });
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
@@ -60,7 +61,7 @@ where
     if let Some(Context { app, appender }) = CONTEXT.get() {
         let now = Utc::now();
         let id = id_generator::next_id(now.timestamp_millis());
-        let action = Action::new(id, kind, ref_id, now);
+        let action = Action::new(id, kind, ref_id, now, app);
         CURRENT_ACTION
             .scope(RefCell::new(action), async move {
                 let result = task.await;

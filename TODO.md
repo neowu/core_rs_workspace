@@ -1,14 +1,8 @@
 - always make state with Box::leak()?
 - log_collector supports collect cookies?
-
 - Arena support? log/request/response
-- http server, log controller info, like "fn" or "location"?
 - jemalloc
 - Nats, nack for certain error type? so get redelivered
-
-# TODO
-
-- api client generation print url on creation
 
 # Thoughts on AI era
 

@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::thread;
 use std::time::Instant;
 
 use chrono::DateTime;
@@ -34,7 +33,13 @@ pub struct Error {
 }
 
 impl Action {
-    pub(crate) fn new(id: LogId, kind: &'static str, ref_id: Option<Vec<String>>, date: DateTime<Utc>) -> Self {
+    pub(crate) fn new(
+        id: LogId,
+        kind: &'static str,
+        ref_id: Option<Vec<String>>,
+        date: DateTime<Utc>,
+        app: &'static str,
+    ) -> Self {
         let mut action = Action {
             start_time: Instant::now(),
             id,
@@ -50,9 +55,8 @@ impl Action {
         let date_string = action.date.to_rfc3339_opts(SecondsFormat::Nanos, true);
 
         action.logs.push(format!(
-            "# [action] id={}, date={date_string}, kind={kind}\nthread={:?}\nhost={}\nref_id={:?}",
+            "# [action] id={}, date={date_string}, kind={kind}, app={app}, host={}, ref_id={:?}",
             action.id,
-            thread::current().id(),
             hostname(),
             action.ref_id,
         ));
@@ -60,8 +64,8 @@ impl Action {
         action
     }
 
-    pub(crate) const fn flush_trace(&self) -> bool {
-        self.error.is_some()
+    pub(crate) fn flush_trace(&self) -> bool {
+        self.error.is_some() || self.kind == "test"
     }
 
     pub(crate) fn log(&mut self, message: &str, location: &'static str) {

@@ -6,7 +6,6 @@ use clickhouse::RowOwned;
 use clickhouse::RowRead;
 use clickhouse::RowWrite;
 use clickhouse::query::Query;
-use clickhouse::sql;
 use framework::console;
 use framework::exception;
 use framework::exception::Exception;
@@ -17,20 +16,10 @@ pub use framework_macro::Enum8;
 use serde::Serialize;
 pub mod data_type;
 
-// local newtype so the impl doesn't conflict with the Serialize blanket impl
-#[derive(Debug)]
-pub struct Identifier<'a>(pub &'a str);
-
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
 // like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
 pub trait QueryParam: Debug {
     fn bind(&self, query: Query) -> Query;
-}
-
-impl QueryParam for Identifier<'_> {
-    fn bind(&self, query: Query) -> Query {
-        query.bind(sql::Identifier(self.0))
-    }
 }
 
 impl<T: Serialize + Debug> QueryParam for T {
@@ -45,7 +34,7 @@ pub struct ClickHouse {
 
 impl ClickHouse {
     pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
-        console!("create clickhouse client, uri={uri}, user={user}");
+        console!("create clickhouse client, uri={uri}, user={user}, db={database:?}");
         // async_insert lets the server batch writes; wait_for_async_insert=0 returns once buffered, not flushed.
         // inserts added later inherit these settings from the shared client.
         let client = Client::default()
@@ -70,7 +59,7 @@ impl ClickHouse {
         query.execute().await.map_err(|err| exception!("failed to execute statement", source = err))
     }
 
-    pub async fn select_one<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<T, Exception>
+    pub async fn select_one<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<Option<T>, Exception>
     where
         T: RowOwned + RowRead,
     {
@@ -80,7 +69,12 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        query.fetch_one().await.map_err(|err| exception!("failed to execute statement", source = err))
+        let row =
+            query.fetch_optional().await.map_err(|err| exception!("failed to execute statement", source = err))?;
+
+        stats!(clickhouse_read_rows = if row.is_some() { 1 } else { 0 });
+
+        Ok(row)
     }
 
     // async_insert is enabled on the client, so end() hands the batch to the server and returns
