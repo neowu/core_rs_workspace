@@ -1536,6 +1536,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nats_test"
+version = "1.0.0"
+dependencies = [
+ "framework",
+ "framework_macro",
+ "framework_nats",
+]
+
+[[package]]
 name = "never-say-never"
 version = "6.6.666"
 source = "registry+https://github.com/rust-lang/crates.io-index"

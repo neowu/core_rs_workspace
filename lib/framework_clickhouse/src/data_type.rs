@@ -1,6 +1,8 @@
 use std::ops::Deref;
 
+use chrono::NaiveDate;
 use chrono::Utc;
+use clickhouse::serde::chrono::date;
 use clickhouse::serde::chrono::datetime64;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -11,18 +13,29 @@ use serde::Serializer;
 // chrono's own serde impl emits an RFC3339 string, so this newtype delegates to the
 // clickhouse chrono helper instead of requiring #[serde(with = ...)] at every callsite.
 // Option<DateTime> works as-is for Nullable(DateTime64), no ::option helper variant needed.
+// as a query param the SQL serializer (is_human_readable) applies instead, and chrono's
+// RFC3339 string is what the server parses; the millis form would compare as a plain number
+// against DateTime64 and silently match nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DateTime64(chrono::DateTime<Utc>);
 
 impl Serialize for DateTime64 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        datetime64::millis::serialize(&self.0, serializer)
+        if serializer.is_human_readable() {
+            self.0.serialize(serializer)
+        } else {
+            datetime64::millis::serialize(&self.0, serializer)
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for DateTime64 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        datetime64::millis::deserialize(deserializer).map(Self)
+        if deserializer.is_human_readable() {
+            chrono::DateTime::<Utc>::deserialize(deserializer).map(Self)
+        } else {
+            datetime64::millis::deserialize(deserializer).map(Self)
+        }
     }
 }
 
@@ -40,6 +53,52 @@ impl From<DateTime64> for chrono::DateTime<Utc> {
 
 impl Deref for DateTime64 {
     type Target = chrono::DateTime<Utc>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// maps to clickhouse Date: RowBinary carries u16 days since 1970-01-01 (up to 2149-06-06);
+// chrono's own serde impl emits a "YYYY-MM-DD" string, so this newtype delegates to the
+// clickhouse chrono helper instead of requiring #[serde(with = ...)] at every callsite.
+// Option<Date> works as-is for Nullable(Date), no ::option helper variant needed.
+// as a query param the SQL serializer (is_human_readable) applies instead, and chrono's
+// 'YYYY-MM-DD' string is what the server parses; the u16 form would be rejected outright,
+// the server refuses to compare Date with a number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Date(NaiveDate);
+
+impl Serialize for Date {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() { self.0.serialize(serializer) } else { date::serialize(&self.0, serializer) }
+    }
+}
+
+impl<'de> Deserialize<'de> for Date {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            NaiveDate::deserialize(deserializer).map(Self)
+        } else {
+            date::deserialize(deserializer).map(Self)
+        }
+    }
+}
+
+impl From<NaiveDate> for Date {
+    fn from(date: NaiveDate) -> Self {
+        Self(date)
+    }
+}
+
+impl From<Date> for NaiveDate {
+    fn from(date: Date) -> Self {
+        date.0
+    }
+}
+
+impl Deref for Date {
+    type Target = NaiveDate;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -81,11 +140,13 @@ impl<const S: u8> From<Decimal64<S>> for f64 {
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
     use chrono::TimeZone as _;
     use chrono::Utc;
     use framework::json;
     use framework_macro::Enum8;
 
+    use super::Date;
     use super::DateTime64;
     use super::Decimal64;
 
@@ -106,11 +167,13 @@ mod tests {
         assert!(error.to_string().starts_with("failed to deserialize, json=3"));
     }
 
+    // json is a human readable format, same branch the SQL param serializer takes;
+    // the RowBinary branch is covered end to end by test/clickhouse_test
     #[test]
-    fn date_time_serde_millis() {
+    fn date_time_serde_rfc3339() {
         let date_time = DateTime64::from(Utc.with_ymd_and_hms(2026, 7, 15, 12, 30, 45).unwrap());
         let json = json::to_json(&date_time).unwrap();
-        assert_eq!(json, date_time.timestamp_millis().to_string());
+        assert_eq!(json, r#""2026-07-15T12:30:45Z""#);
         assert_eq!(json::from_json::<DateTime64>(&json).unwrap(), date_time);
     }
 
@@ -118,6 +181,20 @@ mod tests {
     fn date_time_from_chrono() {
         let now = Utc::now();
         assert_eq!(chrono::DateTime::<Utc>::from(DateTime64::from(now)), now);
+    }
+
+    #[test]
+    fn date_serde_string() {
+        let date = Date::from(NaiveDate::from_ymd_opt(2026, 7, 15).unwrap());
+        let json = json::to_json(&date).unwrap();
+        assert_eq!(json, r#""2026-07-15""#);
+        assert_eq!(json::from_json::<Date>(&json).unwrap(), date);
+    }
+
+    #[test]
+    fn date_from_chrono() {
+        let today = Utc::now().date_naive();
+        assert_eq!(NaiveDate::from(Date::from(today)), today);
     }
 
     #[test]

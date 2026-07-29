@@ -18,11 +18,11 @@ pub mod data_type;
 
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
 // like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
-pub trait QueryParam: Debug {
+pub trait QueryParam: Debug + Sync {
     fn bind(&self, query: Query) -> Query;
 }
 
-impl<T: Serialize + Debug> QueryParam for T {
+impl<T: Serialize + Debug + Sync> QueryParam for T {
     fn bind(&self, query: Query) -> Query {
         query.bind(self)
     }

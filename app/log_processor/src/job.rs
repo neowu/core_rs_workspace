@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use chrono::Datelike as _;
+use chrono::Days;
 use chrono::NaiveDate;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
@@ -37,6 +39,38 @@ fn created_date(index: &str) -> Option<NaiveDate> {
     }
 
     None
+}
+
+pub(crate) async fn archive_to_gcs_job(state: Arc<AppState>, context: JobContext) -> Result<(), Exception> {
+    let yesterday = context.scheduled_time.checked_sub_days(Days::new(1)).expect("value must be valid").date_naive();
+    if let Some(clickhouse) = &state.clickhouse {
+        clickhouse
+            .execute(
+                "INSERT INTO FUNCTION gcs(
+            gcs_archive,
+            filename = ?)
+        )
+        SELECT *
+        FROM log.action
+        WHERE toDate(timestamp) = ?;",
+                &[&format!("log/action/{}/action-{yesterday}.parquet", yesterday.year()), &yesterday],
+            )
+            .await?;
+
+        clickhouse
+            .execute(
+                "INSERT INTO FUNCTION gcs(
+            gcs_archive,
+            filename = ?)
+        )
+        SELECT *
+        FROM log.event
+        WHERE toDate(timestamp) = ?;",
+                &[&format!("log/event/{}/event-{yesterday}.parquet", yesterday.year()), &yesterday],
+            )
+            .await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

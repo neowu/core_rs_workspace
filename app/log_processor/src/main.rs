@@ -23,6 +23,7 @@ use framework_kafka::consumer::MessageConsumer;
 use serde::Deserialize;
 
 use crate::elasticsearch::Elasticsearch;
+use crate::job::archive_to_gcs_job;
 use crate::job::cleanup_old_index_job;
 use crate::kafka::action_log_handler::action_log_message_handler;
 use crate::kafka::event_handler::event_message_handler;
@@ -83,6 +84,8 @@ async fn main() -> Result<(), Exception> {
             .map(|config| ClickHouse::new(&config.uri, &config.user, &config.password, Some("log"))),
     });
 
+    init_elasticsearch(&state.elasticsearch).await?;
+
     let scheduler_state = Arc::clone(&state);
     let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
     scheduler.schedule_daily(
@@ -90,14 +93,18 @@ async fn main() -> Result<(), Exception> {
         cleanup_old_index_job,
         NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
     );
-    system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 
     if let Some(config) = &config.clickhouse {
         let clickhouse = ClickHouse::new(&config.uri, &config.user, &config.password, None);
         init_clickhouse(clickhouse).await?;
-    }
 
-    init_elasticsearch(&state.elasticsearch).await?;
+        scheduler.schedule_daily(
+            "archive_to_gcs_job",
+            archive_to_gcs_job,
+            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+        );
+    }
+    system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 
     let mut consumer = MessageConsumer::new(
         config.kafka_uri,
