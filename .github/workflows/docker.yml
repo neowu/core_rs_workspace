@@ -18,12 +18,6 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: app/log_exporter/Dockerfile
-          tags: "neowu/log-exporter:${{ env.TAG }}-rust"
-          push: true
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
           file: app/log_collector/Dockerfile
           tags: "neowu/log-collector:${{ env.TAG }}-rust"
           push: true
