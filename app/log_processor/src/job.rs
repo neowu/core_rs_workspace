@@ -46,26 +46,14 @@ pub(crate) async fn archive_to_gcs_job(state: Arc<AppState>, context: JobContext
     if let Some(clickhouse) = &state.clickhouse {
         clickhouse
             .execute(
-                "INSERT INTO FUNCTION gcs(
-            gcs_archive,
-            filename = ?)
-        )
-        SELECT *
-        FROM log.action
-        WHERE toDate(timestamp) = ?;",
+                "INSERT INTO FUNCTION gcs(gcs_archive, filename = ?) SELECT * FROM log.action WHERE toDate(timestamp) = ?",
                 &[&format!("log/action/{}/action-{yesterday}.parquet", yesterday.year()), &yesterday],
             )
             .await?;
 
         clickhouse
             .execute(
-                "INSERT INTO FUNCTION gcs(
-            gcs_archive,
-            filename = ?)
-        )
-        SELECT *
-        FROM log.event
-        WHERE toDate(timestamp) = ?;",
+                "INSERT INTO FUNCTION gcs(gcs_archive, filename = ?) SELECT * FROM log.event WHERE toDate(timestamp) = ?",
                 &[&format!("log/event/{}/event-{yesterday}.parquet", yesterday.year()), &yesterday],
             )
             .await?;
