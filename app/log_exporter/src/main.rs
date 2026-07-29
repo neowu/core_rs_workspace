@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::console;
 use framework::exception::Exception;
@@ -12,6 +11,7 @@ use framework::log::metrics::MetricsCollector;
 use framework::log::metrics::container_mem_max;
 use framework::network::hostname;
 use framework::schedule::Scheduler;
+use framework::schedule::UTC;
 use framework::system::System;
 use framework::task;
 use framework::web::server::HttpServerConfig;
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Exception> {
     });
 
     let scheduler_state = Arc::clone(&state);
-    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+    let mut scheduler = Scheduler::new(UTC);
     scheduler.schedule_daily(
         "process_log_job",
         process_log_job,

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS log.event
     timestamp DateTime64(3, 'UTC'),
     id String,
     app LowCardinality(String),
-    received_time DateTime64(3, 'UTC'),
+    client_timestamp DateTime64(3, 'UTC'),
     result Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3),
     action LowCardinality(String),
     error_code LowCardinality(Nullable(String)),
@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS log.event
 ENGINE = MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (toStartOfHour(timestamp), app, action)
-TTL timestamp + INTERVAL 180 DAY
+TTL timestamp + INTERVAL 30 DAY
 SETTINGS ttl_only_drop_parts = 1

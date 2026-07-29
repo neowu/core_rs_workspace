@@ -43,6 +43,8 @@ pub struct Scheduler<S> {
     executor: Arc<Mutex<TaskExecutor>>,
 }
 
+pub const UTC: FixedOffset = FixedOffset::east_opt(0).expect("value must be valid");
+
 impl<S> Scheduler<S>
 where
     S: Send + Sync + 'static,

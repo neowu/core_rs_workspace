@@ -2,7 +2,6 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::FixedOffset;
 use chrono::NaiveTime;
 use framework::asset_path;
 use framework::config::EnvString;
@@ -13,6 +12,7 @@ use framework::load_config;
 use framework::log;
 use framework::log::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
+use framework::schedule::UTC;
 use framework::spawn_action;
 use framework::system::System;
 use framework::task;
@@ -87,7 +87,7 @@ async fn main() -> Result<(), Exception> {
     init_elasticsearch(&state.elasticsearch).await?;
 
     let scheduler_state = Arc::clone(&state);
-    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("value must be valid"));
+    let mut scheduler = Scheduler::new(UTC);
     scheduler.schedule_daily(
         "cleanup_old_index_job",
         cleanup_old_index_job,
@@ -98,10 +98,11 @@ async fn main() -> Result<(), Exception> {
         let clickhouse = ClickHouse::new(&config.uri, &config.user, &config.password, None);
         init_clickhouse(clickhouse).await?;
 
+        // run at UTC 8:00am, to give 8 hours as lead time for action to finish, action use start time as timestamp, and clickhouse use timestamp for partition
         scheduler.schedule_daily(
             "archive_to_gcs_job",
             archive_to_gcs_job,
-            NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
+            NaiveTime::from_hms_opt(8, 0, 0).expect("value must be valid"),
         );
     }
     system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
@@ -113,7 +114,7 @@ async fn main() -> Result<(), Exception> {
     );
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
-    consumer.add_bulk_handler(&Topic::new("event"), event_message_handler);
+    consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
     collector.add(consumer.consumer_metrics());
     system.spawn(consumer.start(state, system.shutdown_signal()));
 
@@ -152,8 +153,6 @@ async fn init_clickhouse(clickhouse: ClickHouse) -> Result<(), Exception> {
 
     log::action("task", None, async {
         context!(task = "init_clickhouse");
-
-        // clickhouse.execute("DROP DATABASE IF EXISTS log", &[]).await?;
 
         clickhouse.execute("CREATE DATABASE IF NOT EXISTS log", &[]).await?;
         clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/action.sql"))?, &[]).await?;

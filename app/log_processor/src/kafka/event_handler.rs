@@ -22,9 +22,9 @@ use crate::elasticsearch::Elasticsearch;
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct EventMessage {
     id: String,
-    date: DateTime<Utc>,
+    timestamp: DateTime<Utc>, // server received_time
     app: String,
-    received_time: DateTime<Utc>,
+    client_timestamp: DateTime<Utc>,
     result: String,
     action: String,
     error_code: Option<String>,
@@ -40,7 +40,7 @@ struct EventDocument {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime<Utc>,
     app: String,
-    received_time: DateTime<Utc>,
+    client_timestamp: DateTime<Utc>,
     result: String,
     action: String,
     error_code: Option<String>,
@@ -71,9 +71,9 @@ async fn index_to_elasticsearch(
     for message in messages {
         let payload = message.payload;
         let doc = EventDocument {
-            timestamp: payload.date,
+            timestamp: payload.timestamp,
             app: payload.app,
-            received_time: payload.received_time,
+            client_timestamp: payload.client_timestamp,
             result: payload.result,
             action: payload.action,
             error_code: payload.error_code,
@@ -99,7 +99,7 @@ struct EventRow {
     pub timestamp: DateTime64,
     pub id: String,
     pub app: String,
-    pub received_time: DateTime64,
+    pub client_timestamp: DateTime64,
     pub result: EventResult,
     pub action: String,
     pub error_code: Option<String>,
@@ -129,10 +129,10 @@ fn to_event_row(payload: &EventMessage) -> EventRow {
     stats.insert("elapsed".to_owned(), Decimal64::from(payload.elapsed as f64));
 
     EventRow {
-        timestamp: payload.date.into(),
+        timestamp: payload.timestamp.into(),
         id: payload.id.clone(),
         app: payload.app.clone(),
-        received_time: payload.received_time.into(),
+        client_timestamp: payload.client_timestamp.into(),
         result: to_event_result(&payload.result),
         action: payload.action.clone(),
         error_code: payload.error_code.clone(),

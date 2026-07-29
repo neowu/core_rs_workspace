@@ -43,7 +43,7 @@ async fn main() -> Result<(), Exception> {
     let mut collector = MetricsCollector::new();
 
     let state = Arc::new(AppState {
-        topics: Topics { event: Topic::new("event") },
+        topics: Topics { event: Topic::new("event-v2") },
         producer: Producer::new(config.kafka_uri, env!("CARGO_BIN_NAME")),
     });
 

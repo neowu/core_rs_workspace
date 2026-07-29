@@ -8,9 +8,9 @@ use serde::Serialize;
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct EventMessage {
     pub id: String,
-    pub date: DateTime<Utc>,
+    pub timestamp: DateTime<Utc>, // server received_time
     pub app: String,
-    pub received_time: DateTime<Utc>,
+    pub client_timestamp: DateTime<Utc>,
     pub result: String,
     pub action: String,
     pub error_code: Option<String>,
