@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use axum::Router;
 use axum::extract::Path;
 use axum::extract::State;
+use chrono::FixedOffset;
 use chrono::SecondsFormat;
 use chrono::Utc;
 use http::StatusCode;
@@ -22,6 +23,7 @@ use crate::web::route::put;
 #[derive(Clone)]
 struct JobState<S> {
     state: S,
+    timezone: FixedOffset,
     schedules: Arc<HashMap<&'static str, Arc<Schedule<S>>>>,
     executor: Arc<Mutex<TaskExecutor>>,
 }
@@ -33,7 +35,7 @@ where
     let schedule = state.schedules.get(job.as_str()).ok_or_else(|| {
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
-    let context = JobContext { name: schedule.name, scheduled_time: Utc::now() };
+    let context = JobContext { name: schedule.name, scheduled_time: Utc::now().with_timezone(&state.timezone) };
     state.executor.lock().unwrap().spawn(
         format!("job:{job}@{}", context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true)),
         (schedule.job)(state.state.clone(), context),
@@ -50,6 +52,7 @@ where
             self.schedules.iter().map(|schedule| (schedule.name, Arc::clone(schedule))).collect();
         Router::new().route("/_sys/job/{job}", put(run_job)).with_state(JobState {
             state,
+            timezone: self.timezone,
             schedules: Arc::new(jobs),
             executor: Arc::clone(&self.executor),
         })

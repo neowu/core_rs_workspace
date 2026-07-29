@@ -42,7 +42,7 @@ fn created_date(index: &str) -> Option<NaiveDate> {
 }
 
 pub(crate) async fn archive_to_gcs_job(state: Arc<AppState>, context: JobContext) -> Result<(), Exception> {
-    let yesterday = context.scheduled_time.checked_sub_days(Days::new(1)).expect("value must be valid").date_naive();
+    let yesterday = context.scheduled_time.date_naive() - Days::new(1);
     if let Some(clickhouse) = &state.clickhouse {
         clickhouse
             .execute(

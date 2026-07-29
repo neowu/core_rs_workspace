@@ -26,7 +26,8 @@ mod trigger;
 
 pub struct JobContext {
     pub name: &'static str,
-    pub scheduled_time: DateTime<Utc>,
+    /// Scheduled time in the scheduler timezone.
+    pub scheduled_time: DateTime<FixedOffset>,
 }
 
 type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -66,7 +67,7 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        self.add_job(name, job, Trigger::Daily { time_zone: self.timezone, time });
+        self.add_job(name, job, Trigger::Daily(time));
     }
 
     fn add_job<J, Fut>(&mut self, name: &'static str, job: J, trigger: Trigger)
@@ -84,13 +85,14 @@ where
     {
         assert!(!self.schedules.is_empty(), "scheduler does not have any jobs");
 
+        let timezone = self.timezone;
         let mut handles = JoinSet::new();
         for schedule in self.schedules {
             let state = state.clone();
             let shutdown_signal = shutdown_signal.clone();
             let executor = Arc::clone(&self.executor);
             handles.spawn(async move {
-                let mut previous = Utc::now();
+                let mut previous = Utc::now().with_timezone(&timezone);
                 let mut first = true;
                 loop {
                     let next = schedule.trigger.next(previous, first);
