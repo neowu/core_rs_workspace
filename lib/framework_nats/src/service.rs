@@ -94,7 +94,7 @@ impl Service {
         }
 
         let subjects: Vec<&str> = handlers.keys().copied().collect();
-        console!("nats service started, subjects={subjects:?}");
+        console!("start nats service, subjects={subjects:?}");
 
         let mut requests = select_all(subscribers);
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));

@@ -48,7 +48,7 @@ pub async fn start_http_server(router: Router, shutdown_signal: CancellationToke
     let app = app.layer(middleware::from_fn(http_server_layer));
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
     let listener = TcpListener::bind(&config.bind_address).await.expect("failed to bind address");
-    console!("http server stated, bind={}", config.bind_address);
+    console!("start http server, bind={}", config.bind_address);
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal.cancelled().await;

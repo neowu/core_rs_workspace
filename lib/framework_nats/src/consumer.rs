@@ -1,5 +1,6 @@
 use std::any::type_name;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -9,8 +10,10 @@ use std::time::Duration;
 
 use async_nats::HeaderValue;
 use async_nats::jetstream;
+use async_nats::jetstream::AckKind;
 use async_nats::jetstream::consumer::AckPolicy;
-use async_nats::jetstream::consumer::pull;
+use async_nats::jetstream::consumer::DeliverPolicy;
+use async_nats::jetstream::consumer::pull::Config;
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
@@ -71,7 +74,7 @@ type MessageHandler<S> = Box<dyn Fn(jetstream::Message, S) -> Pin<Box<dyn Future
 // one durable pull consumer over a whole stream that may carry different subject types. each
 // subject is registered with its own handler; messages are pulled continuously via sequence(),
 // dispatched by subject, and processed in their own task (bounded by a semaphore) that acks itself.
-pub struct MessageConsumer<S> {
+pub struct Consumer<S> {
     url: String,
     stream: &'static str,
     durable: &'static str,
@@ -79,7 +82,7 @@ pub struct MessageConsumer<S> {
     config: ConsumerConfig,
 }
 
-impl<S> MessageConsumer<S>
+impl<S> Consumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -100,26 +103,23 @@ where
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
         let Self { url, stream, durable, handlers, config } = self;
         let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
-        console!("start nats consumer, url={url}, stream={stream}, subjects={subjects:?}");
+        console!("start nats consumer, url={url}, stream={stream}, name={durable}, subjects={subjects:?}");
 
-        let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
-        let context = jetstream::new(connection);
-        let stream_handle = context
+        let client = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
+        let jetstream = jetstream::new(client)
             .get_stream(stream)
             .await
             .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
 
-        let consumer = stream_handle
-            .get_or_create_consumer(
-                durable,
-                pull::Config {
-                    durable_name: Some(durable.to_owned()),
-                    ack_policy: AckPolicy::Explicit,
-                    ack_wait: Duration::from_mins(30),
-                    filter_subjects: subjects,
-                    ..Default::default()
-                },
-            )
+        let consumer = jetstream
+            .create_consumer(Config {
+                durable_name: Some(durable.to_owned()),
+                ack_policy: AckPolicy::Explicit,
+                ack_wait: Duration::from_mins(30),
+                filter_subjects: subjects,
+                deliver_policy: DeliverPolicy::New,
+                ..Default::default()
+            })
             .await
             .expect("failed to create consumer"); // fail fast on startup
 
@@ -149,7 +149,7 @@ where
                         let subject = raw.subject.as_str();
                         let Some(handler) = handlers.get(subject) else {
                             console!("WARN no handler registered, subject={subject}");
-                            if let Err(e) = raw.ack().await {
+                            if let Err(e) = raw.ack_with(AckKind::Nak(Some(Duration::from_mins(1)))).await {
                                 console!("ERROR failed to ack message, error={e:?}");
                             }
                             continue;
@@ -181,7 +181,7 @@ where
         }
 
         console!(
-            "nats consumer stopped, name={durable}, stream={stream}, subjects={:?}",
+            "nats consumer stopped, stream={stream}, name={durable}, subjects={:?}",
             consumer.cached_info().config.filter_subjects
         );
     }
@@ -261,26 +261,23 @@ where
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
         let Self { url, stream, durable, subject, handler, config, .. } = self;
 
-        let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
-        let context = jetstream::new(connection);
-        let stream_handle = context
+        console!("start nats batch consumer, url={url}, stream={stream}, name={durable}, subject={subject}");
+
+        let client = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
+        let jetstream = jetstream::new(client)
             .get_stream(stream)
             .await
             .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
 
-        console!("nats batch consumer started, stream={stream}, subject={subject}");
-
-        let consumer = stream_handle
-            .get_or_create_consumer(
-                durable,
-                pull::Config {
-                    durable_name: Some(durable.to_owned()),
-                    filter_subject: subject.to_owned(),
-                    ack_policy: AckPolicy::All,
-                    ack_wait: Duration::from_mins(30),
-                    ..Default::default()
-                },
-            )
+        let consumer = jetstream
+            .create_consumer(Config {
+                durable_name: Some(durable.to_owned()),
+                filter_subject: subject.to_owned(),
+                ack_policy: AckPolicy::All,
+                ack_wait: Duration::from_mins(30),
+                deliver_policy: DeliverPolicy::New,
+                ..Default::default()
+            })
             .await
             .expect("failed to create consumer"); // fail fast on startup
 
@@ -318,7 +315,7 @@ where
             }
         }
 
-        console!("nats batch consumer stopped, name={durable}, stream={stream}, subject={subject}");
+        console!("nats batch consumer stopped, stream={stream}, name={durable}, subject={subject}");
     }
 }
 
@@ -329,11 +326,18 @@ where
     M: DeserializeOwned,
 {
     let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
-    let ref_id: Option<Vec<String>> = raw_messages.iter().map(|raw| header(raw, REF_ID).map(str::to_owned)).collect();
+    let ref_id: Option<Vec<String>> = raw_messages
+        .iter()
+        .map(|raw| header(raw, REF_ID).map(str::to_owned))
+        .collect::<Option<HashSet<String>>>()
+        .map(|set| set.into_iter().collect::<Vec<String>>());
     let _result = log::action("message", ref_id, async move {
         context!(subject = subject, fn = type_name::<H>());
-        if let Some(client) =
-            raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
+        if let Some(client) = raw_messages
+            .iter()
+            .map(|raw| header(raw, CLIENT).map(str::to_owned))
+            .collect::<Option<HashSet<String>>>()
+            .map(|set| set.into_iter().collect::<Vec<String>>())
         {
             context!(client = client);
         }
@@ -355,11 +359,6 @@ where
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
             let lag = Utc::now() - timestamp;
             stats!(nats_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
-        }
-        if let Some(clients) =
-            raw_messages.iter().map(|raw| header(raw, CLIENT).map(str::to_owned)).collect::<Option<Vec<String>>>()
-        {
-            context!(client = clients);
         }
 
         let result = handler(state, messages).await;

@@ -42,6 +42,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
             let result = ::framework::log::action("test", None, async {
                 ::framework::context!(test = #name);
+                ::framework::log::trace();
                 __body().await
             })
             .await;

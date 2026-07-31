@@ -85,6 +85,8 @@ where
     {
         assert!(!self.schedules.is_empty(), "scheduler does not have any jobs");
 
+        console!("start scheduler");
+
         let timezone = self.timezone;
         let mut handles = JoinSet::new();
         for schedule in self.schedules {
@@ -120,7 +122,6 @@ where
                 }
             });
         }
-        console!("scheduler started");
         handles.join_all().await;
         let executor = mem::take(&mut *self.executor.lock().unwrap());
         if let Some(aborted) = executor.shutdown(Duration::from_secs(15)).await {

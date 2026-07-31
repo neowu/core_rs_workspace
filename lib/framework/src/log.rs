@@ -85,6 +85,13 @@ where
     }
 }
 
+pub fn trace() {
+    let _result = CURRENT_ACTION.try_with(|action| {
+        let mut action = action.borrow_mut();
+        action.trace = true;
+    });
+}
+
 pub struct Span {
     name: &'static str,
     start_time: Instant,
@@ -267,9 +274,9 @@ pub fn __context(key: &'static str, values: Vec<String>, location: &'static str)
         if values.len() == 1
             && let Some(value) = values.first()
         {
-            action.log(&format!("[content] {key}={value}"), location);
+            action.log(&format!("[context] {key}={value}"), location);
         } else {
-            action.log(&format!("[content] {key}={values:?}"), location);
+            action.log(&format!("[context] {key}={values:?}"), location);
         }
 
         action.context.push((key, values));

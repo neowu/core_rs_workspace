@@ -3,6 +3,7 @@ words = [
     "NATS",
     "clickhouse",
     "duckdb",
+    "jetstream",
     "kibana",
     "serde",
 ]

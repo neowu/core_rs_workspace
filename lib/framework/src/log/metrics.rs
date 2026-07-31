@@ -78,7 +78,7 @@ impl MetricsCollector {
 
     pub async fn start(mut self, shutdown_signal: CancellationToken) {
         if let Some(Context { app, appender }) = CONTEXT.get() {
-            console!("metrics collector started");
+            console!("start metrics collector");
             loop {
                 tokio::select! {
                     () = shutdown_signal.cancelled() => {

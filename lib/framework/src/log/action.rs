@@ -24,6 +24,7 @@ pub(crate) struct Action {
     pub(crate) context: Vec<(&'static str, Vec<String>)>,
     pub(crate) stats: HashMap<Cow<'static, str>, u64>,
     pub(crate) logs: Vec<String>,
+    pub(crate) trace: bool,
 }
 
 pub struct Error {
@@ -50,6 +51,7 @@ impl Action {
             context: Vec::new(),
             stats: HashMap::new(),
             logs: Vec::with_capacity(32),
+            trace: false,
         };
 
         let date_string = action.date.to_rfc3339_opts(SecondsFormat::Nanos, true);
@@ -64,8 +66,8 @@ impl Action {
         action
     }
 
-    pub(crate) fn flush_trace(&self) -> bool {
-        self.error.is_some() || self.kind == "test"
+    pub(crate) const fn flush_trace(&self) -> bool {
+        self.error.is_some() || self.trace
     }
 
     pub(crate) fn log(&mut self, message: &str, location: &'static str) {
