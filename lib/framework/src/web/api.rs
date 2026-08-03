@@ -16,7 +16,7 @@ use crate::http::HttpClient;
 use crate::http::HttpRequest;
 use crate::http::HttpResponse;
 use crate::json;
-use crate::log::current_action_id;
+use crate::log::with_current_action;
 use crate::string::intern;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
@@ -44,13 +44,12 @@ where
 pub struct ApiClient {
     http_client: HttpClient,
     api_url: String,
-    client: &'static str,
 }
 
 impl ApiClient {
     #[inline]
-    pub const fn new(http_client: HttpClient, api_url: String, client: &'static str) -> Self {
-        Self { http_client, api_url, client }
+    pub const fn new(http_client: HttpClient, api_url: String) -> Self {
+        Self { http_client, api_url }
     }
 
     #[inline]
@@ -66,7 +65,7 @@ impl ApiClient {
             format!("{}{path}?{query_string}", self.api_url)
         };
         let mut http_request = HttpRequest::new(Method::GET, url);
-        self.link_context(&mut http_request)?;
+        link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
@@ -79,7 +78,7 @@ impl ApiClient {
     {
         let mut http_request = HttpRequest::new(Method::POST, format!("{}{path}", self.api_url));
         http_request.body(json::to_json(&request)?, "application/json");
-        self.link_context(&mut http_request)?;
+        link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
@@ -92,18 +91,18 @@ impl ApiClient {
     {
         let mut http_request = HttpRequest::new(Method::PUT, format!("{}{path}", self.api_url));
         http_request.body(json::to_json(&request)?, "application/json");
-        self.link_context(&mut http_request)?;
+        link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
     }
+}
 
-    fn link_context(&self, http_request: &mut HttpRequest) -> Result<(), Exception> {
-        if let Some(action_id) = current_action_id() {
-            http_request.header(REF_ID, &action_id)?;
-        }
-        http_request.header(CLIENT, self.client)?;
-        Ok(())
+fn link_context(http_request: &mut HttpRequest) -> Result<(), Exception> {
+    if let Some((ref_id, app)) = with_current_action(|action| (action.id.to_string(), action.app)) {
+        http_request.header(REF_ID, &ref_id)?;
+        http_request.header(CLIENT, app)?;
     }
+    Ok(())
 }
 
 fn parse_response<Res>(response: &HttpResponse) -> Result<Res, Exception>

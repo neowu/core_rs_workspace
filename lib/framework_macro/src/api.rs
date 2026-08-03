@@ -70,8 +70,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         }
 
         impl #client_ident {
-            #trait_vis fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
-                Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
+            #trait_vis fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+                Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
             }
         }
 
@@ -292,8 +292,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
+                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
                     }
                 }
 
@@ -380,8 +380,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String, client: &'static str) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url, client) }
+                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
                     }
                 }
 

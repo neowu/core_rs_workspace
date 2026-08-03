@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::exception::Exception;
 use crate::log;
-use crate::log::current_action_id;
+use crate::log::with_current_action;
 use crate::schedule::trigger::Trigger;
 use crate::task::TaskExecutor;
 
@@ -137,7 +137,7 @@ where
     J: Fn(S, JobContext) -> Fut + Send + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    let ref_id = current_action_id().map(|id| vec![id]);
+    let ref_id = with_current_action(|action| vec![action.id.to_string()]);
     let triggered = ref_id.is_some();
     Box::pin(
         log::action("job", ref_id, async move {

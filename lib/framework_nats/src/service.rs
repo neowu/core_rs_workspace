@@ -20,7 +20,6 @@ use framework::exception::Exception;
 use framework::json::from_json;
 use framework::json::to_json;
 use framework::log;
-use framework::log::current_action_id;
 use framework::span;
 use framework::stats;
 use framework::string::intern;
@@ -35,6 +34,7 @@ use tokio_util::sync::CancellationToken;
 use crate::CLIENT;
 use crate::ERROR;
 use crate::REF_ID;
+use crate::link_context;
 
 #[derive(Clone, Copy)]
 pub struct ServiceConfig {
@@ -177,14 +177,13 @@ where
 
 // nats api client, mirrors framework::web::api::ApiClient
 pub struct ServiceClient {
-    nats_client: Client,
-    client: &'static str,
+    client: Client,
 }
 
 impl ServiceClient {
     // client usually be env!("CARGO_BIN_NAME")
-    pub const fn new(nats_client: Client, client: &'static str) -> Self {
-        Self { nats_client, client }
+    pub const fn new(client: Client) -> Self {
+        Self { client }
     }
 
     pub async fn request<Req, Res>(&self, subject: &'static str, request: &Req) -> Result<Res, Exception>
@@ -197,29 +196,21 @@ impl ServiceClient {
 
         stats!(nats_request_messages = 1, nats_request_bytes = payload.len());
 
-        let mut headers = HeaderMap::new();
-        headers.insert(CLIENT, self.client);
-        if let Some(ref_id) = current_action_id() {
-            headers.insert(REF_ID, ref_id);
-        }
+        let headers = link_context();
 
         log!("request, subject={subject}, payload={payload}");
         // reply must arrive within the connection level request timeout (async-nats default: 10s),
         // configurable via ConnectOptions::request_timeout
         let reply =
-            self.nats_client.request_with_headers(subject, headers, payload.into()).await.map_err(|e| {
-                match e.kind() {
-                    RequestErrorKind::NoResponders => {
-                        exception!(format!("no responders, subject={subject}"), code = "NATS_NO_RESPONDERS")
-                    }
-                    RequestErrorKind::TimedOut => {
-                        exception!(format!("request timed out, subject={subject}"), code = "NATS_TIMEOUT")
-                    }
-                    RequestErrorKind::InvalidSubject
-                    | RequestErrorKind::MaxPayloadExceeded
-                    | RequestErrorKind::Other => {
-                        exception!(format!("failed to send request, subject={subject}"), source = e)
-                    }
+            self.client.request_with_headers(subject, headers, payload.into()).await.map_err(|e| match e.kind() {
+                RequestErrorKind::NoResponders => {
+                    exception!(format!("no responders, subject={subject}"), code = "NATS_NO_RESPONDERS")
+                }
+                RequestErrorKind::TimedOut => {
+                    exception!(format!("request timed out, subject={subject}"), code = "NATS_TIMEOUT")
+                }
+                RequestErrorKind::InvalidSubject | RequestErrorKind::MaxPayloadExceeded | RequestErrorKind::Other => {
+                    exception!(format!("failed to send request, subject={subject}"), source = e)
                 }
             })?;
         parse_reply(subject, &reply)

@@ -8,9 +8,11 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use async_nats::Client;
 use async_nats::HeaderValue;
 use async_nats::jetstream;
 use async_nats::jetstream::AckKind;
+use async_nats::jetstream::Context;
 use async_nats::jetstream::consumer::AckPolicy;
 use async_nats::jetstream::consumer::DeliverPolicy;
 use async_nats::jetstream::consumer::pull::Config;
@@ -75,7 +77,7 @@ type MessageHandler<S> = Box<dyn Fn(jetstream::Message, S) -> Pin<Box<dyn Future
 // subject is registered with its own handler; messages are pulled continuously via sequence(),
 // dispatched by subject, and processed in their own task (bounded by a semaphore) that acks itself.
 pub struct Consumer<S> {
-    url: String,
+    context: Context,
     stream: &'static str,
     durable: &'static str,
     handlers: HashMap<&'static str, MessageHandler<S>>,
@@ -86,8 +88,8 @@ impl<S> Consumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new(url: String, stream: &'static str, durable: &'static str, config: ConsumerConfig) -> Self {
-        Self { url, stream, durable, handlers: HashMap::new(), config }
+    pub fn new(client: Client, stream: &'static str, durable: &'static str, config: ConsumerConfig) -> Self {
+        Self { context: jetstream::new(client), stream, durable, handlers: HashMap::new(), config }
     }
 
     pub fn add_handler<H, Fut, M>(&mut self, subject: &Subject<M>, handler: H)
@@ -101,12 +103,14 @@ where
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
-        let Self { url, stream, durable, handlers, config } = self;
+        let Self { context, stream, durable, handlers, config } = self;
         let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
-        console!("start nats consumer, url={url}, stream={stream}, name={durable}, subjects={subjects:?}");
+        console!(
+            "start nats consumer, server={}, stream={stream}, name={durable}, subjects={subjects:?}",
+            context.client().server_info().server_name
+        );
 
-        let client = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
-        let jetstream = jetstream::new(client)
+        let jetstream = context
             .get_stream(stream)
             .await
             .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
@@ -201,8 +205,10 @@ where
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
         if let Some(timestamp) = timestamp(&raw) {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = Utc::now() - timestamp;
-            stats!(nats_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
+            let lag = (Utc::now() - timestamp).num_milliseconds();
+            if lag > 0 {
+                stats!(nats_consumer_lag = lag);
+            }
         }
         if let Some(client) = header(&raw, CLIENT) {
             context!(client = client);
@@ -231,7 +237,7 @@ where
 // whole batch to one handler, then acks the latest message; AckPolicy::All makes that single ack
 // cover the entire batch.
 pub struct BatchConsumer<S, M, H> {
-    url: String,
+    context: Context,
     stream: &'static str,
     durable: &'static str,
     subject: &'static str,
@@ -248,23 +254,33 @@ where
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
     pub fn new(
-        url: String,
+        client: Client,
         stream: &'static str,
         durable: &'static str,
         subject: &Subject<M>,
         handler: H,
         config: ConsumerConfig,
     ) -> Self {
-        Self { url, stream, durable, subject: subject.name, handler, config, _marker: PhantomData }
+        Self {
+            context: jetstream::new(client),
+            stream,
+            durable,
+            subject: subject.name,
+            handler,
+            config,
+            _marker: PhantomData,
+        }
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
-        let Self { url, stream, durable, subject, handler, config, .. } = self;
+        let Self { context, stream, durable, subject, handler, config, .. } = self;
 
-        console!("start nats batch consumer, url={url}, stream={stream}, name={durable}, subject={subject}");
+        console!(
+            "start nats batch consumer, server={}, stream={stream}, name={durable}, subject={subject}",
+            context.client().server_info().server_name
+        );
 
-        let client = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
-        let jetstream = jetstream::new(client)
+        let jetstream = context
             .get_stream(stream)
             .await
             .unwrap_or_else(|e| panic!("failed to get stream, stream={stream}, error={e:?}")); // fail fast on startup
@@ -357,8 +373,10 @@ where
         stats!(nats_read_messages = messages.len(), nats_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.first().and_then(timestamp) {
             log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = Utc::now() - timestamp;
-            stats!(nats_consumer_lag = lag.num_nanoseconds().unwrap_or_default());
+            let lag = (Utc::now() - timestamp).num_milliseconds();
+            if lag > 0 {
+                stats!(nats_consumer_lag = lag);
+            }
         }
 
         let result = handler(state, messages).await;

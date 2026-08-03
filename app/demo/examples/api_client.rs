@@ -19,11 +19,8 @@ async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let client = UserServiceClient::new(
-        HttpClient::new(HttpClientConfig::internal_only()),
-        "http://localhost:8080".to_owned(),
-        env!("CARGO_BIN_NAME"),
-    );
+    let client =
+        UserServiceClient::new(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080".to_owned());
 
     spawn_action!("client", async move {
         let user_id = client.create(CreateUserRequest { name: "".to_owned(), rating: None }).await?;

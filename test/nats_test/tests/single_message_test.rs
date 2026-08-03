@@ -9,10 +9,10 @@ use framework_nats::Subject;
 use framework_nats::consumer::Consumer;
 use framework_nats::consumer::ConsumerConfig;
 use framework_nats::consumer::Message;
+use framework_nats::producer::Producer;
 use nats_test::AppState;
 use nats_test::STREAM;
-use nats_test::URL;
-use nats_test::producer;
+use nats_test::client;
 use nats_test::setup_consumer;
 use nats_test::setup_jetstream;
 use serde::Deserialize;
@@ -31,21 +31,23 @@ struct TestMessage2 {
 
 #[integration_test]
 async fn single_message() -> Result<(), Exception> {
+    let client = client().await;
+
     let durable = env!("CARGO_PKG_NAME");
-    setup_jetstream().await;
-    setup_consumer(durable, AckPolicy::Explicit).await;
+    setup_jetstream(client.clone()).await;
+    setup_consumer(client.clone(), durable, AckPolicy::Explicit).await;
 
     let subject_1: Subject<TestMessage> = Subject::new("nats_test.1");
     let subject_2: Subject<TestMessage2> = Subject::new("nats_test.2");
     let semaphore = Arc::new(Semaphore::new(0));
 
     let mut system = System::new();
-    let mut consumer = Consumer::new(URL.to_owned(), STREAM, durable, ConsumerConfig::default());
+    let mut consumer = Consumer::new(client.clone(), STREAM, durable, ConsumerConfig::default());
     consumer.add_handler(&subject_1, test_message_handler);
     consumer.add_handler(&subject_2, test_message_handler_2);
     system.spawn(consumer.start(AppState { semaphore: Arc::clone(&semaphore) }, system.shutdown_signal()));
 
-    let producer = producer().await;
+    let producer = Producer::new(client);
     producer.send(&subject_1, &TestMessage { value: "v1".to_owned() }).await.unwrap();
     producer.send(&subject_2, &TestMessage2 { value: 3 }).await.unwrap();
 

@@ -21,6 +21,8 @@ use crate::number::parse_u64;
 pub struct Metrics {
     pub id: LogId,
     pub date: DateTime<Utc>,
+    pub app: &'static str,
+    pub host: &'static str,
     pub error: Option<Error>,
     pub stats: Vec<(&'static str, u64)>,
     pub info: Vec<(&'static str, String)>,
@@ -77,7 +79,7 @@ impl MetricsCollector {
     }
 
     pub async fn start(mut self, shutdown_signal: CancellationToken) {
-        if let Some(Context { app, appender }) = CONTEXT.get() {
+        if let Some(Context { appender, app, host }) = CONTEXT.get() {
             console!("start metrics collector");
             loop {
                 tokio::select! {
@@ -86,19 +88,21 @@ impl MetricsCollector {
                         return;
                     }
                     () = sleep(Duration::from_secs(5)) => {
-                        let metrics = self.collect_metrics();
-                        appender.append_metrics(&metrics, app);
+                        let metrics = self.collect_metrics(app, host);
+                        appender.append_metrics(&metrics);
                     }
                 }
             }
         }
     }
 
-    fn collect_metrics(&mut self) -> Metrics {
+    fn collect_metrics(&mut self, app: &'static str, host: &'static str) -> Metrics {
         let date = Utc::now();
         let mut metrics = Metrics {
             id: id_generator::next_id(date.timestamp_millis()),
             date,
+            app,
+            host,
             error: None,
             stats: Vec::new(),
             info: Vec::new(),

@@ -11,14 +11,15 @@ use crate::exception::Severity;
 use crate::log::elapsed;
 use crate::log::id_generator::LogId;
 use crate::log::truncate;
-use crate::network::hostname;
 use crate::write_str;
 
-pub(crate) struct Action {
+pub struct Action {
     pub(crate) start_time: Instant,
-    pub(crate) id: LogId,
+    pub id: LogId,
     pub(crate) kind: &'static str,
     pub(crate) date: DateTime<Utc>,
+    pub app: &'static str,
+    pub(crate) host: &'static str,
     pub(crate) ref_id: Option<Vec<String>>,
     pub(crate) error: Option<Error>,
     pub(crate) context: Vec<(&'static str, Vec<String>)>,
@@ -40,12 +41,15 @@ impl Action {
         ref_id: Option<Vec<String>>,
         date: DateTime<Utc>,
         app: &'static str,
+        host: &'static str,
     ) -> Self {
         let mut action = Action {
             start_time: Instant::now(),
             id,
             kind,
             date,
+            app,
+            host,
             ref_id,
             error: None,
             context: Vec::new(),
@@ -57,10 +61,8 @@ impl Action {
         let date_string = action.date.to_rfc3339_opts(SecondsFormat::Nanos, true);
 
         action.logs.push(format!(
-            "# [action] id={}, date={date_string}, kind={kind}, app={app}, host={}, ref_id={:?}",
-            action.id,
-            hostname(),
-            action.ref_id,
+            "# [action] id={}, kind={kind}, date={date_string}, app={app}, host={}, ref_id={:?}",
+            action.id, action.host, action.ref_id,
         ));
 
         action

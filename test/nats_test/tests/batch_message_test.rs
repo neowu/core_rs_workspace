@@ -9,10 +9,10 @@ use framework_nats::Subject;
 use framework_nats::consumer::BatchConsumer;
 use framework_nats::consumer::ConsumerConfig;
 use framework_nats::consumer::Message;
+use framework_nats::producer::Producer;
 use nats_test::AppState;
 use nats_test::STREAM;
-use nats_test::URL;
-use nats_test::producer;
+use nats_test::client;
 use nats_test::setup_consumer;
 use nats_test::setup_jetstream;
 use serde::Deserialize;
@@ -26,16 +26,17 @@ struct TestMessage {
 
 #[integration_test]
 async fn batch_message() -> Result<(), Exception> {
+    let client = client().await;
     let durable = concat!(env!("CARGO_PKG_NAME"), "_batch");
-    setup_jetstream().await;
-    setup_consumer(durable, AckPolicy::All).await;
+    setup_jetstream(client.clone()).await;
+    setup_consumer(client.clone(), durable, AckPolicy::All).await;
 
     let subject_3: Subject<TestMessage> = Subject::new("nats_test.3");
     let semaphore = Arc::new(Semaphore::new(0));
 
     let mut system = System::new();
     let batch_consumer = BatchConsumer::new(
-        URL.to_owned(),
+        client.clone(),
         STREAM,
         durable,
         &subject_3,
@@ -44,7 +45,7 @@ async fn batch_message() -> Result<(), Exception> {
     );
     system.spawn(batch_consumer.start(AppState { semaphore: Arc::clone(&semaphore) }, system.shutdown_signal()));
 
-    let producer = producer().await;
+    let producer = Producer::new(client);
     for i in 0..10 {
         producer.send(&subject_3, &TestMessage { value: i }).await.unwrap();
     }

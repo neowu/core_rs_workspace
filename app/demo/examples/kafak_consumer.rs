@@ -41,7 +41,7 @@ pub async fn main() -> Result<(), Exception> {
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
         topics: Topics { test_single: Topic::new("test_single"), test_bulk: Topic::new("test") },
-        producer: Producer::new("dev.internal:9092".to_owned(), env!("CARGO_BIN_NAME")),
+        producer: Producer::new("dev.internal:9092".to_owned()),
         tx,
     });
 

@@ -1,13 +1,7 @@
 use std::ffi::CStr;
 use std::io::Error;
-use std::sync::OnceLock;
 
-pub fn hostname() -> &'static str {
-    static HOSTNAME: OnceLock<&'static str> = OnceLock::new();
-    HOSTNAME.get_or_init(|| __hostname().leak())
-}
-
-fn __hostname() -> String {
+pub(crate) fn hostname() -> String {
     let mut buf = [0_u8; 256];
     let ret = unsafe { libc::gethostname(buf.as_mut_ptr().cast::<libc::c_char>(), buf.len()) };
     assert!(ret == 0, "failed to get hostname, error={}", Error::last_os_error());

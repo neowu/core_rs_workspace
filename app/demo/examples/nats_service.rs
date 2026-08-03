@@ -47,10 +47,10 @@ pub async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
     log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let nats_client = framework_nats::connect("dev.internal:4222".to_owned()).await;
+    let nats_client = framework_nats::connect("dev.internal:4222").await;
 
     let service = GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl));
-    let client = GreetingServiceClient::new(nats_client, env!("CARGO_BIN_NAME"));
+    let client = GreetingServiceClient::new(nats_client);
 
     let mut system = System::new();
     system.spawn(service.start(system.shutdown_signal()));

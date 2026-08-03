@@ -2,4 +2,7 @@
 - log_collector supports collect cookies?
 - Arena support? log/request/response
 - jemalloc
-- Nats, nack for certain error type? so get redelivered
+
+TODO:
+
+- retire chrono

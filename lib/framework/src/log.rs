@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -11,6 +12,7 @@ use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::appender::Appender;
+use crate::network::hostname;
 use crate::write_str;
 
 mod action;
@@ -38,15 +40,16 @@ pub fn init(appender: &str, app: &'static str) {
             "gcloud" => Appender::GoogleCloud,
             _ => panic!("unknown appender, value={appender}"),
         };
-        Context { app, appender }
+        Context { appender, app, host: hostname().leak() }
     });
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
 
 struct Context {
-    app: &'static str,
     appender: Appender,
+    app: &'static str,
+    host: &'static str,
 }
 
 task_local! {
@@ -58,10 +61,10 @@ pub async fn action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>, task:
 where
     F: Future<Output = Result<R, Exception>>,
 {
-    if let Some(Context { app, appender }) = CONTEXT.get() {
+    if let Some(Context { appender, app, host }) = CONTEXT.get() {
         let now = Utc::now();
         let id = id_generator::next_id(now.timestamp_millis());
-        let action = Action::new(id, kind, ref_id, now, app);
+        let action = Action::new(id, kind, ref_id, now, app, host);
         CURRENT_ACTION
             .scope(RefCell::new(action), async move {
                 let result = task.await;
@@ -71,7 +74,7 @@ where
                         current_action.log_exception(e);
                     }
                     current_action.finish();
-                    appender.append_action(&current_action, app);
+                    appender.append_action(&current_action);
                 });
                 result
             })
@@ -90,6 +93,18 @@ pub fn trace() {
         let mut action = action.borrow_mut();
         action.trace = true;
     });
+}
+
+pub fn with_current_action<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(Ref<'_, Action>) -> R,
+{
+    CURRENT_ACTION
+        .try_with(|action| {
+            let action = action.borrow();
+            Some(f(action))
+        })
+        .unwrap_or(None)
 }
 
 pub struct Span {
@@ -214,11 +229,6 @@ pub fn __log_exception(exception: &Exception) {
         let mut action = action.borrow_mut();
         action.log_exception(exception);
     });
-}
-
-#[inline]
-pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION.try_with(|action| Some(action.borrow().id.to_string())).unwrap_or(None)
 }
 
 #[macro_export]

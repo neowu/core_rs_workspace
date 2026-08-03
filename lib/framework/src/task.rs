@@ -12,9 +12,9 @@ use tokio::time;
 
 use crate::exception::Exception;
 use crate::log;
-use crate::log::current_action_id;
 use crate::log::metrics::Counter;
 use crate::log::metrics::Metrics;
+use crate::log::with_current_action;
 
 // the global executor for fire-and-forget tasks; callers that want their own life cycle hold a TaskExecutor directly
 static EXECUTOR: LazyLock<Mutex<TaskExecutor>> = LazyLock::new(Mutex::default);
@@ -78,7 +78,7 @@ where
     R: Send + Sync + 'static,
 {
     let task_name = format!("task:{name}@{location}");
-    let ref_id = current_action_id().map(|id| vec![id]);
+    let ref_id = with_current_action(|action| vec![action.id.to_string()]);
 
     EXECUTOR.lock().unwrap().spawn(task_name, async move {
         let _counter = TASK_COUNTER.get().map(Counter::increase);

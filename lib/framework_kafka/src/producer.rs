@@ -5,7 +5,7 @@ use framework::console;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
-use framework::log::current_action_id;
+use framework::log::with_current_action;
 use framework::span;
 use framework::stats;
 use rdkafka::ClientConfig;
@@ -22,12 +22,11 @@ use crate::Topic;
 
 pub struct Producer {
     producer: FutureProducer,
-    client: &'static str,
 }
 
 impl Producer {
     // client usually be env!("CARGO_BIN_NAME")
-    pub fn new(bootstrap_servers: String, client: &'static str) -> Self {
+    pub fn new(bootstrap_servers: String) -> Self {
         console!("create kafka producer, broker={bootstrap_servers}");
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_servers)
@@ -35,7 +34,7 @@ impl Producer {
             .set("compression.codec", "zstd")
             .create()
             .expect("failed to create producer");
-        Self { producer, client }
+        Self { producer }
     }
 
     pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> Result<(), Exception>
@@ -45,8 +44,6 @@ impl Producer {
         let _span = span!("kafka");
         let payload = to_json(message)?;
 
-        stats!(kafka_write_messages = 1, kafka_write_bytes = payload.len());
-
         let mut record =
             FutureRecord::<String, String>::to(topic.name).timestamp(Utc::now().timestamp_millis()).payload(&payload);
 
@@ -54,13 +51,17 @@ impl Producer {
             record = record.key(key);
         }
 
-        let mut headers = OwnedHeaders::new().insert(Header { key: CLIENT, value: Some(self.client) });
-        if let Some(ref_id) = current_action_id() {
-            headers = headers.insert(Header { key: REF_ID, value: Some(&ref_id) });
+        let mut headers = OwnedHeaders::new();
+        if let Some((ref_id, app)) = with_current_action(|action| (action.id.to_string(), action.app)) {
+            headers = headers
+                .insert(Header { key: REF_ID, value: Some(&ref_id) })
+                .insert(Header { key: CLIENT, value: Some(app) });
         }
         record = record.headers(headers);
 
         log!("send, topic={}, key={key:?}, payload={payload}", topic.name);
+        stats!(kafka_write_messages = 1, kafka_write_bytes = payload.len());
+
         let result = self.producer.send(record, Timeout::Never).await;
         if let Err((err, _)) = result {
             return Err(err.into());

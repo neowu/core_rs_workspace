@@ -16,7 +16,6 @@ use crate::json;
 use crate::log::Action;
 use crate::log::action::Error;
 use crate::log::metrics::Metrics;
-use crate::network::hostname;
 use crate::write_str;
 
 pub enum Appender {
@@ -26,17 +25,17 @@ pub enum Appender {
 
 impl Appender {
     // appender must not emit log event!(), it could trigger layer on_event, make CURRENT_ACTION.borrow_mut() panic
-    pub(crate) fn append_action(&self, action: &Action, app: &'static str) {
+    pub(crate) fn append_action(&self, action: &Action) {
         match self {
             Appender::Console => append_console(action),
-            Appender::GoogleCloud => append_gcloud(action, app),
+            Appender::GoogleCloud => append_gcloud(action),
         }
     }
 
-    pub(crate) fn append_metrics(&self, metrics: &Metrics, app: &'static str) {
+    pub(crate) fn append_metrics(&self, metrics: &Metrics) {
         match self {
             Appender::Console => append_metrics_console(metrics),
-            Appender::GoogleCloud => append_metrics_gcloud(metrics, app),
+            Appender::GoogleCloud => append_metrics_gcloud(metrics),
         }
     }
 }
@@ -47,7 +46,9 @@ fn append_console(action: &Action) {
     let severity = severity(action.error.as_ref());
     let kind = action.kind;
     let id = &action.id;
-    let mut log = format!("ACTION: {date} | {severity} | {kind} | id={id}");
+    let app = action.app;
+    let host = action.host;
+    let mut log = format!("ACTION: {date} | {severity} | {kind} | id={id} | app={app} | host={host}");
 
     if let Some(error) = &action.error {
         if let Some(error_code) = error.code {
@@ -97,11 +98,12 @@ fn append_console(action: &Action) {
 #[allow(clippy::print_stdout)]
 fn append_metrics_console(metrics: &Metrics) {
     let date = metrics.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let mut log = format!("METRICS: {date}");
+    let severity = severity(metrics.error.as_ref());
+    let app = metrics.app;
+    let host = metrics.host;
+    let mut log = format!("METRICS: {date} | {severity} | app={app} | host={host}");
 
     if let Some(error) = &metrics.error {
-        let severity = severity(metrics.error.as_ref());
-        write_str!(&mut log, " | {severity}");
         if let Some(error_code) = error.code {
             write_str!(&mut log, " | error_code={error_code}");
         }
@@ -120,13 +122,14 @@ fn append_metrics_console(metrics: &Metrics) {
 }
 
 #[allow(clippy::print_stdout)]
-fn append_gcloud(action: &Action, app: &'static str) {
+fn append_gcloud(action: &Action) {
     let id = action.id.to_string();
     let id = id.as_str();
     let time = action.date;
     let severity = severity(action.error.as_ref());
     let error_code = action.error.as_ref().and_then(|e| e.code);
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
+    let app = action.app;
 
     println!(
         "{}",
@@ -135,7 +138,7 @@ fn append_gcloud(action: &Action, app: &'static str) {
             time,
             kind: action.kind,
             app,
-            host: hostname(),
+            host: action.host,
             severity,
             ref_id: action.ref_id.as_deref(),
             error_code,
@@ -171,7 +174,7 @@ fn append_gcloud(action: &Action, app: &'static str) {
 }
 
 #[allow(clippy::print_stdout)]
-fn append_metrics_gcloud(metrics: &Metrics, app: &'static str) {
+fn append_metrics_gcloud(metrics: &Metrics) {
     let error_code = metrics.error.as_ref().and_then(|e| e.code);
     let error_message = metrics.error.as_ref().map(|e| e.message.as_str());
 
@@ -180,8 +183,8 @@ fn append_metrics_gcloud(metrics: &Metrics, app: &'static str) {
         json::to_json(&MetricsEntry {
             id: metrics.id.to_string().as_str(),
             time: metrics.date,
-            app,
-            host: hostname(),
+            app: metrics.app,
+            host: metrics.host,
             severity: severity(metrics.error.as_ref()),
             error_code,
             error_message,

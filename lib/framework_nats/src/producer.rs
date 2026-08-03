@@ -1,32 +1,28 @@
 use std::fmt::Debug;
 
-use async_nats::HeaderMap;
+use async_nats::Client;
 use async_nats::jetstream;
 use async_nats::jetstream::Context;
 use framework::console;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
-use framework::log::current_action_id;
 use framework::span;
 use framework::stats;
 use serde::Serialize;
 
-use crate::CLIENT;
-use crate::REF_ID;
 use crate::Subject;
+use crate::link_context;
 
 pub struct Producer {
-    jetstream: Context,
-    client: &'static str,
+    context: Context,
 }
 
 impl Producer {
     // client usually be env!("CARGO_BIN_NAME")
-    pub async fn new(url: String, client: &'static str) -> Self {
-        console!("create nats producer, url={url}");
-        let connection = async_nats::connect(url).await.expect("failed to connect nats"); // fail fast on startup
-        Self { jetstream: jetstream::new(connection), client }
+    pub fn new(client: Client) -> Self {
+        console!("create nats producer, server={}", client.server_info().server_name);
+        Self { context: jetstream::new(client) }
     }
 
     pub async fn send<T>(&self, subject: &Subject<T>, message: &T) -> Result<(), Exception>
@@ -34,18 +30,12 @@ impl Producer {
         T: Serialize + Debug,
     {
         let _span = span!("nats");
+        let headers = link_context();
         let payload = to_json(message)?;
-
-        stats!(nats_write_messages = 1, nats_write_bytes = payload.len());
-
-        let mut headers = HeaderMap::new();
-        headers.insert(CLIENT, self.client);
-        if let Some(ref_id) = current_action_id() {
-            headers.insert(REF_ID, ref_id);
-        }
-
+        let len = payload.len();
         log!("send, subject={}, payload={payload}", subject.name);
-        let _ack = self.jetstream.publish_with_headers(subject.name, headers, payload.into()).await?;
+        let _ack = self.context.publish_with_headers(subject.name, headers, payload.into()).await?;
+        stats!(nats_write_messages = 1, nats_write_bytes = len);
         Ok(())
     }
 }
