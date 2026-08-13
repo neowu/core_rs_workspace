@@ -2,17 +2,17 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::NaiveTime;
 use framework::asset_path;
 use framework::config::EnvString;
 use framework::console;
 use framework::context;
+use framework::date::Offset;
+use framework::date::Time;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
 use framework::log::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
-use framework::schedule::UTC;
 use framework::spawn_action;
 use framework::system::System;
 use framework::task;
@@ -87,23 +87,15 @@ async fn main() -> Result<(), Exception> {
     init_elasticsearch(&state.elasticsearch).await?;
 
     let scheduler_state = Arc::clone(&state);
-    let mut scheduler = Scheduler::new(UTC);
-    scheduler.schedule_daily(
-        "cleanup_old_index_job",
-        cleanup_old_index_job,
-        NaiveTime::from_hms_opt(1, 0, 0).expect("value must be valid"),
-    );
+    let mut scheduler = Scheduler::new(Offset::UTC);
+    scheduler.schedule_daily("cleanup_old_index_job", cleanup_old_index_job, Time::new(1, 0, 0));
 
     if let Some(config) = &config.clickhouse {
         let clickhouse = ClickHouse::new(&config.uri, &config.user, &config.password, None);
         init_clickhouse(clickhouse).await?;
 
         // run at UTC 8:00am, to give 8 hours as lead time for action to finish, action use start time as timestamp, and clickhouse use timestamp for partition
-        scheduler.schedule_daily(
-            "archive_to_gcs_job",
-            archive_to_gcs_job,
-            NaiveTime::from_hms_opt(8, 0, 0).expect("value must be valid"),
-        );
+        scheduler.schedule_daily("archive_to_gcs_job", archive_to_gcs_job, Time::new(8, 0, 0));
     }
     system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
 

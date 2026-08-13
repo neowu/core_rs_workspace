@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::DateTime;
-use chrono::NaiveDate;
-use chrono::Utc;
+use framework::date::Date;
+use framework::date::DateTime;
 use framework::exception::Exception;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
@@ -15,7 +14,7 @@ use crate::AppState;
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct StatMessage {
     id: String,
-    date: DateTime<Utc>,
+    date: DateTime,
     app: String,
     host: Option<String>,
     result: String,
@@ -28,7 +27,7 @@ pub(crate) struct StatMessage {
 #[derive(Debug, Serialize)]
 struct StatDocument {
     #[serde(rename = "@timestamp")]
-    timestamp: DateTime<Utc>,
+    timestamp: DateTime,
     app: String,
     host: Option<String>,
     result: String,
@@ -57,21 +56,22 @@ pub(crate) async fn stat_message_handler(
         };
         documents.push((payload.id, doc));
     }
-    let now = Utc::now().date_naive();
+    let now = DateTime::now().date();
     state.elasticsearch.bulk_index(&index(now), documents).await?;
     Ok(())
 }
 
-fn index(now: NaiveDate) -> String {
-    format!("stat-{}", now.format("%Y.%m.%d")) // follow same pattern as elastic.co product line, e.g. metricbeats, in order to unify cleanup job
+fn index(now: Date) -> String {
+    let (year, month, day) = now.to_ymd();
+    format!("stat-{year}.{month:02}.{day:02}") // follow same pattern as elastic.co product line, e.g. metricbeats, in order to unify cleanup job
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
+    use framework::date::Date;
 
     #[test]
     fn index() {
-        assert_eq!(super::index(NaiveDate::from_ymd_opt(2025, 11, 5).unwrap()), "stat-2025.11.05");
+        assert_eq!(super::index(Date::new(2025, 11, 5)), "stat-2025.11.05");
     }
 }

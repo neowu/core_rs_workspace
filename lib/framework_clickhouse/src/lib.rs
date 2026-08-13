@@ -14,7 +14,7 @@ use framework::span;
 use framework::stats;
 pub use framework_macro::Enum8;
 use serde::Serialize;
-pub mod data_type;
+pub mod types;
 
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
 // like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().

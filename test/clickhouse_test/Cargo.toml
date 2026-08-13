@@ -7,6 +7,5 @@ edition = "2024"
 framework = { workspace = true }
 framework_clickhouse = { workspace = true }
 framework_macro = { workspace = true }
-chrono.workspace = true
 serde.workspace = true
 tokio.workspace = true

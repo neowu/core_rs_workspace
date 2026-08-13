@@ -23,6 +23,7 @@ mod connection;
 pub mod database;
 mod field;
 pub mod repository;
+pub mod types;
 
 // a borrowed query param, shaped exactly as tokio_postgres takes them: `&[&(dyn ToSql + Sync)]`.
 // `Send` cannot be added here, a `Vec<&(dyn ToSql + Sync + Send)>` does not coerce to that slice.

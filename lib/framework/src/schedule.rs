@@ -5,16 +5,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use chrono::DateTime;
-use chrono::FixedOffset;
-use chrono::NaiveTime;
-use chrono::SecondsFormat;
-use chrono::Utc;
 use futures::FutureExt as _;
 use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use crate::date::DateTime;
+use crate::date::Offset;
+use crate::date::SignedDuration;
+use crate::date::Time;
 use crate::exception::Exception;
 use crate::log;
 use crate::log::with_current_action;
@@ -27,7 +26,7 @@ mod trigger;
 pub struct JobContext {
     pub name: &'static str,
     /// Scheduled time in the scheduler timezone.
-    pub scheduled_time: DateTime<FixedOffset>,
+    pub scheduled_time: DateTime,
 }
 
 type Job<S> = Box<dyn Fn(S, JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -39,30 +38,29 @@ struct Schedule<S> {
 }
 
 pub struct Scheduler<S> {
-    timezone: FixedOffset,
+    timezone: Offset,
     schedules: Vec<Arc<Schedule<S>>>,
     executor: Arc<Mutex<TaskExecutor>>,
 }
-
-pub const UTC: FixedOffset = FixedOffset::east_opt(0).expect("value must be valid");
 
 impl<S> Scheduler<S>
 where
     S: Send + Sync + 'static,
 {
-    pub fn new(timezone: FixedOffset) -> Self {
+    pub fn new(timezone: Offset) -> Self {
         Self { timezone, schedules: Vec::new(), executor: Arc::new(Mutex::new(TaskExecutor::default())) }
     }
 
-    pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: Duration)
+    pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: SignedDuration)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
+        assert!(interval.as_secs() > 0, "interval must be positive");
         self.add_job(name, job, Trigger::FixedRate(interval));
     }
 
-    pub fn schedule_daily<J, Fut>(&mut self, name: &'static str, job: J, time: NaiveTime)
+    pub fn schedule_daily<J, Fut>(&mut self, name: &'static str, job: J, time: Time)
     where
         J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
@@ -94,24 +92,24 @@ where
             let shutdown_signal = shutdown_signal.clone();
             let executor = Arc::clone(&self.executor);
             handles.spawn(async move {
-                let mut previous = Utc::now().with_timezone(&timezone);
+                let mut previous = DateTime::now().with_timezone(timezone);
                 let mut first = true;
                 loop {
                     let next = schedule.trigger.next(previous, first);
                     first = false;
                     let context = JobContext { name: schedule.name, scheduled_time: next };
-                    let waiting_time = (context.scheduled_time - previous).to_std().unwrap_or(Duration::ZERO);
+                    let waiting_time = context.scheduled_time - previous;
                     previous = context.scheduled_time;
 
                     let name = context.name;
-                    let scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Secs, true);
+                    let scheduled_time = context.scheduled_time.to_rfc3339();
                     console!("job scheduled, name={name}, scheduled_time={scheduled_time}");
 
                     tokio::select! {
                         () = shutdown_signal.cancelled() => {
                             return;
                         }
-                        () = time::sleep(waiting_time) => {
+                        () = time::sleep(Duration::from_secs(waiting_time.as_secs() as u64)) => {
                             let state = state.clone();
                             executor.lock().unwrap().spawn(
                                 format!("job:{name}@{scheduled_time}"),
@@ -143,7 +141,7 @@ where
         log::action("job", ref_id, async move {
             context!(
                 job = context.name,
-                scheduled_time = context.scheduled_time.to_rfc3339_opts(SecondsFormat::Millis, true),
+                scheduled_time = context.scheduled_time.to_rfc3339(),
                 fn = type_name::<J>()
             );
             if triggered {

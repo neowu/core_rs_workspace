@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use axum::Router;
-use chrono::FixedOffset;
 use framework::config::EnvString;
+use framework::date::Offset;
+use framework::date::SignedDuration;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
@@ -54,8 +55,8 @@ pub async fn run() -> Result<(), Exception> {
 
     let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
-    let mut scheduler = Scheduler::new(FixedOffset::east_opt(8 * 60 * 60).expect("cannot fail"));
-    scheduler.schedule_fixed_rate("demo", demo_job, Duration::from_hours(1));
+    let mut scheduler = Scheduler::new(Offset::new(8, 0));
+    scheduler.schedule_fixed_rate("demo", demo_job, SignedDuration::from_hours(1));
     let scheduler_routes = scheduler.routes(state);
     system.spawn(scheduler.start(state, system.shutdown_signal()));
 

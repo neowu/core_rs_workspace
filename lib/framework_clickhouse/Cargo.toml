@@ -7,9 +7,8 @@ edition = "2024"
 framework.workspace = true
 framework_macro.workspace = true
 
-# pinned to minor version: framework_macro::Row hand-implements the semver-exempt clickhouse::Row trait
-clickhouse = { version = "*", features = ["chrono", "inserter", "rustls-tls"] }
-chrono.workspace = true
+# no chrono/time feature: data_type maps framework's date types to RowBinary itself
+clickhouse = { version = "*", features = ["inserter", "rustls-tls"] }
 serde.workspace = true
 
 [lints]

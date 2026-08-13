@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::DateTime;
-use chrono::NaiveDate;
-use chrono::Utc;
+use framework::date::Date;
+use framework::date::DateTime;
 use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;
@@ -22,7 +21,7 @@ use crate::elasticsearch::Elasticsearch;
 #[derive(Debug, Deserialize)]
 pub(crate) struct ActionLogMessage {
     id: String,
-    date: DateTime<Utc>,
+    date: DateTime,
     app: String,
     host: String,
     result: String,
@@ -64,7 +63,7 @@ pub(crate) async fn action_log_message_handler(
 #[derive(Debug, Serialize)]
 struct ActionLogDocument {
     #[serde(rename = "@timestamp")]
-    timestamp: DateTime<Utc>,
+    timestamp: DateTime,
     app: String,
     host: String,
     result: String,
@@ -86,7 +85,7 @@ struct ActionLogDocument {
 #[derive(Debug, Serialize)]
 struct TraceDocument {
     #[serde(rename = "@timestamp")]
-    timestamp: DateTime<Utc>,
+    timestamp: DateTime,
     app: String,
     result: String,
     action: String,
@@ -132,7 +131,7 @@ async fn index_to_elasticsearch(
             traces.push((payload.id, trace_doc));
         }
     }
-    let now = Utc::now().date_naive();
+    let now = DateTime::now().date();
     elasticsearch.bulk_index(&action_index(now), documents).await?;
     if !traces.is_empty() {
         elasticsearch.bulk_index(&trace_index(now), traces).await?;
@@ -140,12 +139,14 @@ async fn index_to_elasticsearch(
     Ok(())
 }
 
-fn action_index(now: NaiveDate) -> String {
-    format!("action-{}", now.format("%Y.%m.%d"))
+fn action_index(now: Date) -> String {
+    let (year, month, day) = now.to_ymd();
+    format!("action-{year}.{month:02}.{day:02}")
 }
 
-fn trace_index(now: NaiveDate) -> String {
-    format!("trace-{}", now.format("%Y.%m.%d"))
+fn trace_index(now: Date) -> String {
+    let (year, month, day) = now.to_ymd();
+    format!("trace-{year}.{month:02}.{day:02}")
 }
 
 #[derive(Row, Serialize)]
@@ -287,5 +288,15 @@ fn to_action_result(result: &str) -> ActionResult {
         "WARN" => ActionResult::Warn,
         "ERROR" => ActionResult::Error,
         _ => ActionResult::Ok,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use framework::date::Date;
+
+    #[test]
+    fn action_index() {
+        assert_eq!(super::action_index(Date::new(2026, 8, 12)), "action-2026.08.12");
     }
 }

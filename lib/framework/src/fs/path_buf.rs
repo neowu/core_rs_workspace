@@ -13,8 +13,8 @@ impl PathBufExt for PathBuf {
         let absolute_path = if self.is_absolute() {
             self
         } else {
-            let current_dir = env::current_dir()
-                .map_err(|err| exception!("failed to get current directory", source = err))?;
+            let current_dir =
+                env::current_dir().map_err(|err| exception!("failed to get current directory", source = err))?;
             current_dir.join(self)
         };
 

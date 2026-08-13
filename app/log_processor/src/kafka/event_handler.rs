@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::DateTime;
-use chrono::NaiveDate;
-use chrono::Utc;
+use framework::date::Date;
+use framework::date::DateTime;
 use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;
@@ -22,9 +21,9 @@ use crate::elasticsearch::Elasticsearch;
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct EventMessage {
     id: String,
-    timestamp: DateTime<Utc>, // server received_time
+    timestamp: DateTime, // server received_time
     app: String,
-    client_timestamp: DateTime<Utc>,
+    client_timestamp: DateTime,
     result: String,
     action: String,
     error_code: Option<String>,
@@ -38,9 +37,9 @@ pub(crate) struct EventMessage {
 #[derive(Debug, Serialize)]
 struct EventDocument {
     #[serde(rename = "@timestamp")]
-    timestamp: DateTime<Utc>,
+    timestamp: DateTime,
     app: String,
-    client_timestamp: DateTime<Utc>,
+    client_timestamp: DateTime,
     result: String,
     action: String,
     error_code: Option<String>,
@@ -85,13 +84,14 @@ async fn index_to_elasticsearch(
         };
         documents.push((payload.id, doc));
     }
-    let now = Utc::now().date_naive();
+    let now = DateTime::now().date();
     elasticsearch.bulk_index(&index(now), documents).await?;
     Ok(())
 }
 
-fn index(now: NaiveDate) -> String {
-    format!("event-{}", now.format("%Y.%m.%d"))
+fn index(now: Date) -> String {
+    let (year, month, day) = now.to_ymd();
+    format!("event-{year}.{month:02}.{day:02}")
 }
 
 #[derive(Row, Serialize)]

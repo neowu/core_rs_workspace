@@ -25,6 +25,7 @@ futures = "*"
 bytes = "*"
 libc = "*"
 rand = "*"
+time = { version = "*", features = ["formatting", "parsing"] }
 
 [lints]
 workspace = true
