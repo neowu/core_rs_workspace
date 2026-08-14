@@ -8,7 +8,6 @@ pub mod http;
 pub mod json;
 #[macro_use]
 pub mod log;
-pub mod date;
 pub mod network;
 pub mod number;
 pub mod pool;
@@ -17,5 +16,6 @@ pub mod shell;
 pub mod string;
 pub mod system;
 pub mod task;
+pub mod time;
 pub mod validate;
 pub mod web;

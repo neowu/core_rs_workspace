@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use framework::date::Date;
+use framework::time::Date;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
 use regex::Regex;
@@ -63,7 +63,7 @@ pub(crate) async fn archive_to_gcs_job(state: Arc<AppState>, context: JobContext
 
 #[cfg(test)]
 mod tests {
-    use framework::date::Date;
+    use framework::time::Date;
 
     #[test]
     fn created_date() {

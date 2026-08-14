@@ -1,6 +1,6 @@
-use crate::date::DateTime;
-use crate::date::SignedDuration;
-use crate::date::Time;
+use crate::time::DateTime;
+use crate::time::SignedDuration;
+use crate::time::Time;
 
 pub(super) enum Trigger {
     FixedRate(SignedDuration),
@@ -8,8 +8,7 @@ pub(super) enum Trigger {
 }
 
 const INITIAL_DELAY: SignedDuration = SignedDuration::from_secs(3);
-// the scheduler timezone is a fixed offset, so a day is always 24 hours
-const ONE_DAY: SignedDuration = SignedDuration::from_hours(24);
+const ONE_DAY: SignedDuration = SignedDuration::from_days(1);
 
 impl Trigger {
     pub(super) fn next(&self, previous: DateTime, first: bool) -> DateTime {
@@ -37,11 +36,11 @@ impl Trigger {
 mod tests {
     use super::INITIAL_DELAY;
     use super::Trigger;
-    use crate::date::Date;
-    use crate::date::DateTime;
-    use crate::date::Offset;
-    use crate::date::SignedDuration;
-    use crate::date::Time;
+    use crate::time::Date;
+    use crate::time::DateTime;
+    use crate::time::Offset;
+    use crate::time::SignedDuration;
+    use crate::time::Time;
 
     const EAST_8: Offset = Offset::new(8, 0);
 

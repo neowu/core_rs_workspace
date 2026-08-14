@@ -5,12 +5,11 @@ use std::io::Write as _;
 use std::io::stdout;
 use std::time::Duration;
 
-use chrono::DateTime;
-use chrono::Utc;
 use serde::Serialize;
 use serde::Serializer;
 use serde::ser::SerializeMap as _;
 
+use crate::time::DateTime;
 use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
@@ -42,7 +41,7 @@ impl Appender {
 
 #[allow(clippy::print_stdout, clippy::print_stderr)]
 fn append_console(action: &Action) {
-    let date = action.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let date = action.date.to_rfc3339();
     let severity = severity(action.error.as_ref());
     let kind = action.kind;
     let id = &action.id;
@@ -97,7 +96,7 @@ fn append_console(action: &Action) {
 
 #[allow(clippy::print_stdout)]
 fn append_metrics_console(metrics: &Metrics) {
-    let date = metrics.date.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let date = metrics.date.to_rfc3339();
     let severity = severity(metrics.error.as_ref());
     let app = metrics.app;
     let host = metrics.host;
@@ -215,7 +214,7 @@ struct LogLabel {
 #[derive(Debug, Serialize)]
 struct ActionEntry<'a> {
     id: &'a str,
-    time: DateTime<Utc>,
+    time: DateTime,
     kind: &'a str,
     app: &'static str,
     host: &'static str,
@@ -239,7 +238,7 @@ struct ActionEntry<'a> {
 #[derive(Debug, Serialize)]
 struct MetricsEntry<'a> {
     id: &'a str,
-    time: DateTime<Utc>,
+    time: DateTime,
     app: &'static str,
     host: &'static str,
     severity: &'static str,
@@ -258,7 +257,7 @@ struct MetricsEntry<'a> {
 #[derive(Debug, Serialize)]
 struct TraceEntry<'a> {
     id: &'a str,
-    time: DateTime<Utc>,
+    time: DateTime,
     app: &'static str,
     message: &'a str,
     severity: &'static str,
@@ -294,11 +293,13 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use chrono::DateTime;
     use serde_json::Value;
 
     use super::ActionEntry;
     use super::LogLabel;
+    use crate::time::Date;
+    use crate::time::DateTime;
+    use crate::time::Time;
     use crate::json;
 
     #[test]
@@ -309,7 +310,7 @@ mod tests {
 
         let entry = ActionEntry {
             id: "action-1",
-            time: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            time: DateTime::new(Date::new(2023, 11, 14), Time::new(22, 13, 20)),
             kind: "http",
             app: "test-app",
             host: "host-1",

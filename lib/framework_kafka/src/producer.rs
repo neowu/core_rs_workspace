@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
-use chrono::Utc;
 use framework::console;
+use framework::time::DateTime;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
@@ -45,7 +45,9 @@ impl Producer {
         let payload = to_json(message)?;
 
         let mut record =
-            FutureRecord::<String, String>::to(topic.name).timestamp(Utc::now().timestamp_millis()).payload(&payload);
+            FutureRecord::<String, String>::to(topic.name)
+                .timestamp(DateTime::now().unix_timestamp_millis())
+                .payload(&payload);
 
         if let Some(ref key) = key {
             record = record.key(key);

@@ -4,12 +4,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use chrono::DateTime;
-use chrono::Utc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::console;
+use crate::time::DateTime;
 use crate::exception::Severity;
 use crate::log::CONTEXT;
 use crate::log::Context;
@@ -20,7 +19,7 @@ use crate::number::parse_u64;
 
 pub struct Metrics {
     pub id: LogId,
-    pub date: DateTime<Utc>,
+    pub date: DateTime,
     pub app: &'static str,
     pub host: &'static str,
     pub error: Option<Error>,
@@ -97,9 +96,9 @@ impl MetricsCollector {
     }
 
     fn collect_metrics(&mut self, app: &'static str, host: &'static str) -> Metrics {
-        let date = Utc::now();
+        let date = DateTime::now();
         let mut metrics = Metrics {
-            id: id_generator::next_id(date.timestamp_millis()),
+            id: id_generator::next_id(date.unix_timestamp_millis()),
             date,
             app,
             host,

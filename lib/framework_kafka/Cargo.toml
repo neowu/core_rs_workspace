@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 framework.workspace = true
 serde.workspace = true
-chrono.workspace = true
 tokio.workspace = true
 tokio-util = "*"
 

@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use framework::date::Date;
-use framework::date::DateTime;
+use framework::time::Date;
+use framework::time::DateTime;
 use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
-use framework_clickhouse::data_type::DateTime64;
-use framework_clickhouse::data_type::Decimal64;
+use framework_clickhouse::types::DateTime64;
+use framework_clickhouse::types::Decimal64;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
@@ -293,7 +293,7 @@ fn to_action_result(result: &str) -> ActionResult {
 
 #[cfg(test)]
 mod tests {
-    use framework::date::Date;
+    use framework::time::Date;
 
     #[test]
     fn action_index() {

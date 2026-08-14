@@ -1,7 +1,6 @@
-use chrono::DateTime;
-use chrono::Utc;
 use framework::exception::Exception;
 use framework_db::Json;
+use framework_db::types::Timestamp;
 use framework_macro::Entity;
 use framework_macro::Validate;
 use framework_macro::api;
@@ -24,7 +23,7 @@ pub struct User {
     #[column(name = "tags")]
     pub tags: Json<Vec<String>>,
     #[column(name = "created_date")]
-    pub created_date: DateTime<Utc>,
+    pub created_date: Timestamp,
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

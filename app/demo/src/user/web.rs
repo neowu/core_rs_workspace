@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use axum::Router;
-use chrono::Utc;
+use framework::time::DateTime;
 use framework::exception::Exception;
 use framework::validate::Validator as _;
 use framework_db::Json;
 use framework_db::repository;
+use framework_db::types::Timestamp;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -34,7 +35,7 @@ impl UserService for UserServiceImpl {
             name: request.name,
             rating: request.rating,
             tags: Json(vec![]),
-            created_date: Utc::now(),
+            created_date: Timestamp::from(DateTime::now()),
         };
 
         repository::insert(&self.state.db, &user).await?;

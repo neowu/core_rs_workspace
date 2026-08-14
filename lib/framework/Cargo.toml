@@ -8,6 +8,8 @@ serde.workspace = true
 serde_json = "*"
 serde_html_form = "*"
 
+time = { version = "*", features = ["formatting", "parsing"] }
+
 tokio.workspace = true
 tokio-util = { version = "*", features = ["rt"] }
 tokio-stream = "*"
@@ -19,13 +21,10 @@ tower-http = {version ="*", features = ["fs"]}
 
 reqwest = { version = "0", features = ["stream"] }
 
-chrono.workspace = true
-
 futures = "*"
 bytes = "*"
 libc = "*"
 rand = "*"
-time = { version = "*", features = ["formatting", "parsing"] }
 
 [lints]
 workspace = true

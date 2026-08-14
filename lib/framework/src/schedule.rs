@@ -10,15 +10,15 @@ use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use crate::date::DateTime;
-use crate::date::Offset;
-use crate::date::SignedDuration;
-use crate::date::Time;
 use crate::exception::Exception;
 use crate::log;
 use crate::log::with_current_action;
 use crate::schedule::trigger::Trigger;
 use crate::task::TaskExecutor;
+use crate::time::DateTime;
+use crate::time::Offset;
+use crate::time::SignedDuration;
+use crate::time::Time;
 
 pub mod controller;
 mod trigger;
@@ -56,7 +56,7 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        assert!(interval.as_secs() > 0, "interval must be positive");
+        assert!(interval.is_positive(), "interval must be positive, interval={interval:?}");
         self.add_job(name, job, Trigger::FixedRate(interval));
     }
 

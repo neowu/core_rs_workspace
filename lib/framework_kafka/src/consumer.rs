@@ -8,9 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use chrono::DateTime;
-use chrono::SecondsFormat;
-use chrono::Utc;
 use framework::console;
 use framework::context;
 use framework::exception;
@@ -20,6 +17,7 @@ use framework::log;
 use framework::log::metrics::Counter;
 use framework::log::metrics::Metrics;
 use framework::stats;
+use framework::time::DateTime;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
 use rdkafka::Message as _;
@@ -237,8 +235,8 @@ where
         }
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.iter().filter_map(timestamp).min() {
-            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = (Utc::now() - timestamp).num_milliseconds();
+            log!("[message] timestamp={}", timestamp.to_rfc3339());
+            let lag = (DateTime::now() - timestamp).as_millis();
             if lag > 0 {
                 stats!(kafka_consumer_lag = lag);
             }
@@ -330,8 +328,8 @@ where
         log!("[message] payload={}", payload);
         stats!(kafka_read_entries = 1, kafka_read_bytes = payload.len());
         if let Some(timestamp) = timestamp(&raw_message) {
-            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = (Utc::now() - timestamp).num_milliseconds();
+            log!("[message] timestamp={}", timestamp.to_rfc3339());
+            let lag = (DateTime::now() - timestamp).as_millis();
             if lag > 0 {
                 stats!(kafka_consumer_lag = lag);
             }
@@ -365,9 +363,9 @@ fn payload(message: &OwnedMessage) -> String {
     message.payload().map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default()
 }
 
-fn timestamp(message: &OwnedMessage) -> Option<DateTime<Utc>> {
+fn timestamp(message: &OwnedMessage) -> Option<DateTime> {
     match message.timestamp() {
-        Timestamp::CreateTime(time) => DateTime::from_timestamp_millis(time),
+        Timestamp::CreateTime(time) => DateTime::from_unix_timestamp_nanos(time as i128 * 1_000_000).ok(),
         Timestamp::NotAvailable | Timestamp::LogAppendTime(_) => None,
     }
 }

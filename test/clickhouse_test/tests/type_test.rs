@@ -1,7 +1,7 @@
 use clickhouse_test::client;
 use clickhouse_test::flush;
-use framework::date::Date;
-use framework::date::DateTime;
+use framework::time::Date;
+use framework::time::DateTime;
 use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;

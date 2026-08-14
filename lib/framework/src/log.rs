@@ -4,10 +4,9 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-pub use chrono::SecondsFormat;
-pub use chrono::Utc;
 use tokio::task_local;
 
+use crate::time::DateTime;
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::action::Action;
@@ -26,7 +25,7 @@ macro_rules! console {
     ($($arg:tt)*) => {
         ::std::println!(
             concat!("{} ", module_path!(), ":", line!(), " {}"),
-            $crate::log::Utc::now().to_rfc3339_opts($crate::log::SecondsFormat::Secs, true),
+            $crate::time::DateTime::now().to_rfc3339(),
             format_args!($($arg)*),
         )
     };
@@ -62,8 +61,8 @@ where
     F: Future<Output = Result<R, Exception>>,
 {
     if let Some(Context { appender, app, host }) = CONTEXT.get() {
-        let now = Utc::now();
-        let id = id_generator::next_id(now.timestamp_millis());
+        let now = DateTime::now();
+        let id = id_generator::next_id(now.unix_timestamp_millis());
         let action = Action::new(id, kind, ref_id, now, app, host);
         CURRENT_ACTION
             .scope(RefCell::new(action), async move {

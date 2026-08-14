@@ -1,16 +1,15 @@
 use std::collections::HashMap;
 
-use chrono::DateTime;
-use chrono::Utc;
+use framework::time::DateTime;
 use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct EventMessage {
     pub id: String,
-    pub timestamp: DateTime<Utc>, // server received_time
+    pub timestamp: DateTime, // server received_time
     pub app: String,
-    pub client_timestamp: DateTime<Utc>,
+    pub client_timestamp: DateTime,
     pub result: String,
     pub action: String,
     pub error_code: Option<String>,

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use framework::date::Date;
-use framework::date::DateTime;
+use framework::time::Date;
+use framework::time::DateTime;
 use framework::exception::Exception;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
@@ -68,7 +68,7 @@ fn index(now: Date) -> String {
 
 #[cfg(test)]
 mod tests {
-    use framework::date::Date;
+    use framework::time::Date;
 
     #[test]
     fn index() {

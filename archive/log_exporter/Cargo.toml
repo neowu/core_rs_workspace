@@ -9,7 +9,8 @@ framework_kafka.workspace = true
 framework_macro.workspace = true
 
 serde.workspace = true
-chrono.workspace = true
+# archived code, not a workspace member; the workspace itself no longer depends on chrono
+chrono = { version = "*", features = ["serde"] }
 tokio.workspace = true
 axum.workspace = true
 

@@ -9,7 +9,6 @@ framework_kafka.workspace = true
 framework_macro.workspace = true
 
 serde.workspace = true
-chrono.workspace = true
 tokio.workspace = true
 axum.workspace = true
 

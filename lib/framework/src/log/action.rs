@@ -2,22 +2,19 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use chrono::DateTime;
-use chrono::SecondsFormat;
-use chrono::Utc;
-
 use crate::exception::Exception;
 use crate::exception::Severity;
 use crate::log::elapsed;
 use crate::log::id_generator::LogId;
 use crate::log::truncate;
+use crate::time::DateTime;
 use crate::write_str;
 
 pub struct Action {
     pub(crate) start_time: Instant,
     pub id: LogId,
     pub(crate) kind: &'static str,
-    pub(crate) date: DateTime<Utc>,
+    pub(crate) date: DateTime,
     pub app: &'static str,
     pub(crate) host: &'static str,
     pub(crate) ref_id: Option<Vec<String>>,
@@ -39,7 +36,7 @@ impl Action {
         id: LogId,
         kind: &'static str,
         ref_id: Option<Vec<String>>,
-        date: DateTime<Utc>,
+        date: DateTime,
         app: &'static str,
         host: &'static str,
     ) -> Self {
@@ -58,11 +55,10 @@ impl Action {
             trace: false,
         };
 
-        let date_string = action.date.to_rfc3339_opts(SecondsFormat::Nanos, true);
-
         action.logs.push(format!(
-            "# [action] id={}, kind={kind}, date={date_string}, app={app}, host={}, ref_id={:?}",
-            action.id, action.host, action.ref_id,
+            "# [action] id={id}, kind={kind}, date={}, app={app}, host={host}, ref_id={:?}",
+            action.date.to_rfc3339(),
+            action.ref_id
         ));
 
         action

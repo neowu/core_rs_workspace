@@ -7,7 +7,6 @@ edition = "2024"
 framework.workspace = true
 framework_macro.workspace = true
 
-# no chrono/time feature: data_type maps framework's date types to RowBinary itself
 clickhouse = { version = "*", features = ["inserter", "rustls-tls"] }
 serde.workspace = true
 

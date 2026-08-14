@@ -5,10 +5,10 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 
 use bytes::BytesMut;
-use framework::date::Date as FrameworkDate;
-use framework::date::DateTime;
-use framework::date::SignedDuration;
-use framework::date::Time;
+use framework::time;
+use framework::time::DateTime;
+use framework::time::SignedDuration;
+use framework::time::Time;
 use postgres_protocol::types;
 use tokio_postgres::types::FromSql;
 use tokio_postgres::types::IsNull;
@@ -17,22 +17,17 @@ use tokio_postgres::types::Type;
 use tokio_postgres::types::accepts;
 use tokio_postgres::types::to_sql_checked;
 
-// maps to postgres timestamptz: the binary format carries i64 microseconds since 2000-01-01 UTC;
-// framework's DateTime carries no postgres conversion itself, so this newtype provides it instead
-// of requiring chrono types in entities.
-// Option<Timestamp> works as-is for a nullable column, tokio_postgres wraps every impl.
-// timestamp (without time zone) is intentionally not accepted, it carries no offset and reading
-// it as UTC would silently mislabel a point in time, always declare columns as timestamptz.
+// maps to postgres timestamptz: the binary format carries i64 microseconds since 2000-01-01 UTC
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(DateTime);
 
-const BASE_TIMESTAMP: DateTime = DateTime::new(BASE_DATE, Time::new(0, 0, 0));
+const BASE_TIMESTAMP: DateTime = DateTime::new(BASE_DATE, Time::MIDNIGHT);
 
 // ToSql requires Debug, and it is what the query param log prints, so render the wire value
 // rather than the nested debug of the inner types
 impl Debug for Timestamp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Timestamp({})", self.0.to_rfc3339())
+        self.0.fmt(f)
     }
 }
 
@@ -85,17 +80,17 @@ impl Deref for Timestamp {
 
 // maps to postgres date: the binary format carries i32 days since 2000-01-01;
 // framework's Date carries no postgres conversion itself, so this newtype provides it instead
-// of requiring chrono types in entities.
+// of enabling tokio_postgres's own date integrations.
 // Option<Date> works as-is for a nullable column, tokio_postgres wraps every impl.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Date(FrameworkDate);
+pub struct Date(time::Date);
 
 // both postgres date and timestamptz count from this epoch
-const BASE_DATE: FrameworkDate = FrameworkDate::new(2000, 1, 1);
+const BASE_DATE: time::Date = time::Date::new(2000, 1, 1);
 
 impl Debug for Date {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Date({})", self.0.to_rfc3339())
+        self.0.fmt(f)
     }
 }
 
@@ -122,20 +117,20 @@ impl<'a> FromSql<'a> for Date {
     accepts!(DATE);
 }
 
-impl From<FrameworkDate> for Date {
-    fn from(date: FrameworkDate) -> Self {
+impl From<time::Date> for Date {
+    fn from(date: time::Date) -> Self {
         Self(date)
     }
 }
 
-impl From<Date> for FrameworkDate {
+impl From<Date> for time::Date {
     fn from(date: Date) -> Self {
         date.0
     }
 }
 
 impl Deref for Date {
-    type Target = FrameworkDate;
+    type Target = time::Date;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -147,8 +142,8 @@ impl Deref for Date {
 #[allow(clippy::big_endian_bytes)]
 mod tests {
     use bytes::BytesMut;
-    use framework::date::Date as FrameworkDate;
-    use framework::date::DateTime;
+    use framework::time;
+    use framework::time::DateTime;
     use tokio_postgres::types::FromSql as _;
     use tokio_postgres::types::ToSql as _;
     use tokio_postgres::types::Type;
@@ -201,7 +196,7 @@ mod tests {
 
     #[test]
     fn date_to_sql() {
-        let date = Date::from(FrameworkDate::new(2026, 7, 15));
+        let date = Date::from(time::Date::new(2026, 7, 15));
         let mut buffer = BytesMut::new();
         date.to_sql(&Type::DATE, &mut buffer).unwrap();
         assert_eq!(buffer.as_ref(), 9_692_i32.to_be_bytes()); // 9692 days after 2000-01-01
@@ -211,17 +206,17 @@ mod tests {
     fn date_from_sql() {
         let raw = 9_692_i32.to_be_bytes();
         let date = Date::from_sql(&Type::DATE, &raw).unwrap();
-        assert_eq!(FrameworkDate::from(date), FrameworkDate::new(2026, 7, 15));
+        assert_eq!(time::Date::from(date), time::Date::new(2026, 7, 15));
     }
 
     #[test]
     fn date_round_trip() {
         // before the 2000-01-01 base, days_since is negative there
-        let value = FrameworkDate::new(1970, 1, 1);
+        let value = time::Date::new(1970, 1, 1);
         let mut buffer = BytesMut::new();
         Date::from(value).to_sql(&Type::DATE, &mut buffer).unwrap();
         assert_eq!(buffer.as_ref(), (-10_957_i32).to_be_bytes());
-        assert_eq!(FrameworkDate::from(Date::from_sql(&Type::DATE, buffer.as_ref()).unwrap()), value);
+        assert_eq!(time::Date::from(Date::from_sql(&Type::DATE, buffer.as_ref()).unwrap()), value);
     }
 
     #[test]
@@ -237,13 +232,6 @@ mod tests {
         let timestamp = Timestamp::from(DateTime::parse("2026-07-16T08:30:45.123456Z").unwrap());
         assert_eq!(format!("{timestamp:?}"), "Timestamp(2026-07-16T08:30:45.123456Z)");
         assert_eq!(format!("{:?}", Some(timestamp)), "Some(Timestamp(2026-07-16T08:30:45.123456Z))");
-        assert_eq!(format!("{:?}", Date::from(FrameworkDate::new(2026, 7, 16))), "Date(2026-07-16)");
-    }
-
-    #[test]
-    fn deref_to_framework_type() {
-        let timestamp = Timestamp::from(DateTime::parse("2026-07-15T12:30:45Z").unwrap());
-        assert_eq!(timestamp.date(), FrameworkDate::new(2026, 7, 15));
-        assert_eq!(Date::from(FrameworkDate::new(2026, 7, 15)).to_rfc3339(), "2026-07-15");
+        assert_eq!(format!("{:?}", Date::from(time::Date::new(2026, 7, 16))), "Date(2026-07-16)");
     }
 }

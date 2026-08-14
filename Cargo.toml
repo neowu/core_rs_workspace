@@ -15,7 +15,6 @@ framework_nats = { path = "lib/framework_nats" }
 framework_macro = { path = "lib/framework_macro" }
 
 serde = { version = "*", features = ["derive"] }
-chrono = { version = "*", features = ["serde"] }
 uuid = { version = "*", features = ["v7", "serde"] }
 
 tokio = { version = "*", features = ["full"] }

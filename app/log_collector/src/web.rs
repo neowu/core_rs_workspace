@@ -10,8 +10,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use axum::http::header;
-use chrono::DateTime;
-use chrono::Utc;
+use framework::time::DateTime;
 use framework::exception;
 use framework::exception::Exception;
 use framework::exception::Severity;
@@ -110,7 +109,7 @@ async fn process_events(
     request: SendEventRequest,
     client_info: Arc<ClientInfo>,
 ) -> HttpResult<()> {
-    let now = Utc::now();
+    let now = DateTime::now();
     for event in request.events {
         if let Err(error) = event.custom_validate() {
             warn!(error_code = "INVALID_EVENT", "skip invalid event, error={error}");
@@ -118,7 +117,7 @@ async fn process_events(
         }
 
         let mut message = EventMessage {
-            id: log::id_generator::next_id(now.timestamp_millis()).to_string(),
+            id: log::id_generator::next_id(now.unix_timestamp_millis()).to_string(),
             timestamp: now,
             app: app.to_owned(),
             client_timestamp: event.date,
@@ -152,7 +151,7 @@ struct SendEventRequest {
 
 #[derive(Validate, Deserialize, Debug)]
 struct Event {
-    date: DateTime<Utc>,
+    date: DateTime,
     result: EventResult,
     #[length(max = 200)]
     action: String,

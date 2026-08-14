@@ -16,11 +16,9 @@ use async_nats::jetstream::Context;
 use async_nats::jetstream::consumer::AckPolicy;
 use async_nats::jetstream::consumer::DeliverPolicy;
 use async_nats::jetstream::consumer::pull::Config;
-use chrono::DateTime;
-use chrono::SecondsFormat;
-use chrono::Utc;
 use framework::console;
 use framework::context;
+use framework::time::DateTime;
 use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
@@ -204,8 +202,8 @@ where
         context!(subject = &subject, fn = type_name::<H>());
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
         if let Some(timestamp) = timestamp(&raw) {
-            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = (Utc::now() - timestamp).num_milliseconds();
+            log!("[message] timestamp={}", timestamp.to_rfc3339());
+            let lag = (DateTime::now() - timestamp).as_millis();
             if lag > 0 {
                 stats!(nats_consumer_lag = lag);
             }
@@ -372,8 +370,8 @@ where
         }
         stats!(nats_read_messages = messages.len(), nats_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.first().and_then(timestamp) {
-            log!("[message] timestamp={:?}", timestamp.to_rfc3339_opts(SecondsFormat::Millis, true));
-            let lag = (Utc::now() - timestamp).num_milliseconds();
+            log!("[message] timestamp={}", timestamp.to_rfc3339());
+            let lag = (DateTime::now() - timestamp).as_millis();
             if lag > 0 {
                 stats!(nats_consumer_lag = lag);
             }
@@ -403,7 +401,7 @@ fn header<'a>(raw: &'a jetstream::Message, name: &str) -> Option<&'a str> {
 }
 
 // info() carries the server-side publish time; best-effort, used only for lag.
-fn timestamp(raw: &jetstream::Message) -> Option<DateTime<Utc>> {
+fn timestamp(raw: &jetstream::Message) -> Option<DateTime> {
     let info = raw.info().ok()?;
-    DateTime::from_timestamp(info.published.unix_timestamp(), info.published.nanosecond())
+    DateTime::from_unix_timestamp_nanos(info.published.unix_timestamp_nanos()).ok()
 }

@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::ops::Deref;
 
-use framework::date::Date;
-use framework::date::DateTime;
+use framework::time::Date;
+use framework::time::DateTime;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -45,8 +45,8 @@ impl<'de> Deserialize<'de> for DateTime64 {
         if deserializer.is_human_readable() {
             DateTime::deserialize(deserializer).map(Self)
         } else {
-            let millis = i64::deserialize(deserializer)?;
-            DateTime::from_unix_timestamp_millis(millis).map(Self).map_err(de::Error::custom)
+            let millis: i128 = i64::deserialize(deserializer)? as i128;
+            DateTime::from_unix_timestamp_nanos(millis * 1_000_000).map(Self).map_err(de::Error::custom)
         }
     }
 }
@@ -186,9 +186,9 @@ impl<const S: u8> From<Decimal64<S>> for f64 {
 
 #[cfg(test)]
 mod tests {
-    use framework::date::Date;
-    use framework::date::DateTime;
     use framework::json;
+    use framework::time::Date;
+    use framework::time::DateTime;
     use framework_macro::Enum8;
 
     use super::Date16;
