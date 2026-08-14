@@ -5,4 +5,5 @@
 
 TODO:
 
-- retire chrono
+- send log to nats
+- add nat_test service e2e test

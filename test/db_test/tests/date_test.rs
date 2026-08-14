@@ -1,8 +1,8 @@
 use db_test::client;
+use framework::exception::Exception;
 use framework::time::Date as FrameworkDate;
 use framework::time::DateTime;
 use framework::time::Offset;
-use framework::exception::Exception;
 use framework_db::Database;
 use framework_db::database;
 use framework_db::repository;
@@ -12,8 +12,8 @@ use framework_macro::Entity;
 use framework_macro::integration_test;
 
 #[derive(Entity, Debug, PartialEq, Clone)]
-#[table(name = "date_type_entity")]
-struct DateTypeEntity {
+#[table(name = "date_entity")]
+struct DateEntity {
     #[primary_key]
     #[column(name = "id")]
     id: i64,
@@ -28,10 +28,10 @@ struct DateTypeEntity {
 }
 
 async fn setup_schema(db: &Database) -> Result<(), Exception> {
-    database::execute(db, "DROP TABLE IF EXISTS \"date_type_entity\"", &[]).await?;
+    database::execute(db, "DROP TABLE IF EXISTS \"date_entity\"", &[]).await?;
     database::execute(
         db,
-        "CREATE TABLE \"date_type_entity\" (
+        "CREATE TABLE \"date_entity\" (
             id                      BIGINT PRIMARY KEY,
             timestamp_col           TIMESTAMP(6) WITH TIME ZONE NOT NULL,
             date_col                DATE NOT NULL,
@@ -51,7 +51,7 @@ async fn date_type() -> Result<(), Exception> {
 
     // microseconds on purpose, timestamptz keeps them and a millis based mapping would truncate here
     let date_time = DateTime::parse("2026-07-16T08:30:45.123456Z")?.with_timezone(Offset::new(8, 0));
-    let entity = DateTypeEntity {
+    let entity = DateEntity {
         id: 1,
         timestamp_col: Timestamp::from(date_time),
         date_col: Date::from(date_time.date()),
@@ -60,15 +60,15 @@ async fn date_type() -> Result<(), Exception> {
     };
     repository::insert(&db, &entity).await?;
 
-    assert_eq!(repository::select_one(&db, vec![DateTypeEntity::ID.eq(1)]).await?, Some(entity.clone()));
+    assert_eq!(repository::select_one(&db, vec![DateEntity::ID.eq(1)]).await?, Some(entity.clone()));
 
     // a param binds through ToSql, so the value the server compares against is the wire form,
     // not the debug/display form of the newtype
     let selected_entity = repository::select_one(
         &db,
         vec![
-            DateTypeEntity::TIMESTAMP_COL.eq(Timestamp::from(date_time)),
-            DateTypeEntity::DATE_COL.eq(Date::from(date_time.date())),
+            DateEntity::TIMESTAMP_COL.eq(Timestamp::from(date_time)),
+            DateEntity::DATE_COL.eq(Date::from(date_time.date())),
         ],
     )
     .await?;
@@ -78,7 +78,7 @@ async fn date_type() -> Result<(), Exception> {
     // symmetric round trip above would still pass
     let stored: Option<String> = database::select_one(
         &db,
-        "SELECT to_char(timestamp_col AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') FROM \"date_type_entity\" WHERE id = $1",
+        "SELECT to_char(timestamp_col AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') FROM \"date_entity\" WHERE id = $1",
         &[&1_i64],
     )
     .await?;
@@ -87,14 +87,14 @@ async fn date_type() -> Result<(), Exception> {
 
     let stored: Option<String> = database::select_one(
         &db,
-        "SELECT to_char(date_col, 'YYYY-MM-DD') FROM \"date_type_entity\" WHERE id = $1",
+        "SELECT to_char(date_col, 'YYYY-MM-DD') FROM \"date_entity\" WHERE id = $1",
         &[&1_i64],
     )
     .await?;
     assert_eq!(stored, Some("2026-07-16".to_owned()));
 
     // before the 2000-01-01 postgres epoch, both mappings go negative there
-    let before_epoch = DateTypeEntity {
+    let before_epoch = DateEntity {
         id: 2,
         timestamp_col: Timestamp::from(DateTime::parse("1970-01-01T00:00:00Z")?),
         date_col: Date::from(FrameworkDate::new(1970, 1, 1)),
@@ -102,21 +102,21 @@ async fn date_type() -> Result<(), Exception> {
         nullable_date_col: Some(Date::from(date_time.date())),
     };
     repository::insert(&db, &before_epoch).await?;
-    assert_eq!(repository::select_one(&db, vec![DateTypeEntity::ID.eq(2)]).await?, Some(before_epoch));
+    assert_eq!(repository::select_one(&db, vec![DateEntity::ID.eq(2)]).await?, Some(before_epoch));
 
     // a nullable column is set to NULL with update(None)
     let updated = repository::update(
         &db,
-        vec![DateTypeEntity::NULLABLE_TIMESTAMP_COL.update(None), DateTypeEntity::NULLABLE_DATE_COL.update(None)],
-        vec![DateTypeEntity::ID.eq(2)],
+        vec![DateEntity::NULLABLE_TIMESTAMP_COL.update(None), DateEntity::NULLABLE_DATE_COL.update(None)],
+        vec![DateEntity::ID.eq(2)],
     )
     .await?;
     assert_eq!(updated, 1);
-    let entity = repository::select_one(&db, vec![DateTypeEntity::ID.eq(2)]).await?.unwrap();
+    let entity = repository::select_one(&db, vec![DateEntity::ID.eq(2)]).await?.unwrap();
     assert_eq!(entity.nullable_timestamp_col, None);
     assert_eq!(entity.nullable_date_col, None);
 
-    assert_eq!(repository::delete::<DateTypeEntity>(&db, vec![]).await?, 2);
+    assert_eq!(repository::delete::<DateEntity>(&db, vec![]).await?, 2);
 
     Ok(())
 }

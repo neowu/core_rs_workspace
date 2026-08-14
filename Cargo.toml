@@ -4,7 +4,7 @@ members = ["app/*", "lib/*", "test/*"]
 default-members = ["app/*", "lib/*"]
 
 [workspace.package]
-version = "0.7.4"
+version = "0.7.5"
 
 [workspace.dependencies]
 framework = { path = "lib/framework" }
@@ -167,7 +167,6 @@ alloc_instead_of_core = "warn"
 as_pointer_underscore = "warn"
 as_underscore = "warn"
 assertions_on_result_states = "warn"
-big_endian_bytes = "warn"
 cfg_not_test = "warn"
 clone_on_ref_ptr = "warn"
 create_dir = "warn"

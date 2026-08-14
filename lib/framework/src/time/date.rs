@@ -61,7 +61,7 @@ impl Date {
         self.0
             .checked_add(time::Duration::days(days))
             .map(Self)
-            .ok_or_else(|| exception!(format!("date is out of range, days={days}")))
+            .ok_or_else(|| exception!(format!("result is out of range, days={days}")))
     }
 }
 
