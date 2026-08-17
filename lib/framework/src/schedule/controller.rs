@@ -7,15 +7,14 @@ use axum::extract::Path;
 use axum::extract::State;
 use http::StatusCode;
 
-use crate::time::DateTime;
-use crate::time::Offset;
 use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::schedule::JobContext;
 use crate::schedule::Schedule;
 use crate::schedule::Scheduler;
 use crate::task::TaskExecutor;
-use crate::web::SystemRoute;
+use crate::time::DateTime;
+use crate::time::Offset;
 use crate::web::error::HttpResult;
 use crate::web::route::put;
 
@@ -42,11 +41,11 @@ where
     Ok(StatusCode::ACCEPTED)
 }
 
-impl<S> SystemRoute<S> for Scheduler<S>
+impl<S> Scheduler<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    fn routes(&self, state: S) -> Router {
+    pub fn routes(&self, state: S) -> Router {
         let jobs: HashMap<&'static str, Arc<Schedule<S>>> =
             self.schedules.iter().map(|schedule| (schedule.name, Arc::clone(schedule))).collect();
         Router::new().route("/_sys/job/{job}", put(run_job)).with_state(JobState {

@@ -14,4 +14,3 @@ serde.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 axum.workspace = true
-libc = "*"

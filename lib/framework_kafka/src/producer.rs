@@ -1,13 +1,13 @@
 use std::fmt::Debug;
 
 use framework::console;
-use framework::time::DateTime;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::log;
 use framework::log::with_current_action;
 use framework::span;
 use framework::stats;
+use framework::time::DateTime;
 use rdkafka::ClientConfig;
 use rdkafka::message::Header;
 use rdkafka::message::OwnedHeaders;
@@ -25,7 +25,6 @@ pub struct Producer {
 }
 
 impl Producer {
-    // client usually be env!("CARGO_BIN_NAME")
     pub fn new(bootstrap_servers: String) -> Self {
         console!("create kafka producer, broker={bootstrap_servers}");
         let producer: FutureProducer = ClientConfig::new()
@@ -44,10 +43,9 @@ impl Producer {
         let _span = span!("kafka");
         let payload = to_json(message)?;
 
-        let mut record =
-            FutureRecord::<String, String>::to(topic.name)
-                .timestamp(DateTime::now().unix_timestamp_millis())
-                .payload(&payload);
+        let mut record = FutureRecord::<String, String>::to(topic.name)
+            .timestamp(DateTime::now().unix_timestamp_millis())
+            .payload(&payload);
 
         if let Some(ref key) = key {
             record = record.key(key);

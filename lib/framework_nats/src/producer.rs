@@ -19,7 +19,6 @@ pub struct Producer {
 }
 
 impl Producer {
-    // client usually be env!("CARGO_BIN_NAME")
     pub fn new(client: Client) -> Self {
         console!("create nats producer, server={}", client.server_info().server_name);
         Self { context: jetstream::new(client) }

@@ -54,18 +54,18 @@ type RequestHandler = Box<dyn Fn(Client, Message) -> Pin<Box<dyn Future<Output =
 // use the subject as queue group so multiple service instances load balance. requests are processed
 // in their own task (bounded by a semaphore) that publishes the reply itself.
 pub struct Service {
-    nats_client: Client,
+    client: Client,
     handlers: HashMap<&'static str, RequestHandler>,
     config: ServiceConfig,
 }
 
 impl Service {
-    pub fn new(nats_client: Client) -> Self {
-        Self::with_config(nats_client, ServiceConfig::default())
+    pub fn new(client: Client) -> Self {
+        Self::with_config(client, ServiceConfig::default())
     }
 
-    pub fn with_config(nats_client: Client, config: ServiceConfig) -> Self {
-        Self { nats_client, handlers: HashMap::new(), config }
+    pub fn with_config(client: Client, config: ServiceConfig) -> Self {
+        Self { client, handlers: HashMap::new(), config }
     }
 
     pub fn add_handler<H, Fut, Req, Res>(&mut self, subject: &'static str, handler: H)
@@ -82,11 +82,11 @@ impl Service {
     }
 
     pub async fn start(self, shutdown_signal: CancellationToken) {
-        let Self { nats_client, handlers, config } = self;
+        let Self { client, handlers, config } = self;
 
         let mut subscribers = Vec::with_capacity(handlers.len());
         for subject in handlers.keys() {
-            let subscriber = nats_client
+            let subscriber = client
                 .queue_subscribe(*subject, (*subject).to_owned()) // queue group = subject, multiple instances load balance
                 .await
                 .unwrap_or_else(|e| panic!("failed to subscribe, subject={subject}, error={e:?}")); // fail fast on startup
@@ -111,7 +111,7 @@ impl Service {
                     };
                     let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
                     let name = format!("request:{}", message.subject);
-                    let task = handler(nats_client.clone(), message);
+                    let task = handler(client.clone(), message);
                     executor.spawn(name, async move {
                         let _permit = permit; // held until the handler (and its reply) completes
                         task.await;
@@ -147,14 +147,15 @@ where
         log!("[request] payload={}", String::from_utf8_lossy(&message.payload));
         stats!(nats_request_messages = 1, nats_request_bytes = message.payload.len());
 
+        let Some(reply) = message.reply else {
+            return Err(exception!("invalid reply subject", code = "NATS_INVALID_MESSAGE"));
+        };
+
         let result = match decode::<Req>(&message.payload) {
             Ok(request) => handler(request).await,
             Err(e) => Err(exception!("failed to decode request", code = "NATS_INVALID_MESSAGE", source = e)),
         };
 
-        let Some(reply) = message.reply else {
-            return result.map(|_| ());
-        };
         match result {
             Ok(response) => {
                 let payload = encode(&response)?;
@@ -196,52 +197,50 @@ impl ServiceClient {
 
         stats!(nats_request_messages = 1, nats_request_bytes = payload.len());
 
-        let headers = link_context();
-
-        log!("request, subject={subject}, payload={payload}");
+        log!("[request] subject={subject}, payload={payload}");
         // reply must arrive within the connection level request timeout (async-nats default: 10s),
         // configurable via ConnectOptions::request_timeout
-        let reply =
-            self.client.request_with_headers(subject, headers, payload.into()).await.map_err(|e| match e.kind() {
+        let headers = link_context();
+        let reply = self.client.request_with_headers(subject, headers, payload.into()).await;
+        let reply = reply.map_err(|e| {
+            log!("[reply] error={}", e.kind());
+
+            match e.kind() {
                 RequestErrorKind::NoResponders => {
-                    exception!(format!("no responders, subject={subject}"), code = "NATS_NO_RESPONDERS")
+                    exception!(format!("no responders, subject={subject}"), code = "NATS_NO_RESPONDERS", source = e)
                 }
                 RequestErrorKind::TimedOut => {
-                    exception!(format!("request timed out, subject={subject}"), code = "NATS_TIMEOUT")
+                    exception!(format!("request timed out, subject={subject}"), code = "NATS_TIMEOUT", source = e)
                 }
                 RequestErrorKind::InvalidSubject | RequestErrorKind::MaxPayloadExceeded | RequestErrorKind::Other => {
                     exception!(format!("failed to send request, subject={subject}"), source = e)
                 }
-            })?;
-        parse_reply(subject, &reply)
-    }
-}
+            }
+        })?;
 
-fn parse_reply<Res>(subject: &str, reply: &Message) -> Result<Res, Exception>
-where
-    Res: DeserializeOwned + 'static,
-{
-    let payload = String::from_utf8_lossy(&reply.payload);
-    log!("reply, payload={payload}");
-    if reply.headers.as_ref().is_some_and(|headers| headers.get(ERROR).is_some()) {
-        let error: ErrorResponse = from_json(&payload)?;
-        if let Some(ref code) = error.code {
-            Err(exception!(
-                format!("failed to call service, subject={subject}, error={}", error.message),
-                severity = error.severity,
-                code = intern(code)
-            ))
+        let reply_payload = String::from_utf8_lossy(&reply.payload);
+        log!("[reply] payload={reply_payload}");
+        let is_error = reply.headers.as_ref().is_some_and(|reply_headers| reply_headers.get(ERROR).is_some());
+        if is_error {
+            let error: ErrorResponse = from_json(&reply_payload)?;
+            if let Some(ref code) = error.code {
+                Err(exception!(
+                    format!("failed to call service, subject={subject}, error={}", error.message),
+                    severity = error.severity,
+                    code = intern(code)
+                ))
+            } else {
+                Err(exception!(
+                    format!("failed to call service, subject={subject}, error={}", error.message),
+                    severity = error.severity
+                ))
+            }
+        } else if TypeId::of::<Res>() == TypeId::of::<()>() {
+            // SAFETY: We've verified Res is () via TypeId, so this transmute is sound.
+            Ok(unsafe { transmute_copy(&()) })
         } else {
-            Err(exception!(
-                format!("failed to call service, subject={subject}, error={}", error.message),
-                severity = error.severity
-            ))
+            from_json(&reply_payload)
         }
-    } else if TypeId::of::<Res>() == TypeId::of::<()>() {
-        // SAFETY: We've verified Res is () via TypeId, so this transmute is sound.
-        Ok(unsafe { transmute_copy(&()) })
-    } else {
-        from_json(&payload)
     }
 }
 
