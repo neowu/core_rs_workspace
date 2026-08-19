@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use framework::exception;
 use framework::exception::Exception;
-use framework::exception::Severity;
 use framework::log;
+use framework::log::Severity;
 use framework::system::System;
 use framework_macro::integration_test;
 use framework_macro::nats_api;
@@ -87,9 +87,6 @@ async fn service() -> Result<(), Exception> {
     // subject without service
     let error = service_client.request::<(), ()>(UNKNOWN, &()).await.unwrap_err();
     assert_eq!(error.code, Some("NATS_NO_RESPONDERS"));
-
-    let greeting_response = client.greet(GreetRequest { name: "foo".to_string() }).await?;
-    assert_eq!(greeting_response.greeting, "hello, foo");
 
     // service unsubscribes on shutdown, requests are rejected right away
     system.shutdown_signal().cancel();

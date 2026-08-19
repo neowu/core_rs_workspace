@@ -1,5 +1,5 @@
 use framework::exception::Exception;
-use framework::exception::Severity;
+use framework::log::Severity;
 use framework::validation_error;
 
 pub fn main() {

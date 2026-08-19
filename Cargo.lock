@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "demo"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "axum",
  "framework",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "axum",
  "axum-extra",
@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "framework_clickhouse"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "clickhouse",
  "framework",
@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "framework_db"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "bytes",
  "framework",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "framework",
  "futures",
@@ -773,7 +773,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "async-nats",
  "framework",
@@ -1350,7 +1350,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "log_collector"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "axum",
  "framework",
@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "framework",
  "framework_clickhouse",

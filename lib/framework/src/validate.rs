@@ -11,7 +11,7 @@ macro_rules! validation_error {
             $message,
             concat!(file!(), ":", line!(), ":", column!()),
         );
-        let result = result.__with_code($crate::exception::error_code::VALIDATION_ERROR).__with_severity($crate::exception::Severity::Warn);
+        let result = result.__with_code($crate::exception::error_code::VALIDATION_ERROR).__with_severity($crate::log::Severity::Warn);
         $( let result = result.__with_severity($severity); )?
         result
     }};

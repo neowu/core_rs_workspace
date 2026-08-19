@@ -14,9 +14,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::exception::Exception;
-use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::json;
+use crate::log::Severity;
 use crate::web::error::HttpError;
 
 pub struct TextBody(pub String);

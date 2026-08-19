@@ -1,23 +1,53 @@
 use std::borrow::Cow;
 use std::cell::Ref;
 use std::cell::RefCell;
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task_local;
 
-use crate::time::DateTime;
 use crate::exception::Exception;
-use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::appender::Appender;
 use crate::network::hostname;
+use crate::time::DateTime;
 use crate::write_str;
 
 mod action;
 pub mod appender;
 pub mod id_generator;
 pub mod metrics;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Severity {
+    #[serde(rename = "INFO")]
+    Info = 1,
+    #[serde(rename = "WARN")]
+    Warn = 2,
+    #[serde(rename = "ERROR")]
+    Error = 3,
+}
+
+impl Severity {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Severity::Info => "INFO",
+            Severity::Warn => "WARN",
+            Severity::Error => "ERROR",
+        }
+    }
+}
+
+impl Display for Severity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 // used for logging without action context
 #[macro_export]
@@ -186,7 +216,7 @@ macro_rules! warn {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
             format!($($arg)*),
-            Some($crate::exception::Severity::Warn),
+            Some($crate::log::Severity::Warn),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
         );
@@ -198,7 +228,7 @@ macro_rules! error {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
             format!($($arg)*),
-            Some($crate::exception::Severity::Error),
+            Some($crate::log::Severity::Error),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
         );
@@ -346,6 +376,7 @@ fn elapsed(start: Instant) -> (u64, u64, u32) {
 
 #[cfg(test)]
 mod tests {
+    use crate::log::Severity;
     use crate::log::truncate;
 
     #[test]
@@ -359,5 +390,12 @@ mod tests {
         assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
         assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
         assert_eq!(truncate(value.clone(), 10, Some("...(truncated)")), "123老虎4...(truncated)".to_owned());
+    }
+
+    #[test]
+    fn compare_severity() {
+        assert_eq!(Severity::Info, Severity::Info);
+        assert!(Severity::Info < Severity::Warn);
+        assert!(Severity::Warn < Severity::Error);
     }
 }

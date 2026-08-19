@@ -24,8 +24,8 @@ use tokio::time::sleep;
 pub use tokio_stream::StreamExt;
 
 use crate::exception::Exception;
-use crate::exception::Severity;
 use crate::log;
+use crate::log::Severity;
 use crate::span;
 use crate::stats;
 use crate::warn;

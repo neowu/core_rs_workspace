@@ -8,20 +8,21 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::console;
-use crate::time::DateTime;
-use crate::exception::Severity;
 use crate::log::CONTEXT;
 use crate::log::Context;
+use crate::log::Severity;
 use crate::log::action::Error;
 use crate::log::id_generator;
 use crate::log::id_generator::LogId;
 use crate::number::parse_u64;
+use crate::time::DateTime;
 
 pub struct Metrics {
     pub id: LogId,
     pub date: DateTime,
     pub app: &'static str,
     pub host: &'static str,
+    pub severity: Severity,
     pub error: Option<Error>,
     pub stats: Vec<(&'static str, u64)>,
     pub info: Vec<(&'static str, String)>,
@@ -29,8 +30,9 @@ pub struct Metrics {
 
 impl Metrics {
     fn update_error(&mut self, severity: Severity, error_code: &'static str, error_message: String) {
-        if self.error.as_ref().is_none_or(|error| error.severity < severity) {
-            self.error = Some(Error { severity, code: Some(error_code), message: error_message });
+        if self.error.as_ref().is_none() || self.severity < severity {
+            self.severity = severity;
+            self.error = Some(Error { code: Some(error_code), message: error_message });
         }
     }
 }
@@ -102,6 +104,7 @@ impl MetricsCollector {
             date,
             app,
             host,
+            severity: Severity::Info,
             error: None,
             stats: Vec::new(),
             info: Vec::new(),

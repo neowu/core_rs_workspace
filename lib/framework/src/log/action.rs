@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::exception::Exception;
-use crate::exception::Severity;
+use crate::log::Severity;
 use crate::log::elapsed;
 use crate::log::id_generator::LogId;
 use crate::log::truncate;
@@ -14,10 +14,11 @@ pub struct Action {
     pub(crate) start_time: Instant,
     pub id: LogId,
     pub(crate) kind: &'static str,
-    pub(crate) date: DateTime,
+    pub(crate) timestamp: DateTime,
     pub app: &'static str,
     pub(crate) host: &'static str,
     pub(crate) ref_id: Option<Vec<String>>,
+    pub severity: Severity,
     pub(crate) error: Option<Error>,
     pub(crate) context: Vec<(&'static str, Vec<String>)>,
     pub(crate) stats: HashMap<Cow<'static, str>, u64>,
@@ -26,7 +27,6 @@ pub struct Action {
 }
 
 pub struct Error {
-    pub severity: Severity,
     pub code: Option<&'static str>,
     pub message: String,
 }
@@ -36,7 +36,7 @@ impl Action {
         id: LogId,
         kind: &'static str,
         ref_id: Option<Vec<String>>,
-        date: DateTime,
+        timestamp: DateTime,
         app: &'static str,
         host: &'static str,
     ) -> Self {
@@ -44,10 +44,11 @@ impl Action {
             start_time: Instant::now(),
             id,
             kind,
-            date,
+            timestamp,
             app,
             host,
             ref_id,
+            severity: Severity::Info,
             error: None,
             context: Vec::new(),
             stats: HashMap::new(),
@@ -57,7 +58,7 @@ impl Action {
 
         action.logs.push(format!(
             "# [action] id={id}, kind={kind}, date={}, app={app}, host={host}, ref_id={:?}",
-            action.date.to_rfc3339(),
+            action.timestamp.to_rfc3339(),
             action.ref_id
         ));
 
@@ -111,9 +112,9 @@ impl Action {
 
     fn update_error(&mut self, severity: Severity, error_code: Option<&'static str>, error_message: &str) {
         const MAX_ERROR_MESSAGE_LEN: usize = 200;
-        if self.error.as_ref().is_none_or(|error| error.severity < severity) {
+        if self.error.as_ref().is_none() || self.severity < severity {
+            self.severity = severity;
             self.error = Some(Error {
-                severity,
                 code: error_code,
                 message: truncate(error_message.to_owned(), MAX_ERROR_MESSAGE_LEN, None),
             });

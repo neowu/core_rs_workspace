@@ -4,9 +4,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use serde::Deserialize;
-use serde::Serialize;
-
+use crate::log::Severity;
 use crate::write_str;
 
 pub mod error_code;
@@ -17,24 +15,6 @@ pub struct Exception {
     pub message: String,
     pub location: Option<&'static str>,
     source: Option<Box<Exception>>,
-}
-
-// used by HttpErrorBody to serialize/deserialize
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum Severity {
-    #[serde(rename = "WARN")]
-    Warn = 1,
-    #[serde(rename = "ERROR")]
-    Error = 0,
-}
-
-impl Display for Severity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Severity::Warn => f.write_str("WARN"),
-            Severity::Error => f.write_str("ERROR"),
-        }
-    }
 }
 
 impl Exception {

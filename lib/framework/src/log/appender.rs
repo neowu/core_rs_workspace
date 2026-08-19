@@ -9,12 +9,10 @@ use serde::Serialize;
 use serde::Serializer;
 use serde::ser::SerializeMap as _;
 
-use crate::time::DateTime;
-use crate::exception::Severity;
 use crate::json;
 use crate::log::Action;
-use crate::log::action::Error;
 use crate::log::metrics::Metrics;
+use crate::time::DateTime;
 use crate::write_str;
 
 pub enum Appender {
@@ -41,8 +39,8 @@ impl Appender {
 
 #[allow(clippy::print_stdout, clippy::print_stderr)]
 fn append_console(action: &Action) {
-    let date = action.date.to_rfc3339();
-    let severity = severity(action.error.as_ref());
+    let date = action.timestamp.to_rfc3339();
+    let severity = action.severity.as_str();
     let kind = action.kind;
     let id = &action.id;
     let app = action.app;
@@ -97,7 +95,7 @@ fn append_console(action: &Action) {
 #[allow(clippy::print_stdout)]
 fn append_metrics_console(metrics: &Metrics) {
     let date = metrics.date.to_rfc3339();
-    let severity = severity(metrics.error.as_ref());
+    let severity = metrics.severity.as_str();
     let app = metrics.app;
     let host = metrics.host;
     let mut log = format!("METRICS: {date} | {severity} | app={app} | host={host}");
@@ -124,8 +122,8 @@ fn append_metrics_console(metrics: &Metrics) {
 fn append_gcloud(action: &Action) {
     let id = action.id.to_string();
     let id = id.as_str();
-    let time = action.date;
-    let severity = severity(action.error.as_ref());
+    let time = action.timestamp;
+    let severity = action.severity.as_str();
     let error_code = action.error.as_ref().and_then(|e| e.code);
     let error_message = action.error.as_ref().map(|e| e.message.as_str());
     let app = action.app;
@@ -184,7 +182,7 @@ fn append_metrics_gcloud(metrics: &Metrics) {
             time: metrics.date,
             app: metrics.app,
             host: metrics.host,
-            severity: severity(metrics.error.as_ref()),
+            severity: metrics.severity.as_str(),
             error_code,
             error_message,
             stats: &metrics.stats,
@@ -193,17 +191,6 @@ fn append_metrics_gcloud(metrics: &Metrics) {
         })
         .expect("serialize to json cannot fail")
     );
-}
-
-const fn severity(error: Option<&Error>) -> &'static str {
-    if let Some(error) = error {
-        match error.severity {
-            Severity::Warn => "WARN",
-            Severity::Error => "ERROR",
-        }
-    } else {
-        "INFO"
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -297,10 +284,10 @@ mod tests {
 
     use super::ActionEntry;
     use super::LogLabel;
+    use crate::json;
     use crate::time::Date;
     use crate::time::DateTime;
     use crate::time::Time;
-    use crate::json;
 
     #[test]
     fn serialize_action_entry() {
