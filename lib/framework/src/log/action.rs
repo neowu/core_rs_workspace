@@ -5,14 +5,13 @@ use std::time::Instant;
 use crate::exception::Exception;
 use crate::log::Severity;
 use crate::log::elapsed;
-use crate::log::id_generator::LogId;
 use crate::log::truncate;
 use crate::time::DateTime;
 use crate::write_str;
 
 pub struct Action {
     pub(crate) start_time: Instant,
-    pub id: LogId,
+    pub id: String,
     pub(crate) kind: &'static str,
     pub(crate) timestamp: DateTime,
     pub app: &'static str,
@@ -33,7 +32,7 @@ pub struct Error {
 
 impl Action {
     pub(crate) fn new(
-        id: LogId,
+        id: String,
         kind: &'static str,
         ref_id: Option<Vec<String>>,
         timestamp: DateTime,
@@ -57,7 +56,8 @@ impl Action {
         };
 
         action.logs.push(format!(
-            "# [action] id={id}, kind={kind}, date={}, app={app}, host={host}, ref_id={:?}",
+            "# [action] id={}, kind={kind}, date={}, app={app}, host={host}, ref_id={:?}",
+            action.id,
             action.timestamp.to_rfc3339(),
             action.ref_id
         ));

@@ -120,8 +120,7 @@ fn append_metrics_console(metrics: &Metrics) {
 
 #[allow(clippy::print_stdout)]
 fn append_gcloud(action: &Action) {
-    let id = action.id.to_string();
-    let id = id.as_str();
+    let id = action.id.as_str();
     let time = action.timestamp;
     let severity = action.severity.as_str();
     let error_code = action.error.as_ref().and_then(|e| e.code);
@@ -178,7 +177,7 @@ fn append_metrics_gcloud(metrics: &Metrics) {
     println!(
         "{}",
         json::to_json(&MetricsEntry {
-            id: metrics.id.to_string().as_str(),
+            id: metrics.id.as_str(),
             time: metrics.date,
             app: metrics.app,
             host: metrics.host,

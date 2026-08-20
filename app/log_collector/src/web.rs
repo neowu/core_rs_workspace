@@ -117,7 +117,7 @@ async fn process_events(
         }
 
         let mut message = EventMessage {
-            id: log::id_generator::next_id(now.unix_timestamp_millis()).to_string(),
+            id: log::id_generator::next_id(now.unix_timestamp_millis()),
             timestamp: now,
             app: app.to_owned(),
             client_timestamp: event.date,

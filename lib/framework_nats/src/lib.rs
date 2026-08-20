@@ -34,7 +34,7 @@ pub async fn connect(url: &str) -> Client {
 
 fn link_context() -> HeaderMap {
     let mut headers = HeaderMap::new();
-    if let Some((ref_id, app)) = with_current_action(|action| (action.id.to_string(), action.app)) {
+    if let Some((ref_id, app)) = with_current_action(|action| (action.id.clone(), action.app)) {
         headers.insert(REF_ID, ref_id);
         headers.insert(CLIENT, app);
     }

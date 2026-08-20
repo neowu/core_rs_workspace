@@ -1,5 +1,4 @@
 use std::collections::hash_map::DefaultHasher;
-use std::fmt;
 use std::hash::Hash as _;
 use std::hash::Hasher as _;
 use std::sync::LazyLock;
@@ -10,24 +9,7 @@ use crate::network::hostname;
 
 static ID_GENERATOR: LazyLock<IdGenerator> = LazyLock::new(IdGenerator::init);
 
-#[derive(Clone, Copy)]
-pub struct LogId([u8; 10]);
-
-impl fmt::Display for LogId {
-    #[allow(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const HEX: &[u8; 16] = b"0123456789ABCDEF";
-        let mut buf = [0_u8; 20];
-        for (chunk, &b) in buf.chunks_exact_mut(2).zip(&self.0) {
-            chunk[0] = HEX[(b >> 4) as usize];
-            chunk[1] = HEX[(b & 0xf) as usize];
-        }
-        // SAFETY: HEX bytes are all ASCII
-        f.write_str(unsafe { str::from_utf8_unchecked(&buf) })
-    }
-}
-
-pub fn next_id(current_time: i64) -> LogId {
+pub fn next_id(current_time: i64) -> String {
     ID_GENERATOR.next_with_millis(current_time)
 }
 
@@ -41,7 +23,10 @@ impl IdGenerator {
         Self { counter: AtomicU16::new(rand::random()), machine_id: machine_identifier() }
     }
 
-    fn next_with_millis(&self, current_time: i64) -> LogId {
+    #[allow(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
+    fn next_with_millis(&self, current_time: i64) -> String {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
         let counter = self.counter.fetch_add(1, Ordering::Relaxed);
 
         let bytes: [u8; 10] = [
@@ -57,7 +42,13 @@ impl IdGenerator {
             counter as u8,
         ];
 
-        LogId(bytes)
+        let mut buf = [0_u8; 20];
+        for (chunk, &b) in buf.chunks_exact_mut(2).zip(&bytes) {
+            chunk[0] = HEX[(b >> 4) as usize];
+            chunk[1] = HEX[(b & 0xf) as usize];
+        }
+        // SAFETY: HEX bytes are all ASCII
+        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
     }
 }
 
@@ -74,7 +65,7 @@ mod tests {
 
     #[test]
     fn next_id_format() {
-        let id = next_id(1_700_000_000_000).to_string();
+        let id = next_id(1_700_000_000_000);
         assert_eq!(id.len(), 20);
     }
 }

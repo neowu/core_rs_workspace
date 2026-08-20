@@ -78,7 +78,7 @@ where
     R: Send + Sync + 'static,
 {
     let task_name = format!("task:{name}@{location}");
-    let ref_id = with_current_action(|action| vec![action.id.to_string()]);
+    let ref_id = with_current_action(|action| vec![action.id.clone()]);
 
     EXECUTOR.lock().unwrap().spawn(task_name, async move {
         let _counter = TASK_COUNTER.get().map(Counter::increase);

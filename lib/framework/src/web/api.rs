@@ -98,7 +98,7 @@ impl ApiClient {
 }
 
 fn link_context(http_request: &mut HttpRequest) -> Result<(), Exception> {
-    if let Some((ref_id, app)) = with_current_action(|action| (action.id.to_string(), action.app)) {
+    if let Some((ref_id, app)) = with_current_action(|action| (action.id.clone(), action.app)) {
         http_request.header(REF_ID, &ref_id)?;
         http_request.header(CLIENT, app)?;
     }

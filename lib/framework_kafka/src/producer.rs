@@ -52,7 +52,7 @@ impl Producer {
         }
 
         let mut headers = OwnedHeaders::new();
-        if let Some((ref_id, app)) = with_current_action(|action| (action.id.to_string(), action.app)) {
+        if let Some((ref_id, app)) = with_current_action(|action| (action.id.clone(), action.app)) {
             headers = headers
                 .insert(Header { key: REF_ID, value: Some(&ref_id) })
                 .insert(Header { key: CLIENT, value: Some(app) });

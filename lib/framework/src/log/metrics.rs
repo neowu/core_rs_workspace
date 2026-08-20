@@ -13,12 +13,11 @@ use crate::log::Context;
 use crate::log::Severity;
 use crate::log::action::Error;
 use crate::log::id_generator;
-use crate::log::id_generator::LogId;
 use crate::number::parse_u64;
 use crate::time::DateTime;
 
 pub struct Metrics {
-    pub id: LogId,
+    pub id: String,
     pub date: DateTime,
     pub app: &'static str,
     pub host: &'static str,

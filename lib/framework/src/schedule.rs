@@ -135,7 +135,7 @@ where
     J: Fn(S, JobContext) -> Fut + Send + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    let ref_id = with_current_action(|action| vec![action.id.to_string()]);
+    let ref_id = with_current_action(|action| vec![action.id.clone()]);
     let triggered = ref_id.is_some();
     Box::pin(
         log::action("job", ref_id, async move {
