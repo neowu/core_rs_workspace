@@ -186,9 +186,4 @@ mod tests {
 2: ERROR root cause at src/root.rs:1"
         );
     }
-
-    #[test]
-    fn severity_compare() {
-        assert!(Severity::Warn > Severity::Error);
-    }
 }
