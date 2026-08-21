@@ -76,7 +76,7 @@ fn append_console(action: &Action) {
 
     for (key, value) in &action.stats {
         if key.ends_with("elapsed") {
-            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value));
+            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value as u64));
         } else {
             write_str!(&mut log, " | {key}={value}");
         }
@@ -94,7 +94,7 @@ fn append_console(action: &Action) {
 
 #[allow(clippy::print_stdout)]
 fn append_metrics_console(metrics: &Metrics) {
-    let date = metrics.date.to_rfc3339();
+    let date = metrics.timestamp.to_rfc3339();
     let severity = metrics.severity.as_str();
     let app = metrics.app;
     let host = metrics.host;
@@ -178,7 +178,7 @@ fn append_metrics_gcloud(metrics: &Metrics) {
         "{}",
         json::to_json(&MetricsEntry {
             id: metrics.id.as_str(),
-            time: metrics.date,
+            time: metrics.timestamp,
             app: metrics.app,
             host: metrics.host,
             severity: metrics.severity.as_str(),
@@ -214,7 +214,7 @@ struct ActionEntry<'a> {
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
     context: &'a [(&'static str, Vec<String>)],
     #[serde(flatten)]
-    stats: &'a HashMap<Cow<'static, str>, u64>,
+    stats: &'a HashMap<Cow<'static, str>, f64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
@@ -233,7 +233,7 @@ struct MetricsEntry<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
-    stats: &'a [(&'static str, u64)],
+    stats: &'a [(&'static str, f64)],
     #[serde(serialize_with = "serialize_key_value_tuple")]
     info: &'a [(&'static str, String)],
     #[serde(rename = "logging.googleapis.com/labels")]
@@ -292,7 +292,7 @@ mod tests {
     fn serialize_action_entry() {
         let context = vec![("user_id", vec!["u1".to_owned()])];
         let mut stats = HashMap::new();
-        stats.insert("count".into(), 42);
+        stats.insert("count".into(), 42_f64);
 
         let entry = ActionEntry {
             id: "action-1",

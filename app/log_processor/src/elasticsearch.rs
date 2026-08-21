@@ -70,7 +70,7 @@ impl Elasticsearch {
         let request = HttpRequest::new(Method::GET, format!("{uri}/_cluster/state"));
         let response = self.client.execute(request).await?;
         if response.status != 200 {
-            return Err(exception!(format!("failed to get state")));
+            return Err(exception!("failed to get state"));
         }
         json::from_json(&response.body)
     }

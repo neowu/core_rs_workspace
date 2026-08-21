@@ -20,7 +20,7 @@ pub struct Action {
     pub severity: Severity,
     pub(crate) error: Option<Error>,
     pub(crate) context: Vec<(&'static str, Vec<String>)>,
-    pub(crate) stats: HashMap<Cow<'static, str>, u64>,
+    pub(crate) stats: HashMap<Cow<'static, str>, f64>,
     pub(crate) logs: Vec<String>,
     pub(crate) trace: bool,
 }
@@ -140,7 +140,7 @@ impl Action {
 
     pub(crate) fn finish(&mut self) {
         let elapsed = self.start_time.elapsed();
-        self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as u64);
+        self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as f64);
         if self.flush_trace() {
             self.logs.push(format!("# [action] elapsed={elapsed:?}"));
         }

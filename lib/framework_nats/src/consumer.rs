@@ -18,7 +18,6 @@ use async_nats::jetstream::consumer::DeliverPolicy;
 use async_nats::jetstream::consumer::pull::Config;
 use framework::console;
 use framework::context;
-use framework::time::DateTime;
 use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
@@ -27,6 +26,7 @@ use framework::log::metrics::Counter;
 use framework::log::metrics::Metrics;
 use framework::stats;
 use framework::task::TaskExecutor;
+use framework::time::DateTime;
 use futures::StreamExt as _;
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
@@ -64,7 +64,7 @@ pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
     MESSAGE_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("consumer_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = MESSAGE_COUNTER.get() {
-            metrics.stats.push(("active_message_handlers", counter.max() as u64));
+            metrics.stats.push(("active_message_handlers", counter.max() as f64));
         }
     }
 }

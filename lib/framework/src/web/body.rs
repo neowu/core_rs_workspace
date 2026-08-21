@@ -137,7 +137,7 @@ where
         match result {
             Ok(extract::Query(query)) => Ok(Query(query)),
             Err(rejection) => Err(exception!(
-                format!("failed to parse query"),
+                "failed to parse query",
                 severity = Severity::Warn,
                 code = error_code::BAD_REQUEST,
                 source = rejection

@@ -18,12 +18,12 @@ use crate::time::DateTime;
 
 pub struct Metrics {
     pub id: String,
-    pub date: DateTime,
+    pub timestamp: DateTime,
     pub app: &'static str,
     pub host: &'static str,
     pub severity: Severity,
     pub error: Option<Error>,
-    pub stats: Vec<(&'static str, u64)>,
+    pub stats: Vec<(&'static str, f64)>,
     pub info: Vec<(&'static str, String)>,
 }
 
@@ -97,10 +97,10 @@ impl MetricsCollector {
     }
 
     fn collect_metrics(&mut self, app: &'static str, host: &'static str) -> Metrics {
-        let date = DateTime::now();
+        let timestamp = DateTime::now();
         let mut metrics = Metrics {
-            id: id_generator::next_id(date.unix_timestamp_millis()),
-            date,
+            id: id_generator::next_id(timestamp.unix_timestamp_millis()),
+            timestamp,
             app,
             host,
             severity: Severity::Info,
@@ -178,8 +178,8 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
     cpu_stats.previous_container_cpu_time = container_cpu_time;
     cpu_stats.previous_process_cpu_time = process_cpu_time;
 
-    metrics.stats.push(("container_cpu_usage", (container_usage * 1000.0).round() as u64));
-    metrics.stats.push(("process_cpu_usage", (process_usage * 1000.0).round() as u64));
+    metrics.stats.push(("container_cpu_usage", container_usage));
+    metrics.stats.push(("process_cpu_usage", process_usage));
 
     if container_usage > 0.8 {
         metrics.update_error(
@@ -192,14 +192,14 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
 }
 
 fn collect_mem_usage(metrics: &mut Metrics, mem_stats: &MemoryStats) {
-    metrics.stats.push(("container_mem_max", mem_stats.max));
+    metrics.stats.push(("container_mem_max", mem_stats.max as f64));
 
     if let Some(vm_rss) = process_vm_rss(mem_stats.page_size) {
-        metrics.stats.push(("process_vm_rss", vm_rss));
+        metrics.stats.push(("process_vm_rss", vm_rss as f64));
     }
 
     if let Some(container_mem_used) = container_mem_used() {
-        metrics.stats.push(("container_mem_used", container_mem_used));
+        metrics.stats.push(("container_mem_used", container_mem_used as f64));
 
         let mem_usage = mem_stats.usage(container_mem_used);
         if mem_usage > 0.8 {

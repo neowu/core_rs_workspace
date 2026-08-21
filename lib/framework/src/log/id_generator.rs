@@ -43,7 +43,7 @@ impl IdGenerator {
         ];
 
         let mut buf = [0_u8; 20];
-        for (chunk, &b) in buf.chunks_exact_mut(2).zip(&bytes) {
+        for (chunk, &b) in buf.as_chunks_mut::<2>().0.iter_mut().zip(&bytes) {
             chunk[0] = HEX[(b >> 4) as usize];
             chunk[1] = HEX[(b & 0xf) as usize];
         }

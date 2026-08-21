@@ -70,7 +70,7 @@ pub fn http_server_metrics() -> impl Fn(&mut Metrics) {
     |metrics| {
         if let Some(counter) = REQUEST_COUNTER.get() {
             let max = counter.max();
-            metrics.stats.push(("active_http_requests", max as u64));
+            metrics.stats.push(("active_http_requests", max as f64));
         }
     }
 }
