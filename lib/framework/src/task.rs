@@ -99,7 +99,7 @@ pub fn task_metrics() -> impl Fn(&mut Metrics) {
     TASK_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("task_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = TASK_COUNTER.get() {
-            metrics.stats.push(("active_tasks", counter.max() as f64));
+            metrics.stats.push(("active_tasks", counter.max() as u64));
         }
     }
 }

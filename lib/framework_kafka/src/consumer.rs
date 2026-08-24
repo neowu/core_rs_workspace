@@ -91,7 +91,7 @@ where
     pub fn consumer_metrics(&self) -> impl Fn(&mut Metrics) + use<S> {
         let counter = Arc::clone(&self.counter);
         move |metrics| {
-            metrics.stats.push(("active_message_handlers", counter.max() as f64));
+            metrics.stats.push(("active_message_handlers", counter.max() as u64));
         }
     }
 

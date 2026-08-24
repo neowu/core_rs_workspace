@@ -13,6 +13,7 @@ use crate::log::Context;
 use crate::log::Severity;
 use crate::log::action::Error;
 use crate::log::id_generator;
+use crate::number::parse_i64;
 use crate::number::parse_u64;
 use crate::time::DateTime;
 
@@ -23,7 +24,7 @@ pub struct Metrics {
     pub host: &'static str,
     pub severity: Severity,
     pub error: Option<Error>,
-    pub stats: Vec<(&'static str, f64)>,
+    pub stats: Vec<(&'static str, u64)>,
     pub info: Vec<(&'static str, String)>,
 }
 
@@ -178,8 +179,8 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
     cpu_stats.previous_container_cpu_time = container_cpu_time;
     cpu_stats.previous_process_cpu_time = process_cpu_time;
 
-    metrics.stats.push(("container_cpu_usage", container_usage));
-    metrics.stats.push(("process_cpu_usage", process_usage));
+    metrics.stats.push(("container_cpu_usage", (container_usage * 100.0).round() as u64));
+    metrics.stats.push(("process_cpu_usage", (process_usage * 100.0).round() as u64));
 
     if container_usage > 0.8 {
         metrics.update_error(
@@ -192,14 +193,14 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
 }
 
 fn collect_mem_usage(metrics: &mut Metrics, mem_stats: &MemoryStats) {
-    metrics.stats.push(("container_mem_max", mem_stats.max as f64));
+    metrics.stats.push(("container_mem_max", mem_stats.max));
 
     if let Some(vm_rss) = process_vm_rss(mem_stats.page_size) {
-        metrics.stats.push(("process_vm_rss", vm_rss as f64));
+        metrics.stats.push(("process_vm_rss", vm_rss));
     }
 
     if let Some(container_mem_used) = container_mem_used() {
-        metrics.stats.push(("container_mem_used", container_mem_used as f64));
+        metrics.stats.push(("container_mem_used", container_mem_used));
 
         let mem_usage = mem_stats.usage(container_mem_used);
         if mem_usage > 0.8 {
@@ -275,7 +276,7 @@ fn container_cpu_time() -> Option<u64> {
     None
 }
 
-// percent of cpu quota (cpu.max), 100 = at the limit; percent of raw cores used if no quota set
+// percent of cpu quota (cpu.max), 100% = at the limit; percent of raw cores used if no quota set
 fn container_cpu_max() -> Option<f64> {
     let content = fs::read_to_string("/sys/fs/cgroup/cpu.max").ok()?;
     let mut parts = content.split_whitespace();
@@ -283,8 +284,8 @@ fn container_cpu_max() -> Option<f64> {
     if quota == "max" {
         Some(1.0)
     } else {
-        let quota = parse_u64(quota).ok()?;
-        let period = parse_u64(parts.next()?).ok()?;
+        let quota = parse_i64(quota).ok()?;
+        let period = parse_i64(parts.next()?).ok()?;
         Some(quota as f64 / period as f64)
     }
 }

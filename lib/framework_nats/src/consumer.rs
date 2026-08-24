@@ -64,7 +64,7 @@ pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
     MESSAGE_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("consumer_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = MESSAGE_COUNTER.get() {
-            metrics.stats.push(("active_message_handlers", counter.max() as f64));
+            metrics.stats.push(("active_message_handlers", counter.max() as u64));
         }
     }
 }
@@ -203,7 +203,7 @@ where
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
         if let Some(timestamp) = timestamp(&raw) {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
-            let lag = (DateTime::now() - timestamp).as_millis();
+            let lag = (DateTime::now() - timestamp).as_nanos();
             if lag > 0 {
                 stats!(nats_consumer_lag = lag);
             }
@@ -371,7 +371,7 @@ where
         stats!(nats_read_messages = messages.len(), nats_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.first().and_then(timestamp) {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
-            let lag = (DateTime::now() - timestamp).as_millis();
+            let lag = (DateTime::now() - timestamp).as_nanos();
             if lag > 0 {
                 stats!(nats_consumer_lag = lag);
             }

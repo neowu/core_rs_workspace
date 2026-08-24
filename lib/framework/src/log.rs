@@ -189,9 +189,9 @@ impl Drop for Span {
             action.logs.push(log);
 
             let total_elapsed = action.stats.entry(Cow::Owned(format!("{name}_elapsed"))).or_default();
-            *total_elapsed += span_elapsed.as_nanos() as f64;
+            *total_elapsed += span_elapsed.as_nanos() as u64;
             let count = action.stats.entry(Cow::Owned(format!("{name}_count"))).or_default();
-            *count += 1_f64;
+            *count += 1;
         });
     }
 }
@@ -328,7 +328,7 @@ macro_rules! stats {
         $(
             $crate::log::__stats(
                 stringify!($key),
-                $value as f64,
+                $value as u64,
                 concat!(module_path!(), ":", line!()),
             );
         )+
@@ -337,14 +337,14 @@ macro_rules! stats {
 
 #[doc(hidden)]
 #[inline]
-pub fn __stats(key: &'static str, value: f64, location: &'static str) {
+pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
         let mut action = action.borrow_mut();
 
         action.log(&format!("[stats] {key}={value}"), location);
 
         let stats_value = action.stats.entry(Cow::Borrowed(key)).or_default();
-        *stats_value = stats_value.algebraic_add(value);
+        *stats_value += value;
     });
 }
 

@@ -76,7 +76,7 @@ fn append_console(action: &Action) {
 
     for (key, value) in &action.stats {
         if key.ends_with("elapsed") {
-            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value as u64));
+            write_str!(&mut log, " | {key}={:?}", Duration::from_nanos(*value));
         } else {
             write_str!(&mut log, " | {key}={value}");
         }
@@ -214,7 +214,7 @@ struct ActionEntry<'a> {
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
     context: &'a [(&'static str, Vec<String>)],
     #[serde(flatten)]
-    stats: &'a HashMap<Cow<'static, str>, f64>,
+    stats: &'a HashMap<Cow<'static, str>, u64>,
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
@@ -233,7 +233,7 @@ struct MetricsEntry<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
-    stats: &'a [(&'static str, f64)],
+    stats: &'a [(&'static str, u64)],
     #[serde(serialize_with = "serialize_key_value_tuple")]
     info: &'a [(&'static str, String)],
     #[serde(rename = "logging.googleapis.com/labels")]
@@ -292,7 +292,7 @@ mod tests {
     fn serialize_action_entry() {
         let context = vec![("user_id", vec!["u1".to_owned()])];
         let mut stats = HashMap::new();
-        stats.insert("count".into(), 42_f64);
+        stats.insert("count".into(), 42);
 
         let entry = ActionEntry {
             id: "action-1",
@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(value["time"], "2023-11-14T22:13:20Z");
         // context/stats are flattened into the top-level object
         assert_eq!(value["user_id"], "u1");
-        assert_eq!(value["count"], 42);
+        assert_eq!(value["count"], 42.0);
         assert_eq!(value["logging.googleapis.com/labels"]["log"], "action");
         assert_eq!(value["logging.googleapis.com/trace"], "action-1");
     }
