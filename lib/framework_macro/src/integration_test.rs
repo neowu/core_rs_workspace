@@ -39,7 +39,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             #function
 
             let mut system = ::framework::system::System::init(env!("CARGO_PKG_NAME"));
-            system.start_action_logger(::framework::log::appender::ConsoleAppender);
+            system.start_action_logger(::framework::log::ConsoleAppender);
 
             let result = ::framework::log::action("test", None, async {
                 ::framework::context!(test = #name);

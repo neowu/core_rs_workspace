@@ -5,8 +5,8 @@ use serde::Serializer;
 use serde::ser::SerializeMap as _;
 
 use crate::json;
-use crate::log::ActionAppender;
-use crate::log::action::ActionMessage;
+use crate::log::appender::ActionAppender;
+use crate::log::appender::ActionMessage;
 use crate::metrics::MetricsAppender;
 use crate::metrics::MetricsMessage;
 use crate::time::DateTime;

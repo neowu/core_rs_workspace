@@ -11,8 +11,8 @@ use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::load_config;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
-use framework::log::appender::GCloudAppender;
+use framework::log::ConsoleAppender;
+use framework::log::GCloudAppender;
 use framework::spawn_action;
 use framework::system::System;
 

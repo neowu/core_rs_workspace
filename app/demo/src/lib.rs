@@ -4,8 +4,8 @@ use axum::Router;
 use framework::config::EnvString;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log::appender::ConsoleAppender;
-use framework::metrics::collector::MetricsCollector;
+use framework::log::ConsoleAppender;
+use framework::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::system::System;
 use framework::time::Offset;
@@ -50,7 +50,7 @@ pub async fn run() -> Result<(), Exception> {
         password: config.db_password.into(),
         client: env!("CARGO_PKG_NAME"),
     })?;
-    collector.add(db.db_metrics());
+    collector.add(db.metrics());
 
     collector.add(system.executor_metrics());
 

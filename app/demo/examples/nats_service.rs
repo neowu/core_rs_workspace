@@ -5,8 +5,9 @@ use demo::AppConfig;
 use framework::exception;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log::appender::ConsoleAppender;
-use framework::log::appender::GCloudAppender;
+use framework::log::ConsoleAppender;
+use framework::log::GCloudAppender;
+use framework::metrics::MetricsCollector;
 use framework::spawn_action;
 use framework::system::System;
 use framework_macro::nats_api;
@@ -56,13 +57,16 @@ pub async fn main() -> Result<(), Exception> {
         value => panic!("unknown appender, value={value}"),
     }
 
+    let mut collector = MetricsCollector::new();
     let nats_client = framework_nats::connect("dev.internal:4222").await;
 
     let service =
         GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl), ServiceConfig::default());
     let client = GreetingServiceClient::new(nats_client);
+    collector.add(service.metrics());
 
     system.start_service(|token| service.start(token));
+    system.start_metrics_collector(collector, ConsoleAppender);
 
     spawn_action!("client", async move {
         let response = client.greet(GreetRequest { name: "world".to_owned() }).await?;

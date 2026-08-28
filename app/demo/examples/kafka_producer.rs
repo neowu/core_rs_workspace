@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use framework::exception::Exception;
-use framework::log::appender::ConsoleAppender;
+use framework::log::ConsoleAppender;
 use framework::spawn_action;
 use framework::system::System;
 use framework_kafka::Topic;

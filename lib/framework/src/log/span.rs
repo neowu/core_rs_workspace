@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::time::Instant;
 
 use crate::log::CURRENT_ACTION;
@@ -51,9 +50,9 @@ impl Drop for Span {
                 write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} [span:{name}] elapsed={span_elapsed:?} <");
                 action.logs.push(log);
 
-                let total_elapsed = action.stats.entry(Cow::Owned(format!("{name}_elapsed"))).or_default();
+                let total_elapsed = action.stats.entry(format!("{name}_elapsed")).or_default();
                 *total_elapsed += span_elapsed.as_nanos() as u64;
-                let count = action.stats.entry(Cow::Owned(format!("{name}_count"))).or_default();
+                let count = action.stats.entry(format!("{name}_count")).or_default();
                 *count += 1;
             }
         });

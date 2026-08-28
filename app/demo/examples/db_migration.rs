@@ -3,7 +3,7 @@ use std::time::Duration;
 use demo::AppConfig;
 use framework::load_config;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
+use framework::log::ConsoleAppender;
 use framework::system::System;
 use framework_db::Database;
 use framework_db::DbConfig;

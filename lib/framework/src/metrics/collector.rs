@@ -9,11 +9,11 @@ use tokio_util::sync::CancellationToken;
 use crate::log::Severity;
 use crate::log::id_generator;
 use crate::metrics::Metrics;
-use crate::metrics::MetricsMessage;
+use crate::metrics::appender::MetricsMessage;
 use crate::number::parse_u64;
 use crate::time::DateTime;
 
-pub type Collector = Box<dyn Fn(&mut Metrics) + Send>;
+type Collector = Box<dyn Fn(&mut Metrics) + Send>;
 
 #[derive(Default)]
 pub struct MetricsCollector {
@@ -200,7 +200,7 @@ fn process_vm_rss(page_size: u64) -> Option<u64> {
     Some(resident * page_size)
 }
 
-pub fn container_mem_max() -> Option<u64> {
+fn container_mem_max() -> Option<u64> {
     let content = fs::read_to_string("/sys/fs/cgroup/memory.max").ok()?;
     let content = content.trim();
     if content != "max" {

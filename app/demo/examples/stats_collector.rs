@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use framework::console;
 use framework::exception::Exception;
-use framework::log::appender::ConsoleAppender;
-use framework::metrics::collector::MetricsCollector;
+use framework::log::ConsoleAppender;
+use framework::metrics::MetricsCollector;
 use framework::spawn_action;
 use framework::system::System;
 use tokio::time;

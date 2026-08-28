@@ -9,9 +9,9 @@ use framework::context;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
-use framework::log::appender::GCloudAppender;
-use framework::metrics::collector::MetricsCollector;
+use framework::log::ConsoleAppender;
+use framework::log::GCloudAppender;
+use framework::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
@@ -69,6 +69,7 @@ async fn main() -> Result<(), Exception> {
     }
 
     let mut collector = MetricsCollector::new();
+    collector.add(system.executor_metrics());
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;

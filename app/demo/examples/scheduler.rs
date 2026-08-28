@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::Router;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::appender::ConsoleAppender;
+use framework::log::ConsoleAppender;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::system::System;

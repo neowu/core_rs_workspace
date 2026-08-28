@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Display;
@@ -11,15 +10,18 @@ use tokio::task_local;
 
 use crate::exception::Exception;
 use crate::log::action::Action;
-use crate::log::action::ActionMessage;
 use crate::system::ACTION_SENDER;
 use crate::time::DateTime;
 
-pub mod action;
-pub mod appender;
+mod action;
+mod appender;
 pub mod id_generator;
 mod span;
 
+pub use appender::ActionAppender;
+pub use appender::ActionMessage;
+pub use appender::console::ConsoleAppender;
+pub use appender::gcloud::GCloudAppender;
 pub use span::__span;
 pub use span::Span;
 
@@ -61,10 +63,6 @@ macro_rules! console {
     };
 }
 
-pub trait ActionAppender: Send + 'static {
-    fn append(&self, action: ActionMessage) -> impl Future<Output = ()> + Send;
-}
-
 task_local! {
     // action will be taken out from option after finished
     static CURRENT_ACTION: RefCell<Option<Action>>;
@@ -74,6 +72,7 @@ pub fn current_action_id() -> Option<String> {
     CURRENT_ACTION.try_with(|action| action.borrow().as_ref().map(|action| action.id.clone())).unwrap_or_default()
 }
 
+/// Trigger trace for current action.
 pub fn trace() {
     let _result = CURRENT_ACTION.try_with(|action| {
         if let Some(action) = action.borrow_mut().as_mut() {
@@ -243,7 +242,7 @@ pub fn __context(key: &'static str, values: Vec<String>, location: &'static str)
                 action.log(&format!("[context] {key}={values:?}"), location);
             }
 
-            action.context.push((key, values));
+            action.context.push((key.to_owned(), values));
         }
     });
 }
@@ -268,7 +267,7 @@ pub fn __stats(key: &'static str, value: u64, location: &'static str) {
         if let Some(action) = action.borrow_mut().as_mut() {
             action.log(&format!("[stats] {key}={value}"), location);
 
-            let stats_value = action.stats.entry(Cow::Borrowed(key)).or_default();
+            let stats_value = action.stats.entry(key.to_owned()).or_default();
             *stats_value += value;
         }
     });

@@ -20,6 +20,8 @@ use framework::exception::Exception;
 use framework::json::from_json;
 use framework::json::to_json;
 use framework::log;
+use framework::metrics::Counter;
+use framework::metrics::Metrics;
 use framework::span;
 use framework::stats;
 use framework::string::intern;
@@ -57,11 +59,12 @@ pub struct Service {
     client: Client,
     handlers: HashMap<&'static str, RequestHandler>,
     config: ServiceConfig,
+    counter: Arc<Counter>,
 }
 
 impl Service {
     pub fn new(client: Client, config: ServiceConfig) -> Self {
-        Self { client, handlers: HashMap::new(), config }
+        Self { client, handlers: HashMap::new(), config, counter: Arc::default() }
     }
 
     pub fn add_handler<H, Fut, Req, Res>(&mut self, subject: &'static str, handler: H)
@@ -77,8 +80,15 @@ impl Service {
         self.handlers.insert(subject, wrapper);
     }
 
+    pub fn metrics(&self) -> impl Fn(&mut Metrics) + use<> {
+        let counter = Arc::clone(&self.counter);
+        move |metrics| {
+            metrics.stats.push(("active_service_handlers", counter.max() as u64));
+        }
+    }
+
     pub async fn start(self, shutdown_signal: CancellationToken) {
-        let Self { client, handlers, config } = self;
+        let Self { client, handlers, config, counter } = self;
 
         let mut subscribers = Vec::with_capacity(handlers.len());
         for subject in handlers.keys() {
@@ -108,8 +118,10 @@ impl Service {
                     let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
                     let name = format!("request:{}", message.subject);
                     let task = handler(client.clone(), message);
+                    let counter = Arc::clone(&counter);
                     executor.spawn(name, async move {
                         let _permit = permit; // held until the handler (and its reply) completes
+                        let _counter = counter.increase();
                         task.await;
                     });
                 }

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use crate::log::ActionAppender;
-use crate::log::action::ActionMessage;
+use crate::log::appender::ActionAppender;
+use crate::log::appender::ActionMessage;
 use crate::metrics::MetricsAppender;
 use crate::metrics::MetricsMessage;
 use crate::write_str;
