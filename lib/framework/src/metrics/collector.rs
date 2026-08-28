@@ -1,44 +1,21 @@
 use std::fs;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use crate::console;
-use crate::log::CONTEXT;
-use crate::log::Context;
 use crate::log::Severity;
-use crate::log::action::Error;
 use crate::log::id_generator;
-use crate::number::parse_i64;
+use crate::metrics::Metrics;
+use crate::metrics::MetricsMessage;
 use crate::number::parse_u64;
 use crate::time::DateTime;
 
-pub struct Metrics {
-    pub id: String,
-    pub timestamp: DateTime,
-    pub app: &'static str,
-    pub host: &'static str,
-    pub severity: Severity,
-    pub error: Option<Error>,
-    pub stats: Vec<(&'static str, u64)>,
-    pub info: Vec<(&'static str, String)>,
-}
+pub type Collector = Box<dyn Fn(&mut Metrics) + Send>;
 
-impl Metrics {
-    fn update_error(&mut self, severity: Severity, error_code: &'static str, error_message: String) {
-        if self.error.as_ref().is_none() || self.severity < severity {
-            self.severity = severity;
-            self.error = Some(Error { code: Some(error_code), message: error_message });
-        }
-    }
-}
-
-type Collector = Box<dyn Fn(&mut Metrics) + Send>;
-
+#[derive(Default)]
 pub struct MetricsCollector {
     cpu_stats: Option<CpuStats>,
     mem_stats: Option<MemoryStats>,
@@ -79,31 +56,27 @@ impl MetricsCollector {
         self.collectors.push(Box::new(collector));
     }
 
-    pub async fn start(mut self, shutdown_signal: CancellationToken) {
-        if let Some(Context { appender, app, host }) = CONTEXT.get() {
-            console!("start metrics collector");
-            loop {
-                tokio::select! {
-                    () = shutdown_signal.cancelled() => {
-                        console!("metrics collector stopped");
-                        return;
-                    }
-                    () = sleep(Duration::from_secs(5)) => {
-                        let metrics = self.collect_metrics(app, host);
-                        appender.append_metrics(&metrics);
-                    }
+    pub(crate) async fn start(mut self, shutdown_signal: CancellationToken, sender: UnboundedSender<MetricsMessage>) {
+        console!("start metrics collector");
+        loop {
+            tokio::select! {
+                () = shutdown_signal.cancelled() => {
+                    console!("metrics collector stopped");
+                    return;
+                }
+                () = sleep(Duration::from_secs(5)) => {
+                    let metrics = self.collect_metrics();
+                    let _result = sender.send(metrics.into());
                 }
             }
         }
     }
 
-    fn collect_metrics(&mut self, app: &'static str, host: &'static str) -> Metrics {
+    fn collect_metrics(&mut self) -> Metrics {
         let timestamp = DateTime::now();
         let mut metrics = Metrics {
             id: id_generator::next_id(timestamp.unix_timestamp_millis()),
             timestamp,
-            app,
-            host,
             severity: Severity::Info,
             error: None,
             stats: Vec::new(),
@@ -123,12 +96,6 @@ impl MetricsCollector {
         }
 
         metrics
-    }
-}
-
-impl Default for MetricsCollector {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -284,69 +251,8 @@ fn container_cpu_max() -> Option<f64> {
     if quota == "max" {
         Some(1.0)
     } else {
-        let quota = parse_i64(quota).ok()?;
-        let period = parse_i64(parts.next()?).ok()?;
+        let quota = parse_u64(quota).ok()?;
+        let period = parse_u64(parts.next()?).ok()?;
         Some(quota as f64 / period as f64)
-    }
-}
-
-/// Tracks max count between collecting.
-pub struct Counter {
-    count: AtomicU32,
-    max: AtomicU32,
-}
-
-pub struct CounterGuard<'a>(&'a Counter);
-
-impl Drop for CounterGuard<'_> {
-    fn drop(&mut self) {
-        self.0.decrease();
-    }
-}
-
-impl Counter {
-    pub const fn new() -> Self {
-        Self { count: AtomicU32::new(0), max: AtomicU32::new(0) }
-    }
-
-    pub fn increase(&self) -> CounterGuard<'_> {
-        let current = self.count.fetch_add(1, Ordering::Relaxed) + 1;
-        // only increase() may change max, no need to handle when decrease()
-        self.max.fetch_max(current, Ordering::Relaxed);
-        CounterGuard(self)
-    }
-
-    pub fn max(&self) -> u32 {
-        self.max.swap(self.count.load(Ordering::Relaxed), Ordering::Relaxed)
-    }
-
-    fn decrease(&self) {
-        self.count.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
-impl Default for Counter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::log::metrics::Counter;
-
-    #[test]
-    fn counter_with_reset_max() {
-        let counter = Counter::new();
-        {
-            let _guard_1 = counter.increase();
-            let _guard_2 = counter.increase();
-        }
-        assert_eq!(counter.max(), 2);
-        assert_eq!(counter.max(), 0);
-
-        let _guard = counter.increase();
-        assert_eq!(counter.max(), 1);
-        assert_eq!(counter.max(), 1);
     }
 }

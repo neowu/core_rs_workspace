@@ -2,29 +2,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use demo::AppConfig;
 use framework::exception::Exception;
-use framework::load_config;
 use framework::log;
-use framework::log::trace;
+use framework::log::appender::ConsoleAppender;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::system::System;
-use framework::task;
 use framework::time::DateTime;
 use framework::time::Offset;
 use framework::time::SignedDuration;
+use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
-use framework::web::server::start_http_server;
 
 struct State {}
 
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
-    let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
-
-    let mut system = System::new();
+    let mut system = System::init(env!("CARGO_BIN_NAME"));
+    system.start_action_logger(ConsoleAppender);
 
     let state = Arc::new(State {});
 
@@ -37,19 +32,19 @@ pub async fn main() -> Result<(), Exception> {
         DateTime::now().add_duration(SignedDuration::from_secs(5))?.time(),
     );
     let scheduler_routes = scheduler.routes(state.clone());
-    system.spawn(scheduler.start(state, system.shutdown_signal()));
+    system.start_service(|token| scheduler.start(state, token));
 
     let app = Router::new();
     let app = app.merge(scheduler_routes);
-    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
+    let http_server = HttpServer::new(HttpServerConfig::default());
+    system.start_service(|token| http_server.start(app, token));
 
     system.wait().await;
-    task::shutdown(Duration::from_secs(5)).await;
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }
 
 async fn job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
-    trace();
+    log::trace();
     println!("Job executed: {}", context.name);
     // sleep(Duration::from_mins(1)).await;
     Ok(())

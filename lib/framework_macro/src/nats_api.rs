@@ -47,6 +47,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         fn service(
             nats_client: ::framework_nats::async_nats::Client,
             service: ::std::sync::Arc<Self>,
+            config: ::framework_nats::service::ServiceConfig,
         ) -> ::framework_nats::service::Service
         where
             Self: Sized + Send + Sync + 'static,
@@ -56,7 +57,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             use framework::context;
             use framework_nats::service::Service;
 
-            let mut nats_service = Service::new(nats_client);
+            let mut nats_service = Service::new(nats_client, config);
             #(#handler_statements)*
             nats_service
         }
@@ -232,6 +233,7 @@ mod tests {
                     fn service(
                         nats_client: ::framework_nats::async_nats::Client,
                         service: ::std::sync::Arc<Self>,
+                        config: ::framework_nats::service::ServiceConfig,
                     ) -> ::framework_nats::service::Service
                     where
                         Self: Sized + Send + Sync + 'static,
@@ -241,7 +243,7 @@ mod tests {
                         use framework::context;
                         use framework_nats::service::Service;
 
-                        let mut nats_service = Service::new(nats_client);
+                        let mut nats_service = Service::new(nats_client, config);
                         let svc = Arc::clone(&service);
                         nats_service.add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
                             let svc = Arc::clone(&svc);
@@ -311,6 +313,7 @@ mod tests {
                     fn service(
                         nats_client: ::framework_nats::async_nats::Client,
                         service: ::std::sync::Arc<Self>,
+                        config: ::framework_nats::service::ServiceConfig,
                     ) -> ::framework_nats::service::Service
                     where
                         Self: Sized + Send + Sync + 'static,
@@ -320,7 +323,7 @@ mod tests {
                         use framework::context;
                         use framework_nats::service::Service;
 
-                        let mut nats_service = Service::new(nats_client);
+                        let mut nats_service = Service::new(nats_client, config);
                         let svc = Arc::clone(&service);
                         nats_service.add_handler("api.user.get_all_users", move |(): ()| {
                             let svc = Arc::clone(&svc);

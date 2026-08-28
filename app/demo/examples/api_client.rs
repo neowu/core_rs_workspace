@@ -11,13 +11,21 @@ use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::load_config;
 use framework::log;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
 use framework::spawn_action;
-use framework::task;
+use framework::system::System;
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
 
     let client =
         UserServiceClient::new(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080".to_owned());
@@ -34,7 +42,7 @@ async fn main() -> Result<(), Exception> {
         Ok(())
     });
 
-    task::shutdown(Duration::from_secs(15)).await;
-
-    Ok(())
+    system.wait().await;
+    // spawned actions are awaited by shutdown, not by wait()
+    system.shutdown(Duration::from_secs(15)).await
 }

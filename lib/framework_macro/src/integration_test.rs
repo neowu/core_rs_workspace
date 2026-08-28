@@ -38,7 +38,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         #vis async fn #ident() {
             #function
 
-            ::framework::log::init("console", env!("CARGO_PKG_NAME"));
+            let mut system = ::framework::system::System::init(env!("CARGO_PKG_NAME"));
+            system.start_action_logger(::framework::log::appender::ConsoleAppender);
 
             let result = ::framework::log::action("test", None, async {
                 ::framework::context!(test = #name);
@@ -46,6 +47,9 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
                 __body().await
             })
             .await;
+
+            // flushes the action log before the assertion below fails the test
+            let _result = system.shutdown(::std::time::Duration::from_secs(5)).await;
 
             if let Err(e) = result {
                 panic!("{} failed, error={e}", #name);

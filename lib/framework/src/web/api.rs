@@ -16,8 +16,9 @@ use crate::http::HttpClient;
 use crate::http::HttpRequest;
 use crate::http::HttpResponse;
 use crate::json;
-use crate::log::with_current_action;
+use crate::log;
 use crate::string::intern;
+use crate::system;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::body::Json;
@@ -98,9 +99,11 @@ impl ApiClient {
 }
 
 fn link_context(http_request: &mut HttpRequest) -> Result<(), Exception> {
-    if let Some((ref_id, app)) = with_current_action(|action| (action.id.clone(), action.app)) {
-        http_request.header(REF_ID, &ref_id)?;
+    if let Some(app) = system::app() {
         http_request.header(CLIENT, app)?;
+    }
+    if let Some(ref_id) = log::current_action_id() {
+        http_request.header(REF_ID, &ref_id)?;
     }
     Ok(())
 }

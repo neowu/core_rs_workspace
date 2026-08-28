@@ -1,13 +1,16 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use demo::AppConfig;
 use framework::exception;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
 use framework::spawn_action;
 use framework::system::System;
 use framework_macro::nats_api;
+use framework_nats::service::ServiceConfig;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -45,15 +48,21 @@ impl GreetingService for GreetingServiceImpl {
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
 
     let nats_client = framework_nats::connect("dev.internal:4222").await;
 
-    let service = GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl));
+    let service =
+        GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl), ServiceConfig::default());
     let client = GreetingServiceClient::new(nats_client);
 
-    let mut system = System::new();
-    system.spawn(service.start(system.shutdown_signal()));
+    system.start_service(|token| service.start(token));
 
     spawn_action!("client", async move {
         let response = client.greet(GreetRequest { name: "world".to_owned() }).await?;
@@ -64,5 +73,5 @@ pub async fn main() -> Result<(), Exception> {
     });
 
     system.wait().await;
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }

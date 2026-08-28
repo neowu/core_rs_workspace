@@ -2,10 +2,14 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Instant;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::exception::Exception;
 use crate::log::Severity;
 use crate::log::elapsed;
 use crate::log::truncate;
+use crate::system::CONTEXT;
 use crate::time::DateTime;
 use crate::write_str;
 
@@ -14,9 +18,7 @@ pub struct Action {
     pub id: String,
     pub(crate) kind: &'static str,
     pub(crate) timestamp: DateTime,
-    pub app: &'static str,
-    pub(crate) host: &'static str,
-    pub(crate) ref_id: Option<Vec<String>>,
+    pub(crate) ref_ids: Option<Vec<String>>,
     pub severity: Severity,
     pub(crate) error: Option<Error>,
     pub(crate) context: Vec<(&'static str, Vec<String>)>,
@@ -31,22 +33,13 @@ pub struct Error {
 }
 
 impl Action {
-    pub(crate) fn new(
-        id: String,
-        kind: &'static str,
-        ref_id: Option<Vec<String>>,
-        timestamp: DateTime,
-        app: &'static str,
-        host: &'static str,
-    ) -> Self {
+    pub(crate) fn new(id: String, kind: &'static str, ref_ids: Option<Vec<String>>, timestamp: DateTime) -> Self {
         let mut action = Action {
             start_time: Instant::now(),
             id,
             kind,
             timestamp,
-            app,
-            host,
-            ref_id,
+            ref_ids,
             severity: Severity::Info,
             error: None,
             context: Vec::new(),
@@ -56,10 +49,10 @@ impl Action {
         };
 
         action.logs.push(format!(
-            "# [action] id={}, kind={kind}, date={}, app={app}, host={host}, ref_id={:?}",
+            "# [action] id={}, kind={kind}, date={}, ref_id={:?}",
             action.id,
             action.timestamp.to_rfc3339(),
-            action.ref_id
+            action.ref_ids
         ));
 
         action
@@ -143,6 +136,54 @@ impl Action {
         self.stats.insert(Cow::Borrowed("elapsed"), elapsed.as_nanos() as u64);
         if self.flush_trace() {
             self.logs.push(format!("# [action] elapsed={elapsed:?}"));
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActionMessage {
+    pub id: String,
+    pub timestamp: DateTime,
+    pub app: String,
+    pub host: String,
+    pub kind: String,
+    pub severity: Severity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ref_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    pub context: Vec<(String, Vec<String>)>,
+    pub stats: Vec<(String, u64)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logs: Option<String>,
+}
+
+impl From<Action> for ActionMessage {
+    fn from(action: Action) -> Self {
+        let context = CONTEXT.get().expect("context must be initialized");
+
+        let logs = action.flush_trace().then(|| action.logs.join("\n"));
+
+        let (error_code, error_message) = match action.error {
+            Some(error) => (error.code.map(str::to_owned), Some(error.message)),
+            None => (None, None),
+        };
+
+        ActionMessage {
+            id: action.id,
+            timestamp: action.timestamp,
+            app: context.app.to_owned(),
+            host: context.host.clone(),
+            kind: action.kind.to_owned(),
+            severity: action.severity,
+            ref_ids: action.ref_ids,
+            error_code,
+            error_message,
+            context: action.context.into_iter().map(|(key, values)| (key.to_owned(), values)).collect::<Vec<_>>(),
+            stats: action.stats.into_iter().map(|(key, value)| (key.to_string(), value)).collect::<Vec<_>>(),
+            logs,
         }
     }
 }

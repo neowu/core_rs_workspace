@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use demo::AppConfig;
 use framework::exception::Exception;
 use framework::http::HttpClient;
@@ -7,21 +9,31 @@ use framework::http::Method;
 use framework::http::StreamExt;
 use framework::load_config;
 use framework::log;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
 use framework::stats;
+use framework::system::System;
 use framework::warn;
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let _ = log::action("test_http_client", None, async {
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
+    let _result = log::action("test_http_client", None, async {
         test_http().await
         // test_sse().await
     })
     .await;
 
-    Ok(())
+    system.wait().await;
+    system.shutdown(Duration::from_secs(15)).await
 }
 
 #[allow(unused)]

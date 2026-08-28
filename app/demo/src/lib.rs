@@ -4,17 +4,14 @@ use axum::Router;
 use framework::config::EnvString;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log;
-use framework::log::metrics::MetricsCollector;
+use framework::log::appender::ConsoleAppender;
+use framework::metrics::collector::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::system::System;
-use framework::task;
-use framework::task::task_metrics;
 use framework::time::Offset;
 use framework::time::SignedDuration;
+use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
-use framework::web::server::http_server_metrics;
-use framework::web::server::start_http_server;
 use framework_db::Database;
 use framework_db::DbConfig;
 use serde::Deserialize;
@@ -41,9 +38,11 @@ pub struct AppConfig {
 #[inline]
 pub async fn run() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let mut system = System::new();
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    system.start_action_logger(ConsoleAppender);
+
+    let mut collector = MetricsCollector::new();
 
     let db = Database::new(DbConfig {
         uri: config.db_url,
@@ -51,32 +50,27 @@ pub async fn run() -> Result<(), Exception> {
         password: config.db_password.into(),
         client: env!("CARGO_PKG_NAME"),
     })?;
+    collector.add(db.db_metrics());
+
+    collector.add(system.executor_metrics());
 
     let state: &'static AppState = Box::leak(Box::new(AppState { db }));
 
     let mut scheduler = Scheduler::new(Offset::new(8, 0));
     scheduler.schedule_fixed_rate("demo", demo_job, SignedDuration::from_hours(1));
     let scheduler_routes = scheduler.routes(state);
-    system.spawn(scheduler.start(state, system.shutdown_signal()));
+    system.start_service(|token| scheduler.start(state, token));
 
     let app = Router::new();
     let app = app.merge(scheduler_routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes()?);
-    system.spawn(start_http_server(
-        app,
-        system.shutdown_signal(),
-        HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() },
-    ));
+    let http_server = HttpServer::new(HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() });
+    collector.add(http_server.metrics());
+    system.start_service(|token| http_server.start(app, token));
 
-    let mut collector = MetricsCollector::new();
-    collector.add(task_metrics());
-    collector.add(http_server_metrics());
-    collector.add(state.db.db_metrics());
-    system.spawn(collector.start(system.shutdown_signal()));
+    system.start_metrics_collector(collector, ConsoleAppender);
 
     system.wait().await;
-    task::shutdown(Duration::from_secs(15)).await;
-
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }

@@ -22,8 +22,8 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
-use framework::log::metrics::Counter;
-use framework::log::metrics::Metrics;
+use framework::metrics::Counter;
+use framework::metrics::Metrics;
 use framework::stats;
 use framework::task::TaskExecutor;
 use framework::time::DateTime;
@@ -61,7 +61,7 @@ impl Default for ConsumerConfig {
 static MESSAGE_COUNTER: OnceLock<Counter> = OnceLock::new();
 
 pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
-    MESSAGE_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("consumer_metrics can only be called once"));
+    MESSAGE_COUNTER.set(Counter::default()).unwrap_or_else(|_| panic!("consumer_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = MESSAGE_COUNTER.get() {
             metrics.stats.push(("active_message_handlers", counter.max() as u64));
@@ -126,7 +126,7 @@ where
             .expect("failed to create consumer"); // fail fast on startup
 
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
-        let mut executor = TaskExecutor::default();
+        let executor = TaskExecutor::default();
 
         // re-issue a bounded batch pull each round; it expires after batch_max_wait, so the
         // shutdown check runs at least that often without needing to race the pull.

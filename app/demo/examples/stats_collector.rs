@@ -1,24 +1,21 @@
 use std::time::Duration;
 
-use demo::AppConfig;
 use framework::console;
-use framework::load_config;
-use framework::log;
-use framework::log::metrics::MetricsCollector;
+use framework::exception::Exception;
+use framework::log::appender::ConsoleAppender;
+use framework::metrics::collector::MetricsCollector;
 use framework::spawn_action;
 use framework::system::System;
-use framework::task;
 use tokio::time;
 
 #[tokio::main]
-async fn main() {
-    let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+async fn main() -> Result<(), Exception> {
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    system.start_action_logger(ConsoleAppender);
 
-    let mut system = System::new();
     let mut collector = MetricsCollector::new();
-    collector.add(task::task_metrics());
-    system.spawn(collector.start(system.shutdown_signal()));
+    collector.add(system.executor_metrics());
+    system.start_metrics_collector(collector, ConsoleAppender);
 
     for i in 0..10 {
         spawn_action!("sleep", async move {
@@ -29,5 +26,6 @@ async fn main() {
     }
 
     system.wait().await;
-    task::shutdown(Duration::from_secs(30)).await;
+    // the collector ticks every 5s while shutdown drains the spawned actions, so active_tasks shows 10 then drops
+    system.shutdown(Duration::from_secs(30)).await
 }

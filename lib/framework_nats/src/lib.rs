@@ -4,7 +4,8 @@ pub use async_nats;
 use async_nats::Client;
 use async_nats::HeaderMap;
 use framework::console;
-use framework::log::with_current_action;
+use framework::log;
+use framework::system;
 
 pub mod consumer;
 pub mod producer;
@@ -34,9 +35,11 @@ pub async fn connect(url: &str) -> Client {
 
 fn link_context() -> HeaderMap {
     let mut headers = HeaderMap::new();
-    if let Some((ref_id, app)) = with_current_action(|action| (action.id.clone(), action.app)) {
-        headers.insert(REF_ID, ref_id);
+    if let Some(app) = system::app() {
         headers.insert(CLIENT, app);
+    }
+    if let Some(ref_id) = log::current_action_id() {
+        headers.insert(REF_ID, ref_id);
     }
     headers
 }

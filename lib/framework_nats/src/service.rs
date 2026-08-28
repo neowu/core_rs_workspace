@@ -60,11 +60,7 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(client: Client) -> Self {
-        Self::with_config(client, ServiceConfig::default())
-    }
-
-    pub fn with_config(client: Client, config: ServiceConfig) -> Self {
+    pub fn new(client: Client, config: ServiceConfig) -> Self {
         Self { client, handlers: HashMap::new(), config }
     }
 
@@ -98,7 +94,7 @@ impl Service {
 
         let mut requests = select_all(subscribers);
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
-        let mut executor = TaskExecutor::default();
+        let executor = TaskExecutor::default();
 
         loop {
             tokio::select! {

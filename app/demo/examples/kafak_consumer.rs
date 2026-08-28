@@ -1,10 +1,12 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use demo::AppConfig;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log;
-use framework::log::metrics::MetricsCollector;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
+use framework::metrics::collector::MetricsCollector;
 use framework::system::System;
 use framework::warn;
 use framework_kafka::Topic;
@@ -36,7 +38,15 @@ struct Topics {
 #[tokio::main]
 pub async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
+    let mut collector = MetricsCollector::new();
 
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
@@ -44,9 +54,6 @@ pub async fn main() -> Result<(), Exception> {
         producer: Producer::new("dev.internal:9092".to_owned()),
         tx,
     });
-
-    let mut system = System::new();
-    let mut collector = MetricsCollector::new();
 
     let handle = tokio::spawn(process_message(rx));
 
@@ -57,13 +64,18 @@ pub async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
     collector.add(consumer.consumer_metrics());
 
-    system.spawn(consumer.start(state, system.shutdown_signal()));
-    system.spawn(collector.start(system.shutdown_signal()));
+    system.start_service(|token| consumer.start(state, token));
+
+    match config.log_appender.as_str() {
+        "console" => system.start_metrics_collector(collector, ConsoleAppender),
+        "gcloud" => system.start_metrics_collector(collector, GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
 
     handle.await?;
 
     system.wait().await;
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }
 
 async fn handler_single(state: Arc<State>, message: Message<TestMessage>) -> Result<(), Exception> {

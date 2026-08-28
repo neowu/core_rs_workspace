@@ -6,16 +6,17 @@ use framework::asset_path;
 use framework::config::EnvString;
 use framework::console;
 use framework::context;
-use framework::time::Offset;
-use framework::time::Time;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
-use framework::log::metrics::MetricsCollector;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
+use framework::metrics::collector::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
-use framework::task;
+use framework::time::Offset;
+use framework::time::Time;
 use framework_clickhouse::ClickHouse;
 use framework_kafka::Topic;
 use framework_kafka::consumer::ConsumerConfig;
@@ -59,9 +60,14 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let mut system = System::new();
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
     let mut collector = MetricsCollector::new();
 
     let kibana_uri = config.kibana_uri;
@@ -97,7 +103,7 @@ async fn main() -> Result<(), Exception> {
         // run at UTC 8:00am, to give 8 hours as lead time for action to finish, action use start time as timestamp, and clickhouse use timestamp for partition
         scheduler.schedule_daily("archive_to_gcs_job", archive_to_gcs_job, Time::new(8, 0, 0));
     }
-    system.spawn(scheduler.start(scheduler_state, system.shutdown_signal()));
+    system.start_service(|token| scheduler.start(scheduler_state, token));
 
     let mut consumer = MessageConsumer::new(
         config.kafka_uri,
@@ -108,14 +114,16 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
     collector.add(consumer.consumer_metrics());
-    system.spawn(consumer.start(state, system.shutdown_signal()));
+    system.start_service(|token| consumer.start(state, token));
 
-    system.spawn(collector.start(system.shutdown_signal()));
+    match config.log_appender.as_str() {
+        "console" => system.start_metrics_collector(collector, ConsoleAppender),
+        "gcloud" => system.start_metrics_collector(collector, GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
     system.wait().await;
-
-    task::shutdown(Duration::from_secs(15)).await;
-
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }
 
 async fn init_elasticsearch(elasticsearch: &Elasticsearch) -> Result<(), Exception> {

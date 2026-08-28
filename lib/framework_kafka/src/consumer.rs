@@ -14,8 +14,8 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::json::from_json;
 use framework::log;
-use framework::log::metrics::Counter;
-use framework::log::metrics::Metrics;
+use framework::metrics::Counter;
+use framework::metrics::Metrics;
 use framework::stats;
 use framework::time::DateTime;
 use futures::future::join_all;
@@ -84,7 +84,7 @@ where
             handlers: HashMap::new(),
             poll_max_wait_time: config.poll_max_wait_time,
             poll_max_records: config.poll_max_records,
-            counter: Arc::new(Counter::new()),
+            counter: Arc::default(),
         }
     }
 

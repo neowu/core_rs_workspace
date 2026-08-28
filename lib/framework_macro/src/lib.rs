@@ -71,10 +71,12 @@ pub fn nats_api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -
     nats_api::build(item.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// `#[integration_test]` wraps an e2e test with `#[tokio::test]`, initializes the console log appender once per test
-/// binary, and runs the body within a log action named after the fn, so all logs of one test are grouped and the test
-/// fails with the exception backtrace.
+/// `#[integration_test]` wraps an e2e test with `#[tokio::test]`, starts a `System` with the console action appender,
+/// and runs the body within a log action named after the fn, so all logs of one test are grouped and the test fails
+/// with the exception backtrace.
 /// The fn must be `async`, take no argument, and return `Result<(), Exception>`.
+/// The action sender is a process wide `OnceLock` and every `#[tokio::test]` owns its runtime, so keep one integration
+/// test per file, otherwise only the first one of a test binary logs.
 /// ```text
 /// #[integration_test]
 /// async fn insert_entity() -> Result<(), Exception> {

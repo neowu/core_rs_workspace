@@ -5,10 +5,11 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::log;
 use framework::log::Severity;
-use framework::system::System;
+use framework::system::CancellationToken;
 use framework_macro::integration_test;
 use framework_macro::nats_api;
 use framework_nats::service::ServiceClient;
+use framework_nats::service::ServiceConfig;
 use nats_test::client;
 use serde::Deserialize;
 use serde::Serialize;
@@ -58,9 +59,11 @@ impl GreetingService for GreetingServiceImpl {
 async fn service() -> Result<(), Exception> {
     let nats_client = client().await;
 
-    let mut system = System::new();
-    let service = GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl));
-    system.spawn(service.start(system.shutdown_signal()));
+    // the test drives shutdown itself, System only cancels on a signal
+    let shutdown_signal = CancellationToken::new();
+    let service =
+        GreetingService::service(nats_client.clone(), Arc::new(GreetingServiceImpl), ServiceConfig::default());
+    let service = tokio::spawn(service.start(shutdown_signal.clone()));
 
     let client = Arc::new(GreetingServiceClient::new(nats_client.clone()));
     wait_until_started(&client).await;
@@ -89,8 +92,8 @@ async fn service() -> Result<(), Exception> {
     assert_eq!(error.code, Some("NATS_NO_RESPONDERS"));
 
     // service unsubscribes on shutdown, requests are rejected right away
-    system.shutdown_signal().cancel();
-    system.wait().await;
+    shutdown_signal.cancel();
+    service.await.unwrap();
 
     let error = client.ping().await.unwrap_err();
     assert_eq!(error.code, Some("NATS_NO_RESPONDERS"));

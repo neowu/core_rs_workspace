@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_nats::jetstream::consumer::AckPolicy;
 use framework::exception::Exception;
 use framework::log;
-use framework::system::System;
+use framework::system::CancellationToken;
 use framework_macro::integration_test;
 use framework_nats::Subject;
 use framework_nats::consumer::BatchConsumer;
@@ -34,7 +34,8 @@ async fn batch_message() -> Result<(), Exception> {
     let subject_3: Subject<TestMessage> = Subject::new("nats_test.3");
     let semaphore = Arc::new(Semaphore::new(0));
 
-    let mut system = System::new();
+    // the test drives shutdown itself, System only cancels on a signal
+    let shutdown_signal = CancellationToken::new();
     let batch_consumer = BatchConsumer::new(
         client.clone(),
         STREAM,
@@ -43,7 +44,8 @@ async fn batch_message() -> Result<(), Exception> {
         test_batch_message_handler,
         ConsumerConfig::default(),
     );
-    system.spawn(batch_consumer.start(AppState { semaphore: Arc::clone(&semaphore) }, system.shutdown_signal()));
+    let batch_consumer =
+        tokio::spawn(batch_consumer.start(AppState { semaphore: Arc::clone(&semaphore) }, shutdown_signal.clone()));
 
     let producer = Producer::new(client);
     for i in 0..10 {
@@ -51,9 +53,9 @@ async fn batch_message() -> Result<(), Exception> {
     }
 
     let _permits = semaphore.acquire_many(10).await.unwrap();
-    system.shutdown_signal().cancel();
+    shutdown_signal.cancel();
 
-    system.wait().await;
+    batch_consumer.await.unwrap();
 
     Ok(())
 }

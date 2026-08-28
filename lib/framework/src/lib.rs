@@ -8,6 +8,7 @@ pub mod http;
 pub mod json;
 #[macro_use]
 pub mod log;
+pub mod metrics;
 pub mod network;
 pub mod number;
 pub mod pool;

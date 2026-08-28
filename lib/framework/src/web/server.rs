@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::Router;
 use axum::extract::MatchedPath;
 use axum::extract::Request;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::middleware;
@@ -20,8 +20,8 @@ pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
 
 use crate::log;
-use crate::log::metrics::Counter;
-use crate::log::metrics::Metrics;
+use crate::metrics::Counter;
+use crate::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::client_info::client_info;
@@ -42,48 +42,64 @@ impl Default for HttpServerConfig {
     }
 }
 
-pub async fn start_http_server(router: Router, shutdown_signal: CancellationToken, config: HttpServerConfig) {
-    let app = Router::new();
-    let app = app.merge(router);
-    let app = app.layer(middleware::from_fn(http_server_layer));
-    let app = app.into_make_service_with_connect_info::<SocketAddr>();
-    let listener = TcpListener::bind(&config.bind_address).await.expect("failed to bind address");
-    console!("start http server, bind={}", config.bind_address);
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            shutdown_signal.cancelled().await;
-            let period = config.shutdown_grace_period;
-            if !period.is_zero() {
-                console!("http server shutdown in {period:?}");
-                sleep(period).await;
-            }
-        })
-        .await
-        .expect("failed to start http server");
-    console!("http server stopped");
+pub struct HttpServer {
+    config: HttpServerConfig,
+    counter: Arc<Counter>,
 }
 
-static REQUEST_COUNTER: OnceLock<Counter> = OnceLock::new();
+#[derive(Clone)]
+struct HttpServerState {
+    counter: Arc<Counter>,
+    max_forwarded_ips: usize,
+}
 
-pub fn http_server_metrics() -> impl Fn(&mut Metrics) {
-    REQUEST_COUNTER.set(Counter::new()).unwrap_or_else(|_| panic!("http_server_metrics can only be called once"));
-    |metrics| {
-        if let Some(counter) = REQUEST_COUNTER.get() {
-            let max = counter.max();
-            metrics.stats.push(("active_http_requests", max as u64));
+impl HttpServer {
+    pub fn new(config: HttpServerConfig) -> Self {
+        Self { config, counter: Arc::default() }
+    }
+
+    pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
+        let counter = Arc::clone(&self.counter);
+        move |metrics| {
+            metrics.stats.push(("active_http_requests", counter.max() as u64));
         }
+    }
+
+    pub async fn start(self, router: Router, shutdown_signal: CancellationToken) {
+        let state = HttpServerState { counter: self.counter, max_forwarded_ips: self.config.max_forwarded_ips };
+        let app = Router::new();
+        let app = app.merge(router);
+        // layer after merge, so it runs after routing and MatchedPath is available
+        let app = app.layer(middleware::from_fn_with_state(state, http_server_layer));
+        let app = app.into_make_service_with_connect_info::<SocketAddr>();
+        let listener = TcpListener::bind(&self.config.bind_address).await.expect("failed to bind address");
+        console!("start http server, bind={}", self.config.bind_address);
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                shutdown_signal.cancelled().await;
+                let period = self.config.shutdown_grace_period;
+                if !period.is_zero() {
+                    console!("http server shutdown in {period:?}");
+                    sleep(period).await;
+                }
+            })
+            .await
+            .expect("failed to start http server");
+        console!("http server stopped");
     }
 }
 
-async fn http_server_layer(mut request: Request, next: Next) -> Response {
+async fn http_server_layer(State(state): State<HttpServerState>, mut request: Request, next: Next) -> Response {
     // skip log for health check
     if request.uri().path() == "/health-check" {
         return StatusCode::OK.into_response(); // gce lb health check requires to return 200
     }
 
+    let HttpServerState { counter, max_forwarded_ips } = state;
+
     let ref_id = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(|id| vec![id.to_owned()]);
 
-    let _counter = REQUEST_COUNTER.get().map(Counter::increase);
+    let _counter = counter.increase();
 
     let response = log::action("http", ref_id, async {
         context!(uri = request.uri().to_string(), method = request.method().as_str());
@@ -98,7 +114,7 @@ async fn http_server_layer(mut request: Request, next: Next) -> Response {
             log!("[cookie] {}={}", cookie.name(), cookie.value());
         }
 
-        let client_info = client_info(&request, 2);
+        let client_info = client_info(&request, max_forwarded_ips);
         context!(client_ip = &client_info.client_ip);
         if let Some(ref user_agent) = client_info.user_agent {
             context!(user_agent = user_agent);

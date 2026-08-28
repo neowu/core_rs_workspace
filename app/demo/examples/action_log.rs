@@ -2,36 +2,35 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use demo::AppConfig;
 use framework::context;
 use framework::exception;
 use framework::exception::Exception;
-use framework::load_config;
 use framework::log;
 use framework::log::Severity;
+use framework::log::appender::ConsoleAppender;
 use framework::shell;
 use framework::span;
 use framework::spawn_action;
 use framework::stats;
-use framework::task;
+use framework::system::System;
 use framework::warn;
 use tokio::task::yield_now;
 
 #[tokio::main]
-async fn main() {
-    let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+async fn main() -> Result<(), Exception> {
+    let mut system = System::init(env!("CARGO_BIN_NAME"));
+    system.start_action_logger(ConsoleAppender);
 
-    test_action().await;
+    test_action();
 
-    task::shutdown(Duration::from_secs(15)).await;
+    system.wait().await;
+    system.shutdown(Duration::from_secs(15)).await
 }
 
-async fn test_action() {
-    let _ = log::action("some-action", None, async {
-        let x = Arc::new(Mutex::new(1));
-        let y = x.clone();
-
+fn test_action() {
+    let x = Arc::new(Mutex::new(1));
+    let y = Arc::clone(&x);
+    spawn_action!("some-action", async move {
         context!(key = "value1", key2 = vec!["value2", "value_22", "value23"]);
 
         stats!(write_bytes = 23);
@@ -44,20 +43,19 @@ async fn test_action() {
             }
         }
 
-        spawn_action!("some-task", async move {
-            context!(location = concat!(file!(), ":", line!()));
-            *y.lock().unwrap() = 2;
-            warn!(error_code = "TEST", "trigger");
-            shell::run("echo 'Hello, World!'").await?;
-            Ok(())
-        });
-
         context!(key4 = "value4");
         log!("after task, {}", x.lock().unwrap());
         handle_request().await?;
         Ok(())
-    })
-    .await;
+    });
+
+    spawn_action!("some-task", async move {
+        context!(location = concat!(file!(), ":", line!()));
+        *y.lock().unwrap() = 2;
+        warn!(error_code = "TEST", "trigger");
+        shell::run("echo 'Hello, World!'").await?;
+        Ok(())
+    });
 }
 
 async fn handle_request() -> Result<(), Exception> {
@@ -75,7 +73,7 @@ async fn handle_request() -> Result<(), Exception> {
     }
     yield_now().await;
 
-    other_method().await;
+    other_method();
 
     Err(exception!(
         format!("key length must be 16 characters, got {:?}", "key"),
@@ -84,6 +82,6 @@ async fn handle_request() -> Result<(), Exception> {
     ))
 }
 
-async fn other_method() {
+fn other_method() {
     log!("other_method");
 }

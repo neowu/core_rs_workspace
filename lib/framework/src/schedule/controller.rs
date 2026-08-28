@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use axum::Router;
 use axum::extract::Path;
@@ -23,7 +22,7 @@ struct JobState<S> {
     state: S,
     timezone: Offset,
     schedules: Arc<HashMap<&'static str, Arc<Schedule<S>>>>,
-    executor: Arc<Mutex<TaskExecutor>>,
+    executor: Arc<TaskExecutor>,
 }
 
 async fn run_job<S>(State(state): State<JobState<S>>, Path(job): Path<String>) -> HttpResult<StatusCode>
@@ -34,7 +33,7 @@ where
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
     let context = JobContext { name: schedule.name, scheduled_time: DateTime::now().with_timezone(state.timezone) };
-    state.executor.lock().unwrap().spawn(
+    state.executor.spawn(
         format!("job:{job}@{}", context.scheduled_time.to_rfc3339()),
         (schedule.job)(state.state.clone(), context),
     );

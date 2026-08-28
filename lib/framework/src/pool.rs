@@ -12,8 +12,8 @@ use tokio::sync::Semaphore;
 use tokio::time;
 
 use crate::exception::Exception;
-use crate::log::metrics::Counter;
-use crate::log::metrics::CounterGuard;
+use crate::metrics::Counter;
+use crate::metrics::CounterGuard;
 
 pub trait ResourceManager {
     type Target: Sized;
@@ -56,7 +56,7 @@ where
         Self {
             storage: Mutex::new(VecDeque::with_capacity(capacity)),
             semaphore: Arc::new(Semaphore::new(capacity)),
-            counter: Counter::new(),
+            counter: Counter::default(),
             manager,
             max_valid_window,
             max_life_time,

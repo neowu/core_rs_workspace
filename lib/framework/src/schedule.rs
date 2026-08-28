@@ -1,8 +1,6 @@
 use std::any::type_name;
-use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use futures::FutureExt as _;
@@ -12,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::exception::Exception;
 use crate::log;
-use crate::log::with_current_action;
+use crate::log::action;
 use crate::schedule::trigger::Trigger;
 use crate::task::TaskExecutor;
 use crate::time::DateTime;
@@ -40,7 +38,7 @@ struct Schedule<S> {
 pub struct Scheduler<S> {
     timezone: Offset,
     schedules: Vec<Arc<Schedule<S>>>,
-    executor: Arc<Mutex<TaskExecutor>>,
+    executor: Arc<TaskExecutor>,
 }
 
 impl<S> Scheduler<S>
@@ -48,7 +46,7 @@ where
     S: Send + Sync + 'static,
 {
     pub fn new(timezone: Offset) -> Self {
-        Self { timezone, schedules: Vec::new(), executor: Arc::new(Mutex::new(TaskExecutor::default())) }
+        Self { timezone, schedules: Vec::new(), executor: Arc::new(TaskExecutor::default()) }
     }
 
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: SignedDuration)
@@ -111,7 +109,7 @@ where
                         }
                         () = time::sleep(Duration::from_secs(waiting_time.as_secs() as u64)) => {
                             let state = state.clone();
-                            executor.lock().unwrap().spawn(
+                            executor.spawn(
                                 format!("job:{name}@{scheduled_time}"),
                                 (schedule.job)(state, context),
                             );
@@ -121,8 +119,7 @@ where
             });
         }
         handles.join_all().await;
-        let executor = mem::take(&mut *self.executor.lock().unwrap());
-        if let Some(aborted) = executor.shutdown(Duration::from_secs(15)).await {
+        if let Some(aborted) = self.executor.shutdown(Duration::from_secs(15)).await {
             console!("WARN job aborted, jobs={aborted:?}");
         }
         console!("scheduler stopped");
@@ -135,10 +132,10 @@ where
     J: Fn(S, JobContext) -> Fut + Send + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
 {
-    let ref_id = with_current_action(|action| vec![action.id.clone()]);
-    let triggered = ref_id.is_some();
+    let ref_ids = log::current_action_id().map(|id| vec![id]);
+    let triggered = ref_ids.is_some(); // must be triggered thru controller
     Box::pin(
-        log::action("job", ref_id, async move {
+        action("job", ref_ids, async move {
             context!(
                 job = context.name,
                 scheduled_time = context.scheduled_time.to_rfc3339(),
@@ -149,6 +146,6 @@ where
             }
             job(state, context).await
         })
-        .map(drop), // start_action handled error with logging
+        .map(drop),
     )
 }

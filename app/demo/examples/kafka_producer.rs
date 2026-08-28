@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use framework::exception::Exception;
-use framework::log;
+use framework::log::appender::ConsoleAppender;
 use framework::spawn_action;
-use framework::task;
+use framework::system::System;
 use framework_kafka::Topic;
 use framework_kafka::producer::Producer;
 use serde::Deserialize;
@@ -18,7 +18,8 @@ struct TestMessage {
 pub async fn main() -> Result<(), Exception> {
     let producer = Producer::new("dev.internal:9092".to_owned());
 
-    log::init("console", env!("CARGO_BIN_NAME"));
+    let mut system = System::init(env!("CARGO_BIN_NAME"));
+    system.start_action_logger(ConsoleAppender);
 
     spawn_action!("produce", async move {
         let topic = Topic::new("test");
@@ -35,6 +36,7 @@ pub async fn main() -> Result<(), Exception> {
         Ok(())
     });
 
-    task::shutdown(Duration::from_mins(1)).await;
-    Ok(())
+    system.wait().await;
+    // the spawned action sleeps 3s between batches, give it room to finish
+    system.shutdown(Duration::from_mins(1)).await
 }

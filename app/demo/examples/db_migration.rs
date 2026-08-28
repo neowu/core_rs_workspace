@@ -1,6 +1,10 @@
+use std::time::Duration;
+
 use demo::AppConfig;
 use framework::load_config;
 use framework::log;
+use framework::log::appender::ConsoleAppender;
+use framework::system::System;
 use framework_db::Database;
 use framework_db::DbConfig;
 use framework_db::database;
@@ -8,9 +12,10 @@ use framework_db::database;
 #[tokio::main]
 pub async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_BIN_NAME"));
+    system.start_action_logger(ConsoleAppender);
 
-    let _ = log::action("migration", None, async {
+    let _result = log::action("migration", None, async {
         let db = Database::new(DbConfig {
             uri: config.db_url,
             user: config.db_user,
@@ -36,4 +41,7 @@ pub async fn main() {
         Ok(())
     })
     .await;
+
+    system.wait().await;
+    let _result = system.shutdown(Duration::from_secs(15)).await;
 }

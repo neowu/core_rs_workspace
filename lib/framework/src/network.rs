@@ -10,7 +10,7 @@ pub(crate) fn hostname() -> String {
         *last = 0;
     }
     let hostname = unsafe { CStr::from_ptr(buf.as_ptr().cast::<libc::c_char>()) };
-    hostname.to_string_lossy().into_owned()
+    hostname.to_string_lossy().to_string()
 }
 
 #[cfg(test)]

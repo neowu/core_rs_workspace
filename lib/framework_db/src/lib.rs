@@ -8,7 +8,7 @@ pub use field::Update;
 use framework::console;
 use framework::exception;
 use framework::exception::Exception;
-use framework::log::metrics::Metrics;
+use framework::metrics::Metrics;
 use framework::pool::ResourcePool;
 pub use tokio_postgres::Config;
 pub use tokio_postgres::Error as PgError;

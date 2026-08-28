@@ -1,10 +1,8 @@
 use std::borrow::Cow;
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde::Deserialize;
@@ -13,15 +11,17 @@ use tokio::task_local;
 
 use crate::exception::Exception;
 use crate::log::action::Action;
-use crate::log::appender::Appender;
-use crate::network::hostname;
+use crate::log::action::ActionMessage;
+use crate::system::ACTION_SENDER;
 use crate::time::DateTime;
-use crate::write_str;
 
-mod action;
+pub mod action;
 pub mod appender;
 pub mod id_generator;
-pub mod metrics;
+mod span;
+
+pub use span::__span;
+pub use span::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Severity {
@@ -34,7 +34,7 @@ pub enum Severity {
 }
 
 impl Severity {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Severity::Info => "INFO",
             Severity::Warn => "WARN",
@@ -61,85 +61,54 @@ macro_rules! console {
     };
 }
 
-pub fn init(appender: &str, app: &'static str) {
-    CONTEXT.get_or_init(|| {
-        console!("init log appender, appender={appender}");
-        let appender = match appender {
-            "console" => Appender::Console,
-            "gcloud" => Appender::GoogleCloud,
-            _ => panic!("unknown appender, value={appender}"),
-        };
-        Context { appender, app, host: hostname().leak() }
-    });
-}
-
-static CONTEXT: OnceLock<Context> = OnceLock::new();
-
-struct Context {
-    appender: Appender,
-    app: &'static str,
-    host: &'static str,
+pub trait ActionAppender: Send + 'static {
+    fn append(&self, action: ActionMessage) -> impl Future<Output = ()> + Send;
 }
 
 task_local! {
-    static CURRENT_ACTION: RefCell<Action>;
+    // action will be taken out from option after finished
+    static CURRENT_ACTION: RefCell<Option<Action>>;
 }
 
-#[inline]
-pub async fn action<F, R>(kind: &'static str, ref_id: Option<Vec<String>>, task: F) -> F::Output
-where
-    F: Future<Output = Result<R, Exception>>,
-{
-    if let Some(Context { appender, app, host }) = CONTEXT.get() {
-        let now = DateTime::now();
-        let id = id_generator::next_id(now.unix_timestamp_millis());
-        let action = Action::new(id, kind, ref_id, now, app, host);
-        CURRENT_ACTION
-            .scope(RefCell::new(action), async move {
-                let result = task.await;
-                CURRENT_ACTION.with(|current_action| {
-                    let mut current_action = current_action.borrow_mut();
-                    if let Err(e) = &result {
-                        current_action.log_exception(e);
-                    }
-                    current_action.finish();
-                    appender.append_action(&current_action);
-                });
-                result
-            })
-            .await
-    } else {
-        let result = task.await;
-        if let Err(e) = &result {
-            console!("ERROR {e}");
-        }
-        result
-    }
+pub fn current_action_id() -> Option<String> {
+    CURRENT_ACTION.try_with(|action| action.borrow().as_ref().map(|action| action.id.clone())).unwrap_or_default()
 }
 
 pub fn trace() {
     let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
-        action.trace = true;
+        if let Some(action) = action.borrow_mut().as_mut() {
+            action.trace = true;
+        }
     });
 }
 
-pub fn with_current_action<F, R>(f: F) -> Option<R>
+#[inline]
+pub async fn action<F, R>(kind: &'static str, ref_ids: Option<Vec<String>>, task: F) -> F::Output
 where
-    F: FnOnce(Ref<'_, Action>) -> R,
+    F: Future<Output = Result<R, Exception>>,
 {
+    let now = DateTime::now();
+    let id = id_generator::next_id(now.unix_timestamp_millis());
+    let action = Action::new(id, kind, ref_ids, now);
     CURRENT_ACTION
-        .try_with(|action| {
-            let action = action.borrow();
-            Some(f(action))
-        })
-        .unwrap_or(None)
-}
+        .scope(RefCell::new(Some(action)), async move {
+            let result = task.await;
 
-pub struct Span {
-    name: &'static str,
-    start_time: Instant,
-    log_index: usize,
+            let mut current_action = CURRENT_ACTION
+                .with(|current_action| current_action.take().expect("current action must be within the scope"));
+
+            if let Err(e) = &result {
+                current_action.log_exception(e);
+            }
+            current_action.finish();
+
+            if let Some(sender) = ACTION_SENDER.get() {
+                let _result = sender.send(ActionMessage::from(current_action));
+            }
+
+            result
+        })
+        .await
 }
 
 #[macro_export]
@@ -147,53 +116,6 @@ macro_rules! span {
     ($name:expr) => {
         $crate::log::__span($name, concat!(module_path!(), ":", line!()))
     };
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn __span(name: &'static str, location: &'static str) -> Span {
-    let mut log_index: usize = 0;
-    let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
-        action.log(&format!("[span:{name}] >"), location);
-        log_index = action.logs.len();
-    });
-    Span { name, start_time: Instant::now(), log_index }
-}
-
-impl Span {
-    pub fn clear(&self) {
-        let _result = CURRENT_ACTION.try_with(|action| {
-            let mut action = action.borrow_mut();
-            action.logs.truncate(self.log_index);
-            if let Some(last) = action.logs.last_mut()
-                && last.ends_with('>')
-            {
-                last.push_str(" ...(truncated)");
-            }
-        });
-    }
-}
-
-impl Drop for Span {
-    fn drop(&mut self) {
-        let _result = CURRENT_ACTION.try_with(|action| {
-            let mut action = action.borrow_mut();
-
-            let name = self.name;
-            let span_elapsed = self.start_time.elapsed();
-
-            let (minutes, seconds, nanos) = elapsed(action.start_time);
-            let mut log = String::with_capacity(256);
-            write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} [span:{name}] elapsed={span_elapsed:?} <");
-            action.logs.push(log);
-
-            let total_elapsed = action.stats.entry(Cow::Owned(format!("{name}_elapsed"))).or_default();
-            *total_elapsed += span_elapsed.as_nanos() as u64;
-            let count = action.stats.entry(Cow::Owned(format!("{name}_count"))).or_default();
-            *count += 1;
-        });
-    }
 }
 
 #[macro_export]
@@ -241,13 +163,14 @@ pub fn __log(message: String, severity: Option<Severity>, error_code: Option<&'s
     const MAX_LOG_MESSAGE_LEN: usize = 10_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
-        action.log_with_severity(
-            &truncate(message, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")),
-            severity,
-            error_code,
-            location,
-        );
+        if let Some(action) = action.borrow_mut().as_mut() {
+            action.log_with_severity(
+                &truncate(message, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")),
+                severity,
+                error_code,
+                location,
+            );
+        }
     });
 }
 
@@ -255,8 +178,9 @@ pub fn __log(message: String, severity: Option<Severity>, error_code: Option<&'s
 #[inline]
 pub fn __log_exception(exception: &Exception) {
     let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
-        action.log_exception(exception);
+        if let Some(action) = action.borrow_mut().as_mut() {
+            action.log_exception(exception);
+        }
     });
 }
 
@@ -305,20 +229,22 @@ pub fn __context(key: &'static str, values: Vec<String>, location: &'static str)
     const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
+        if let Some(action) = action.borrow_mut().as_mut() {
+            let values: Vec<String> = values
+                .into_iter()
+                .map(|value| truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")))
+                .collect();
 
-        let values: Vec<String> =
-            values.into_iter().map(|value| truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)"))).collect();
+            if values.len() == 1
+                && let Some(value) = values.first()
+            {
+                action.log(&format!("[context] {key}={value}"), location);
+            } else {
+                action.log(&format!("[context] {key}={values:?}"), location);
+            }
 
-        if values.len() == 1
-            && let Some(value) = values.first()
-        {
-            action.log(&format!("[context] {key}={value}"), location);
-        } else {
-            action.log(&format!("[context] {key}={values:?}"), location);
+            action.context.push((key, values));
         }
-
-        action.context.push((key, values));
     });
 }
 
@@ -339,12 +265,12 @@ macro_rules! stats {
 #[inline]
 pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
-        let mut action = action.borrow_mut();
+        if let Some(action) = action.borrow_mut().as_mut() {
+            action.log(&format!("[stats] {key}={value}"), location);
 
-        action.log(&format!("[stats] {key}={value}"), location);
-
-        let stats_value = action.stats.entry(Cow::Borrowed(key)).or_default();
-        *stats_value += value;
+            let stats_value = action.stats.entry(Cow::Borrowed(key)).or_default();
+            *stats_value += value;
+        }
     });
 }
 

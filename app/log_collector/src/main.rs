@@ -4,13 +4,12 @@ use std::time::Duration;
 use axum::Router;
 use framework::exception::Exception;
 use framework::load_config;
-use framework::log;
-use framework::log::metrics::MetricsCollector;
+use framework::log::appender::ConsoleAppender;
+use framework::log::appender::GCloudAppender;
+use framework::metrics::collector::MetricsCollector;
 use framework::system::System;
-use framework::task;
+use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
-use framework::web::server::http_server_metrics;
-use framework::web::server::start_http_server;
 use framework_kafka::Topic;
 use framework_kafka::producer::Producer;
 use kafka::EventMessage;
@@ -37,9 +36,14 @@ struct Topics {
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
-    log::init(&config.log_appender, env!("CARGO_PKG_NAME"));
 
-    let mut system = System::new();
+    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    match config.log_appender.as_str() {
+        "console" => system.start_action_logger(ConsoleAppender),
+        "gcloud" => system.start_action_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
     let mut collector = MetricsCollector::new();
 
     let state = Arc::new(AppState {
@@ -49,11 +53,16 @@ async fn main() -> Result<(), Exception> {
 
     let app = Router::new();
     let app = app.merge(web::routes(state));
-    collector.add(http_server_metrics());
-    system.spawn(start_http_server(app, system.shutdown_signal(), HttpServerConfig::default()));
+    let http_server = HttpServer::new(HttpServerConfig::default());
+    collector.add(http_server.metrics());
+    system.start_service(|token| http_server.start(app, token));
 
-    system.spawn(collector.start(system.shutdown_signal()));
+    match config.log_appender.as_str() {
+        "console" => system.start_metrics_collector(collector, ConsoleAppender),
+        "gcloud" => system.start_metrics_collector(collector, GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    }
+
     system.wait().await;
-    task::shutdown(Duration::from_secs(15)).await;
-    Ok(())
+    system.shutdown(Duration::from_secs(15)).await
 }
