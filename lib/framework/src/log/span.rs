@@ -48,7 +48,7 @@ impl Drop for Span {
                 let (minutes, seconds, nanos) = elapsed(action.start_time);
                 let mut log = String::with_capacity(256);
                 write_str!(log, "{minutes:02}:{seconds:02}.{nanos:09} [span:{name}] elapsed={span_elapsed:?} <");
-                action.logs.push(log);
+                action.push_log(log);
 
                 let total_elapsed = action.stats.entry(format!("{name}_elapsed")).or_default();
                 *total_elapsed += span_elapsed.as_nanos() as u64;

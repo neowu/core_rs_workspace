@@ -1,8 +1,5 @@
 use std::panic;
-use std::sync::Arc;
-use std::sync::LazyLock;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use futures::future::join_all;
 use tokio::signal;
@@ -12,22 +9,27 @@ use tokio::task::JoinHandle;
 pub use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::exception::Exception;
-use crate::log;
-use crate::log::ActionAppender;
-use crate::log::ActionMessage;
-use crate::metrics::Counter;
+use crate::appender::Appender;
+use crate::appender::Message;
 use crate::metrics::Metrics;
-use crate::metrics::MetricsAppender;
 use crate::metrics::MetricsCollector;
 use crate::network::hostname;
-use crate::task::TaskExecutor;
 
-pub struct System {
+pub struct System<S = Init> {
     token: CancellationToken,
     tracker: TaskTracker,
-
     daemon_token: CancellationToken,
+    state: S,
+}
+
+/// Setup phase, metrics can be added, nothing is running yet.
+pub struct Init {
+    // created on the first add_metrics, moved into the collector daemon by start_appender
+    collector: Option<MetricsCollector>,
+}
+
+/// Running phase, the appender daemon owns the channel, services can start.
+pub struct Running {
     daemon_handles: Vec<JoinHandle<()>>,
 }
 
@@ -37,58 +39,65 @@ pub(crate) struct Context {
 }
 
 pub(crate) static CONTEXT: OnceLock<Context> = OnceLock::new();
-pub(crate) static ACTION_SENDER: OnceLock<UnboundedSender<ActionMessage>> = OnceLock::new();
-static EXECUTOR: LazyLock<Executor> = LazyLock::new(Executor::default);
+pub(crate) static SENDER: OnceLock<UnboundedSender<Message>> = OnceLock::new();
 
-impl System {
+impl System<Init> {
     pub fn init(app: &'static str) -> Self {
         let token = CancellationToken::new();
         let _result = CONTEXT.set(Context { app, host: hostname() });
 
         listen_shutdown_signal(token.clone());
 
-        System { token, tracker: TaskTracker::new(), daemon_token: CancellationToken::new(), daemon_handles: vec![] }
+        System {
+            token,
+            tracker: TaskTracker::new(),
+            daemon_token: CancellationToken::new(),
+            state: Init { collector: None },
+        }
     }
 
-    pub fn start_action_logger(&mut self, appender: impl ActionAppender) {
-        let token = self.daemon_token.clone();
+    pub fn add_metrics(&mut self, metrics: impl Fn(&mut Metrics) + Send + 'static) {
+        self.state.collector.get_or_insert_with(MetricsCollector::new).add(metrics);
+    }
+
+    pub fn start_logger(self, appender: impl Appender) -> System<Running> {
+        let System { token, tracker, daemon_token, state: Init { collector } } = self;
+
+        let mut daemon_handles = Vec::new();
 
         let (sender, mut receiver) = mpsc::unbounded_channel();
-        ACTION_SENDER.set(sender).unwrap_or_else(|_| panic!("action logger can only start once"));
+        SENDER.set(sender.clone()).unwrap_or_else(|_| panic!("appender can only start once"));
 
-        self.daemon_handles.push(tokio::spawn(async move {
+        // the collector is the only other sender, nothing is spawned when no metrics were added
+        if let Some(collector) = collector {
+            daemon_handles.push(tokio::spawn(collector.start(daemon_token.clone(), sender)));
+        }
+
+        let appender_token = daemon_token.clone();
+        daemon_handles.push(tokio::spawn(async move {
+            let mut draining = false;
             loop {
                 tokio::select! {
-                    () = token.cancelled() => break,
-                    Some(message) = receiver.recv() => appender.append(message).await,
+                    // on shutdown, close the channel and keep looping to drain what is left
+                    () = appender_token.cancelled(), if !draining => {
+                        draining = true;
+                        receiver.close();
+                    }
+                    Some(message) = receiver.recv() => match message {
+                        Message::Action(action) => appender.append_action(action).await,
+                        Message::Metrics(metrics) => appender.append_metrics(metrics).await,
+                    },
                     else => break,
                 }
             }
-            receiver.close();
-            while let Some(message) = receiver.recv().await {
-                // drain what's left
-                appender.append(message).await;
-            }
-            console!("action appender stopped");
+            console!("appender stopped");
         }));
+
+        System { token, tracker, daemon_token, state: Running { daemon_handles } }
     }
+}
 
-    pub fn start_metrics_collector(&mut self, collector: MetricsCollector, appender: impl MetricsAppender) {
-        let token = self.daemon_token.clone();
-
-        let (sender, mut receiver) = mpsc::unbounded_channel();
-
-        self.daemon_handles.push(tokio::spawn(collector.start(token.clone(), sender)));
-
-        self.daemon_handles.push(tokio::spawn(async move {
-            // only MetricsCollector has sender, which will be dropped on shutdown
-            while let Some(message) = receiver.recv().await {
-                appender.append(message).await;
-            }
-            console!("metrics appender stopped");
-        }));
-    }
-
+impl System<Running> {
     pub fn start_service<T, F>(&self, task: T)
     where
         T: FnOnce(CancellationToken) -> F,
@@ -102,18 +111,9 @@ impl System {
         self.tracker.wait().await;
     }
 
-    pub async fn shutdown(self, timeout: Duration) -> Result<(), Exception> {
-        EXECUTOR.shutdown(timeout).await;
-
+    pub async fn shutdown_logger(self) {
         self.daemon_token.cancel();
-        join_all(self.daemon_handles).await;
-        console!("system daemon stopped");
-
-        Ok(())
-    }
-
-    pub fn executor_metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
-        EXECUTOR.metrics()
+        join_all(self.state.daemon_handles).await;
     }
 }
 
@@ -134,6 +134,9 @@ fn listen_shutdown_signal(token: CancellationToken) {
             signal::unix::signal(SignalKind::terminate()).expect("failed to listen signal").recv().await;
         };
 
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
         tokio::select! {
             () = ctrl_c => {},
             () = terminate => {},
@@ -142,62 +145,4 @@ fn listen_shutdown_signal(token: CancellationToken) {
         console!("received shutdown signal");
         token.cancel();
     });
-}
-
-#[doc(hidden)]
-pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T)
-where
-    T: Future<Output = Result<R, Exception>> + Send + 'static,
-    R: Send + Sync + 'static,
-{
-    EXECUTOR.spawn(name, location, task);
-}
-
-#[macro_export]
-macro_rules! spawn_action {
-    ($name:expr, $task:expr) => {
-        $crate::system::__spawn_action($name, concat!(file!(), ":", line!()), $task)
-    };
-}
-
-#[derive(Default)]
-struct Executor {
-    executor: TaskExecutor,
-    counter: Arc<Counter>,
-}
-
-impl Executor {
-    fn spawn<T, R>(&self, name: &'static str, location: &'static str, task: T)
-    where
-        T: Future<Output = Result<R, Exception>> + Send + 'static,
-        R: Send + Sync + 'static,
-    {
-        let task_name = format!("task:{name}@{location}");
-        let ref_ids = log::current_action_id().map(|id| vec![id]);
-
-        let counter = Arc::clone(&self.counter);
-        self.executor.spawn(task_name, async move {
-            let _counter = counter.increase();
-            let _result = log::action("task", ref_ids, async {
-                context!(task = name, location = location);
-                task.await
-            })
-            .await;
-        });
-    }
-
-    fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
-        let counter = Arc::clone(&self.counter);
-        move |metrics| {
-            metrics.stats.push(("active_tasks", counter.max() as u64));
-        }
-    }
-
-    async fn shutdown(&self, timeout: Duration) {
-        if let Some(aborted) = self.executor.shutdown(timeout).await {
-            console!("WARN tasks aborted, tasks={aborted:?}");
-        } else {
-            console!("tasks finished");
-        }
-    }
 }

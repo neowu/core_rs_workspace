@@ -46,7 +46,7 @@ async fn setup_schema(db: &Database) -> Result<(), Exception> {
 
 #[integration_test]
 async fn date_type() -> Result<(), Exception> {
-    let db = client()?;
+    let db = client();
     setup_schema(&db).await?;
 
     // microseconds on purpose, timestamptz keeps them and a millis based mapping would truncate here

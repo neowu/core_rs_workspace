@@ -41,7 +41,7 @@ async fn setup_schema(db: &Database) -> Result<(), Exception> {
 
 #[integration_test]
 async fn composite_id_entity() -> Result<(), Exception> {
-    let db = client()?;
+    let db = client();
     setup_schema(&db).await?;
 
     let uuid = Uuid::now_v7();

@@ -2,29 +2,30 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use framework::appender::ConsoleAppender;
 use framework::context;
 use framework::exception;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::ConsoleAppender;
 use framework::log::Severity;
 use framework::shell;
 use framework::span;
 use framework::spawn_action;
 use framework::stats;
 use framework::system::System;
+use framework::task::start_executor;
 use framework::warn;
 use tokio::task::yield_now;
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
-    let mut system = System::init(env!("CARGO_BIN_NAME"));
-    system.start_action_logger(ConsoleAppender);
-
+async fn main() {
+    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
+    let executor = start_executor();
     test_action();
 
     system.wait().await;
-    system.shutdown(Duration::from_secs(15)).await
+    executor.shutdown(Duration::from_secs(15)).await;
+    system.shutdown_logger().await;
 }
 
 fn test_action() {

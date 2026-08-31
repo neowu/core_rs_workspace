@@ -6,8 +6,6 @@ pub use field::Cond;
 pub use field::Field;
 pub use field::Update;
 use framework::console;
-use framework::exception;
-use framework::exception::Exception;
 use framework::metrics::Metrics;
 use framework::pool::ResourcePool;
 pub use tokio_postgres::Config;
@@ -75,10 +73,10 @@ pub struct DbConfig {
 }
 
 impl Database {
-    pub fn new(config: DbConfig) -> Result<Self, Exception> {
+    pub fn new(config: DbConfig) -> Self {
         console!("create database client, uri={}, user={}", config.uri, config.user);
         let mut postgres_config =
-            Config::from_str(&config.uri).map_err(|err| exception!("failed to parse postgres uri", source = err))?;
+            Config::from_str(&config.uri).unwrap_or_else(|err| panic!("failed to parse postgres uri, error={err}"));
         postgres_config.user(config.user);
         postgres_config.password(config.password);
         postgres_config.connect_timeout(Duration::from_secs(5));
@@ -92,7 +90,7 @@ impl Database {
             Duration::from_secs(5),
         ));
 
-        Ok(Database { pool, query_timeout: Duration::from_secs(5) })
+        Database { pool, query_timeout: Duration::from_secs(5) }
     }
 
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {

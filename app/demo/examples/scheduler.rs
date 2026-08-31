@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
+use framework::appender::ConsoleAppender;
 use framework::exception::Exception;
 use framework::log;
-use framework::log::ConsoleAppender;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::system::System;
@@ -13,13 +13,13 @@ use framework::time::Offset;
 use framework::time::SignedDuration;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
+use tokio::time::sleep;
 
 struct State {}
 
 #[tokio::main]
-pub async fn main() -> Result<(), Exception> {
-    let mut system = System::init(env!("CARGO_BIN_NAME"));
-    system.start_action_logger(ConsoleAppender);
+pub async fn main() {
+    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
 
     let state = Arc::new(State {});
 
@@ -29,7 +29,7 @@ pub async fn main() -> Result<(), Exception> {
     scheduler.schedule_daily(
         "test_daily",
         daily_job,
-        DateTime::now().add_duration(SignedDuration::from_secs(5))?.time(),
+        DateTime::now().add_duration(SignedDuration::from_secs(5)).expect("value must be valid").time(),
     );
     let scheduler_routes = scheduler.routes(state.clone());
     system.start_service(|token| scheduler.start(state, token));
@@ -40,13 +40,13 @@ pub async fn main() -> Result<(), Exception> {
     system.start_service(|token| http_server.start(app, token));
 
     system.wait().await;
-    system.shutdown(Duration::from_secs(15)).await
+    system.shutdown_logger().await;
 }
 
 async fn job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
     log::trace();
     println!("Job executed: {}", context.name);
-    // sleep(Duration::from_mins(1)).await;
+    sleep(Duration::from_secs(20)).await;
     Ok(())
 }
 

@@ -3,21 +3,20 @@ use std::time::Duration;
 use axum::Router;
 use axum::http::StatusCode;
 use framework::asset_path;
-use framework::exception::Exception;
 use framework::web::route::get;
 use framework::web::server::ServeDir;
 use framework::web::server::ServeFile;
 use tokio::time::sleep;
 
-pub(crate) fn routes() -> Result<Router, Exception> {
+pub(crate) fn routes() -> Router {
     let router = Router::new();
     let router = router.route("/503", get(http_503));
     let router = router.route("/long", get(long));
     let router = router
         .route_service("/", ServeFile::new(asset_path!("assets/web/index.html")))
         .route_service("/static/{*path}", ServeDir::new(asset_path!("assets/web/")));
-    //     .fallback_service(ServeFile::new(asset_path!("assets/web/index.html")?))
-    Ok(router)
+    //     .fallback_service(ServeFile::new(asset_path!("assets/web/index.html")))
+    router
 }
 
 async fn http_503() -> StatusCode {

@@ -1,13 +1,10 @@
 use crate::log::Severity;
 use crate::time::DateTime;
 
-pub mod appender;
 mod collector;
 mod counter;
 
-pub use appender::MetricsAppender;
-pub use appender::MetricsMessage;
-pub use collector::MetricsCollector;
+pub(crate) use collector::MetricsCollector;
 pub use counter::Counter;
 pub use counter::CounterGuard;
 

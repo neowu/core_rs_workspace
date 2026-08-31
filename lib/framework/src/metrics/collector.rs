@@ -6,24 +6,23 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
+use crate::appender::Message;
 use crate::log::Severity;
 use crate::log::id_generator;
 use crate::metrics::Metrics;
-use crate::metrics::appender::MetricsMessage;
 use crate::number::parse_u64;
 use crate::time::DateTime;
 
 type Collector = Box<dyn Fn(&mut Metrics) + Send>;
 
-#[derive(Default)]
-pub struct MetricsCollector {
+pub(crate) struct MetricsCollector {
     cpu_stats: Option<CpuStats>,
     mem_stats: Option<MemoryStats>,
     collectors: Vec<Collector>,
 }
 
 impl MetricsCollector {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let now = Instant::now();
         let cpu_stats = if let Some(clock_ticks) = clock_ticks()
             && let Some(container_cpu_time) = container_cpu_time()
@@ -52,11 +51,11 @@ impl MetricsCollector {
         Self { cpu_stats, mem_stats, collectors: Vec::new() }
     }
 
-    pub fn add(&mut self, collector: impl Fn(&mut Metrics) + Send + 'static) {
+    pub(crate) fn add(&mut self, collector: impl Fn(&mut Metrics) + Send + 'static) {
         self.collectors.push(Box::new(collector));
     }
 
-    pub(crate) async fn start(mut self, shutdown_signal: CancellationToken, sender: UnboundedSender<MetricsMessage>) {
+    pub(crate) async fn start(mut self, shutdown_signal: CancellationToken, sender: UnboundedSender<Message>) {
         console!("start metrics collector");
         loop {
             tokio::select! {
@@ -66,7 +65,7 @@ impl MetricsCollector {
                 }
                 () = sleep(Duration::from_secs(5)) => {
                     let metrics = self.collect_metrics();
-                    let _result = sender.send(metrics.into());
+                    let _result = sender.send(Message::Metrics(metrics.into()));
                 }
             }
         }

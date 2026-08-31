@@ -35,7 +35,7 @@ async fn setup_schema(db: &Database) -> Result<(), Exception> {
 
 #[integration_test]
 async fn auto_increment_id_entity() -> Result<(), Exception> {
-    let db = client()?;
+    let db = client();
     setup_schema(&db).await?;
 
     // insert returns the generated id

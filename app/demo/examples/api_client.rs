@@ -6,26 +6,29 @@ use demo::user::GetUserByNameRequest;
 use demo::user::UpdateUserRequest;
 use demo::user::UserService;
 use demo::user::UserServiceClient;
-use framework::exception::Exception;
+use framework::appender::ConsoleAppender;
+use framework::appender::GCloudAppender;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::load_config;
 use framework::log;
-use framework::log::ConsoleAppender;
-use framework::log::GCloudAppender;
 use framework::spawn_action;
 use framework::system::System;
+use framework::task::start_executor;
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
 
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
-    match config.log_appender.as_str() {
-        "console" => system.start_action_logger(ConsoleAppender),
-        "gcloud" => system.start_action_logger(GCloudAppender),
+    let system = System::init(env!("CARGO_PKG_NAME"));
+
+    let executor = start_executor();
+
+    let system = match config.log_appender.as_str() {
+        "console" => system.start_logger(ConsoleAppender),
+        "gcloud" => system.start_logger(GCloudAppender),
         value => panic!("unknown appender, value={value}"),
-    }
+    };
 
     let client =
         UserServiceClient::new(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080".to_owned());
@@ -43,6 +46,6 @@ async fn main() -> Result<(), Exception> {
     });
 
     system.wait().await;
-    // spawned actions are awaited by shutdown, not by wait()
-    system.shutdown(Duration::from_secs(15)).await
+    executor.shutdown(Duration::from_secs(15)).await;
+    system.shutdown_logger().await;
 }

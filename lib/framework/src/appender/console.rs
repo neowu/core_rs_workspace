@@ -1,21 +1,18 @@
 use std::time::Duration;
 
-use crate::log::appender::ActionAppender;
-use crate::log::appender::ActionMessage;
-use crate::metrics::MetricsAppender;
-use crate::metrics::MetricsMessage;
+use crate::appender::ActionMessage;
+use crate::appender::Appender;
+use crate::appender::MetricsMessage;
 use crate::write_str;
 
 pub struct ConsoleAppender;
 
-impl ActionAppender for ConsoleAppender {
-    async fn append(&self, action: ActionMessage) {
+impl Appender for ConsoleAppender {
+    async fn append_action(&self, action: ActionMessage) {
         write_action(action);
     }
-}
 
-impl MetricsAppender for ConsoleAppender {
-    async fn append(&self, metrics: MetricsMessage) {
+    async fn append_metrics(&self, metrics: MetricsMessage) {
         write_metrics(metrics);
     }
 }

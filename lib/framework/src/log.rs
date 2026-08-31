@@ -8,20 +8,16 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::task_local;
 
+use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
-use crate::system::ACTION_SENDER;
+use crate::system::SENDER;
 use crate::time::DateTime;
 
-mod action;
-mod appender;
+pub(crate) mod action;
 pub mod id_generator;
 mod span;
 
-pub use appender::ActionAppender;
-pub use appender::ActionMessage;
-pub use appender::console::ConsoleAppender;
-pub use appender::gcloud::GCloudAppender;
 pub use span::__span;
 pub use span::Span;
 
@@ -101,8 +97,8 @@ where
             }
             current_action.finish();
 
-            if let Some(sender) = ACTION_SENDER.get() {
-                let _result = sender.send(ActionMessage::from(current_action));
+            if let Some(sender) = SENDER.get() {
+                let _result = sender.send(Message::Action(current_action.into()));
             }
 
             result

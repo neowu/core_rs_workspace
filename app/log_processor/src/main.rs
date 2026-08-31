@@ -2,6 +2,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use framework::appender::ConsoleAppender;
+use framework::appender::GCloudAppender;
 use framework::asset_path;
 use framework::config::EnvString;
 use framework::console;
@@ -9,9 +11,6 @@ use framework::context;
 use framework::exception::Exception;
 use framework::load_config;
 use framework::log;
-use framework::log::ConsoleAppender;
-use framework::log::GCloudAppender;
-use framework::metrics::MetricsCollector;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
@@ -62,14 +61,21 @@ async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
 
     let mut system = System::init(env!("CARGO_PKG_NAME"));
-    match config.log_appender.as_str() {
-        "console" => system.start_action_logger(ConsoleAppender),
-        "gcloud" => system.start_action_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    }
+    let mut consumer = MessageConsumer::new(
+        config.kafka_uri,
+        env!("CARGO_BIN_NAME"),
+        &ConsumerConfig { poll_max_wait_time: Duration::from_secs(3), poll_max_records: 5_000 },
+    );
+    consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
+    consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
+    consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
+    system.add_metrics(consumer.consumer_metrics());
 
-    let mut collector = MetricsCollector::new();
-    collector.add(system.executor_metrics());
+    let system = match config.log_appender.as_str() {
+        "console" => system.start_logger(ConsoleAppender),
+        "gcloud" => system.start_logger(GCloudAppender),
+        value => panic!("unknown appender, value={value}"),
+    };
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;
@@ -106,25 +112,10 @@ async fn main() -> Result<(), Exception> {
     }
     system.start_service(|token| scheduler.start(scheduler_state, token));
 
-    let mut consumer = MessageConsumer::new(
-        config.kafka_uri,
-        env!("CARGO_BIN_NAME"),
-        &ConsumerConfig { poll_max_wait_time: Duration::from_secs(3), poll_max_records: 5_000 },
-    );
-    consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
-    consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
-    consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
-    collector.add(consumer.consumer_metrics());
     system.start_service(|token| consumer.start(state, token));
 
-    match config.log_appender.as_str() {
-        "console" => system.start_metrics_collector(collector, ConsoleAppender),
-        "gcloud" => system.start_metrics_collector(collector, GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    }
-
     system.wait().await;
-    system.shutdown(Duration::from_secs(15)).await
+    system.shutdown_logger().await
 }
 
 async fn init_elasticsearch(elasticsearch: &Elasticsearch) -> Result<(), Exception> {

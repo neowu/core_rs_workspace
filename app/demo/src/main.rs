@@ -1,6 +1,4 @@
-use framework::exception::Exception;
-
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
-    demo::run().await
+async fn main() {
+    demo::run().await;
 }

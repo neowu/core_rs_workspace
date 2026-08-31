@@ -1,4 +1,5 @@
 pub mod api;
+pub mod appender;
 pub mod asset;
 #[macro_use]
 pub mod exception;

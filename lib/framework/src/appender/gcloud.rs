@@ -4,23 +4,20 @@ use serde::Serialize;
 use serde::Serializer;
 use serde::ser::SerializeMap as _;
 
+use crate::appender::ActionMessage;
+use crate::appender::Appender;
+use crate::appender::MetricsMessage;
 use crate::json;
-use crate::log::appender::ActionAppender;
-use crate::log::appender::ActionMessage;
-use crate::metrics::MetricsAppender;
-use crate::metrics::MetricsMessage;
 use crate::time::DateTime;
 
 pub struct GCloudAppender;
 
-impl ActionAppender for GCloudAppender {
-    async fn append(&self, action: ActionMessage) {
+impl Appender for GCloudAppender {
+    async fn append_action(&self, action: ActionMessage) {
         write_action(&action);
     }
-}
 
-impl MetricsAppender for GCloudAppender {
-    async fn append(&self, metrics: MetricsMessage) {
+    async fn append_metrics(&self, metrics: MetricsMessage) {
         write_metrics(&metrics);
     }
 }
