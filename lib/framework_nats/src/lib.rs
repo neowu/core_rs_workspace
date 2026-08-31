@@ -7,6 +7,7 @@ use framework::console;
 use framework::log;
 use framework::system;
 
+pub mod appender;
 pub mod consumer;
 pub mod producer;
 pub mod service;

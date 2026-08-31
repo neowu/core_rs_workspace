@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::Router;
 use framework::appender::ConsoleAppender;
 use framework::appender::GCloudAppender;
-use framework::exception::Exception;
 use framework::load_config;
 use framework::system::System;
 use framework::web::server::HttpServer;
@@ -32,7 +31,7 @@ struct Topics {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Exception> {
+async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
 
     let mut system = System::init(env!("CARGO_PKG_NAME"));
@@ -55,5 +54,5 @@ async fn main() -> Result<(), Exception> {
     system.start_service(|token| http_server.start(app, token));
 
     system.wait().await;
-    system.shutdown_logger().await
+    system.shutdown_logger().await;
 }

@@ -8,7 +8,7 @@ use crate::log::truncate;
 use crate::time::DateTime;
 use crate::write_str;
 
-const MAX_LOGS: usize = 2000;
+const MAX_LOGS: usize = 2_000;
 
 pub(crate) struct Action {
     pub start_time: Instant,

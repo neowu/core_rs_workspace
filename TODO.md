@@ -3,5 +3,4 @@
 
 TODO:
 
-- send log to nats
 - think about nats ERROR header

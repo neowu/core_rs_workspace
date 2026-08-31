@@ -14,6 +14,7 @@ use framework::log;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
 use framework::system::System;
+use framework::task::start_executor;
 use framework::time::Offset;
 use framework::time::Time;
 use framework_clickhouse::ClickHouse;
@@ -61,6 +62,10 @@ async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
 
     let mut system = System::init(env!("CARGO_PKG_NAME"));
+
+    let executor = start_executor();
+    system.add_metrics(executor.metrics());
+
     let mut consumer = MessageConsumer::new(
         config.kafka_uri,
         env!("CARGO_BIN_NAME"),
@@ -115,7 +120,10 @@ async fn main() -> Result<(), Exception> {
     system.start_service(|token| consumer.start(state, token));
 
     system.wait().await;
-    system.shutdown_logger().await
+    executor.shutdown(Duration::from_secs(15)).await;
+    system.shutdown_logger().await;
+
+    Ok(())
 }
 
 async fn init_elasticsearch(elasticsearch: &Elasticsearch) -> Result<(), Exception> {
