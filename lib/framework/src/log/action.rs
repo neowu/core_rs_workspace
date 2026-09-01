@@ -110,7 +110,6 @@ impl Action {
         }
     }
 
-    // TODO: always log if severity == ERROR
     fn log_line(
         &mut self,
         severity: Option<Severity>,
@@ -120,7 +119,9 @@ impl Action {
         max_log_bytes: usize,
         max_message_len: usize,
     ) {
-        if self.logs.len() >= max_log_bytes {
+        // errors always go in, they are what the log is read for
+        let over_limit = self.logs.len() >= max_log_bytes;
+        if over_limit && severity != Some(Severity::Error) {
             return;
         }
 
@@ -145,7 +146,7 @@ impl Action {
             logs.push_str("...(truncated)\n");
         }
 
-        if logs.len() >= max_log_bytes {
+        if !over_limit && logs.len() >= max_log_bytes {
             logs.push_str("...(log limit reached)\n");
         }
     }
@@ -194,6 +195,21 @@ mod tests {
         let logs = action.logs.clone();
         action.log_line(None, None, Some("location"), format_args!("second"), max_log_bytes, 100);
         assert_eq!(action.logs, logs); // dropped, the limit was already reached
+    }
+
+    #[test]
+    fn log_line_always_logs_error_over_max_log_bytes() {
+        let mut action = action();
+        let max_log_bytes = action.logs.len() + 1; // the next line overshoots the limit
+
+        action.log_line(None, None, Some("loc"), format_args!("first"), max_log_bytes, 100);
+        assert!(action.logs.ends_with("...(log limit reached)\n"));
+
+        action.log_line(Some(Severity::Error), None, Some("loc1"), format_args!("error_message"), max_log_bytes, 100);
+        assert!(action.logs.ends_with("loc1 ERROR error_message\n")); // no second limit marker
+
+        action.log_line(Some(Severity::Warn), None, Some("loc2"), format_args!("warn"), max_log_bytes, 100);
+        assert!(action.logs.ends_with("loc1 ERROR error_message\n")); // still dropped
     }
 
     #[test]
