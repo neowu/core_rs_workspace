@@ -51,7 +51,8 @@ impl From<Action> for ActionMessage {
     fn from(action: Action) -> Self {
         let context = CONTEXT.get().expect("context must be initialized");
 
-        let logs = action.flush_trace().then(|| action.logs.join("\n"));
+        // the buffer already carries the lines joined by '\n', so this is a move
+        let logs = action.flush_trace().then_some(action.logs);
 
         let (error_code, error_message) = match action.error {
             Some(error) => (error.code.map(str::to_owned), Some(error.message)),
@@ -68,8 +69,8 @@ impl From<Action> for ActionMessage {
             ref_ids: action.ref_ids,
             error_code,
             error_message,
-            context: action.context,
-            stats: action.stats.into_iter().collect::<Vec<_>>(),
+            context: action.context.into_iter().map(|(key, values)| (key.to_owned(), values)).collect(),
+            stats: action.stats.into_iter().map(|(key, value)| (key.to_owned(), value)).collect(),
             logs,
         }
     }

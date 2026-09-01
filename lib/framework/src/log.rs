@@ -11,6 +11,7 @@ use tokio::task_local;
 use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
+use crate::string::StringExt as _;
 use crate::system::SENDER;
 use crate::time::DateTime;
 
@@ -106,13 +107,8 @@ where
         .await
 }
 
-#[macro_export]
-macro_rules! span {
-    ($name:expr) => {
-        $crate::log::__span($name, concat!(module_path!(), ":", line!()))
-    };
-}
-
+// DO NOT call log! in Display impl, and pass it as message arguments
+// then CURRENT_ACTION will be borrowed twice and panic
 #[macro_export]
 macro_rules! log {
     (exception = $exception:expr) => {
@@ -120,7 +116,7 @@ macro_rules! log {
     };
     ($($arg:tt)*) => {
         $crate::log::__log(
-            format!($($arg)*),
+            format_args!($($arg)*),
             None,
             None,
             concat!(module_path!(), ":", line!()),
@@ -132,7 +128,7 @@ macro_rules! log {
 macro_rules! warn {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
-            format!($($arg)*),
+            format_args!($($arg)*),
             Some($crate::log::Severity::Warn),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
@@ -144,7 +140,7 @@ macro_rules! warn {
 macro_rules! error {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
-            format!($($arg)*),
+            format_args!($($arg)*),
             Some($crate::log::Severity::Error),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
@@ -154,17 +150,15 @@ macro_rules! error {
 
 #[doc(hidden)]
 #[inline]
-pub fn __log(message: String, severity: Option<Severity>, error_code: Option<&'static str>, location: &'static str) {
-    const MAX_LOG_MESSAGE_LEN: usize = 10_000;
-
+pub fn __log(
+    message: fmt::Arguments<'_>,
+    severity: Option<Severity>,
+    error_code: Option<&'static str>,
+    location: &'static str,
+) {
     let _result = CURRENT_ACTION.try_with(|action| {
         if let Some(action) = action.borrow_mut().as_mut() {
-            action.log_with_severity(
-                &truncate(message, MAX_LOG_MESSAGE_LEN, Some("...(truncated)")),
-                severity,
-                error_code,
-                location,
-            );
+            action.log(severity, error_code, Some(location), message);
         }
     });
 }
@@ -220,25 +214,24 @@ impl<T: Into<String>> VecContextValue for Vec<T> {
 
 #[doc(hidden)]
 #[inline]
-pub fn __context(key: &'static str, values: Vec<String>, location: &'static str) {
+pub fn __context(key: &'static str, mut values: Vec<String>, location: &'static str) {
     const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
         if let Some(action) = action.borrow_mut().as_mut() {
-            let values: Vec<String> = values
-                .into_iter()
-                .map(|value| truncate(value, MAX_CONTEXT_VALUE_LEN, Some("...(truncated)")))
-                .collect();
+            for value in &mut values {
+                truncate_with_marker(value, MAX_CONTEXT_VALUE_LEN);
+            }
 
             if values.len() == 1
                 && let Some(value) = values.first()
             {
-                action.log(&format!("[context] {key}={value}"), location);
+                action.log(None, None, Some(location), format_args!("[context] {key}={value}"));
             } else {
-                action.log(&format!("[context] {key}={values:?}"), location);
+                action.log(None, None, Some(location), format_args!("[context] {key}={values:?}"));
             }
 
-            action.context.push((key.to_owned(), values));
+            action.context.push((key, values));
         }
     });
 }
@@ -261,29 +254,10 @@ macro_rules! stats {
 pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
         if let Some(action) = action.borrow_mut().as_mut() {
-            action.log(&format!("[stats] {key}={value}"), location);
-
-            let stats_value = action.stats.entry(key.to_owned()).or_default();
-            *stats_value += value;
+            action.log(None, None, Some(location), format_args!("[stats] {key}={value}"));
+            action.add_stat(key, value);
         }
     });
-}
-
-fn truncate(mut value: String, len: usize, suffix: Option<&str>) -> String {
-    if len >= value.len() {
-        return value;
-    }
-
-    let mut new_len = len;
-    while new_len > 0 && !value.is_char_boundary(new_len) {
-        new_len -= 1;
-    }
-
-    value.truncate(new_len);
-    if let Some(suffix) = suffix {
-        value.push_str(suffix);
-    }
-    value
 }
 
 fn elapsed(start: Instant) -> (u64, u64, u32) {
@@ -295,28 +269,41 @@ fn elapsed(start: Instant) -> (u64, u64, u32) {
     (minutes, seconds, nanos)
 }
 
+/// Truncates in place on a char boundary, appending the marker only when something was cut.
+fn truncate_with_marker(value: &mut String, len: usize) {
+    if value.len() <= len {
+        return;
+    }
+
+    let new_len = value.truncate_to_max(len).len();
+    value.truncate(new_len);
+    value.push_str("...(truncated)");
+}
+
 #[cfg(test)]
 mod tests {
     use crate::log::Severity;
-    use crate::log::truncate;
-
-    #[test]
-    fn truncate_with_unicode() {
-        let value = "123老虎456".to_owned();
-        assert_eq!(truncate(value.clone(), 3, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 4, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 5, None), "123".to_owned());
-        assert_eq!(truncate(value.clone(), 6, Some("...(truncated)")), "123老...(truncated)".to_owned());
-        assert_eq!(truncate(value.clone(), 7, None), "123老".to_owned());
-        assert_eq!(truncate(value.clone(), 8, None), "123老".to_owned());
-        assert_eq!(truncate(value.clone(), 9, None), "123老虎".to_owned());
-        assert_eq!(truncate(value.clone(), 10, Some("...(truncated)")), "123老虎4...(truncated)".to_owned());
-    }
 
     #[test]
     fn compare_severity() {
         assert_eq!(Severity::Info, Severity::Info);
         assert!(Severity::Info < Severity::Warn);
         assert!(Severity::Warn < Severity::Error);
+    }
+
+    #[test]
+    fn truncate_with_marker() {
+        let mut cut_at_char = "123老虎456".to_owned();
+        super::truncate_with_marker(&mut cut_at_char, 6);
+        assert_eq!(cut_at_char, "123老...(truncated)");
+
+        let mut cut_mid_char = "123老虎456".to_owned();
+        super::truncate_with_marker(&mut cut_mid_char, 10);
+        assert_eq!(cut_mid_char, "123老虎4...(truncated)");
+
+        // nothing was cut, so no marker
+        let mut untouched = "123".to_owned();
+        super::truncate_with_marker(&mut untouched, 3);
+        assert_eq!(untouched, "123");
     }
 }

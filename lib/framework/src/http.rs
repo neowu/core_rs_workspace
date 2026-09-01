@@ -191,7 +191,7 @@ impl HttpClient {
     }
 
     pub async fn sse(&self, mut request: HttpRequest) -> Result<EventSource, Exception> {
-        let _span = span!("sse");
+        let _span = span!("http");
         request.headers.insert(header::ACCEPT, HeaderValue::from_static("text/event-stream"));
         let http_request = create_request(&request)?;
 

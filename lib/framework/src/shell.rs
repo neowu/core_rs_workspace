@@ -1,6 +1,7 @@
 use tokio::process::Command;
 
 use crate::exception::Exception;
+use crate::span;
 
 pub async fn run(command: &str) -> Result<String, Exception> {
     let _span = span!("shell");
