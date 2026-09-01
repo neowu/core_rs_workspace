@@ -29,10 +29,9 @@ macro_rules! span {
 pub fn __span(name: &'static str, elapsed_key: &'static str, count_key: &'static str, location: &'static str) -> Span {
     let mut log_offset = None;
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            action.log(None, None, Some(location), format_args!("[span:{name}] >"));
-            log_offset = Some(action.logs.len() - 1); // the last char of logs is always be '\n', truncate to this point
-        }
+        let mut action = action.borrow_mut();
+        action.log(None, None, Some(location), format_args!("[span:{name}] >"));
+        log_offset = Some(action.logs.len() - 1); // the last char of logs is always be '\n', truncate to this point
     });
     Span { name, start_time: Instant::now(), elapsed_key, count_key, log_offset }
 }
@@ -41,8 +40,8 @@ impl Span {
     /// Rolls the trace back to the start of the span, so a long loop cannot fill the action buffer.
     pub fn clear(&self) {
         let _result = CURRENT_ACTION.try_with(|action| {
-            if let Some(action) = action.borrow_mut().as_mut()
-                && let Some(offset) = self.log_offset
+            let mut action = action.borrow_mut();
+            if let Some(offset) = self.log_offset
                 && offset <= action.logs.len()
                 // generally span is always perfect nested
                 // in case a crossed span can hold a stale offset, truncating off a char boundary would panic
@@ -60,15 +59,14 @@ impl Span {
 impl Drop for Span {
     fn drop(&mut self) {
         let _result = CURRENT_ACTION.try_with(|action| {
-            if let Some(action) = action.borrow_mut().as_mut() {
-                let name = self.name;
-                let span_elapsed = self.start_time.elapsed();
+            let mut action = action.borrow_mut();
+            let name = self.name;
+            let span_elapsed = self.start_time.elapsed();
 
-                action.log(None, None, None, format_args!("[span:{name}] elapsed={span_elapsed:?} <"));
+            action.log(None, None, None, format_args!("[span:{name}] elapsed={span_elapsed:?} <"));
 
-                action.add_stat(self.elapsed_key, span_elapsed.as_nanos() as u64);
-                action.add_stat(self.count_key, 1);
-            }
+            action.add_stat(self.elapsed_key, span_elapsed.as_nanos() as u64);
+            action.add_stat(self.count_key, 1);
         });
     }
 }
@@ -76,6 +74,7 @@ impl Drop for Span {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::pin::pin;
 
     use futures::executor::block_on;
 
@@ -84,14 +83,13 @@ mod tests {
     use crate::time::DateTime;
 
     fn with_action<F: FnOnce()>(task: F) -> Action {
-        let scope = CURRENT_ACTION.scope(
-            RefCell::new(Some(Action::new("id".to_owned(), "test", None, DateTime::now()))),
-            async {
-                task();
-                CURRENT_ACTION.with(|current| current.take().expect("action must be in scope"))
-            },
-        );
-        block_on(scope)
+        // mirrors ActionFuture: the action comes out of the task local slot after the scope ends
+        let mut scope = pin!(CURRENT_ACTION.scope(
+            RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())),
+            async { task() },
+        ));
+        block_on(scope.as_mut());
+        scope.take_value().map(RefCell::into_inner).expect("action must be in scope")
     }
 
     #[test]

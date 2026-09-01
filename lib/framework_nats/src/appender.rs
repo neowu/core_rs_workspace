@@ -3,12 +3,14 @@ use std::time::Duration;
 use async_nats::ConnectOptions;
 use async_nats::jetstream::Context;
 use async_nats::jetstream::ContextBuilder;
-use async_nats::jetstream::stream::Config;
 use framework::appender::ActionMessage;
 use framework::appender::Appender;
 use framework::appender::MetricsMessage;
 use framework::console;
 use framework::json::to_json;
+
+pub const ACTION_SUBJECT: &str = "log.action";
+pub const METRICS_SUBJECT: &str = "log.metrics";
 
 pub struct NatsAppender {
     context: Context,
@@ -27,17 +29,6 @@ impl NatsAppender {
             .backpressure_on_inflight(false) // fail fast with MaxAckPending instead of waiting
             .build(client);
 
-        context
-            .create_or_update_stream(Config {
-                name: "log".to_owned(),
-                subjects: vec!["log.>".to_owned()],
-                max_age: Duration::from_hours(24 * 7),
-                no_ack: true,
-                ..Default::default()
-            })
-            .await
-            .unwrap_or_else(|e| panic!("failed to update log stream, error={e}"));
-
         Self { context }
     }
 
@@ -53,14 +44,14 @@ impl NatsAppender {
 impl Appender for NatsAppender {
     async fn append_action(&self, action: ActionMessage) {
         match to_json(&action) {
-            Ok(payload) => self.publish("log.action", payload).await,
+            Ok(payload) => self.publish(ACTION_SUBJECT, payload).await,
             Err(e) => console!("ERROR failed to serialize action, error={e}"),
         }
     }
 
     async fn append_metrics(&self, metrics: MetricsMessage) {
         match to_json(&metrics) {
-            Ok(payload) => self.publish("log.metrics", payload).await,
+            Ok(payload) => self.publish(METRICS_SUBJECT, payload).await,
             Err(e) => console!("ERROR failed to serialize metrics, error={e}"),
         }
     }

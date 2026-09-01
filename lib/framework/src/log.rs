@@ -2,10 +2,16 @@ use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+use std::task::ready;
 use std::time::Instant;
 
+use pin_project_lite::pin_project;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::task::futures::TaskLocalFuture;
 use tokio::task_local;
 
 use crate::appender::Message;
@@ -61,50 +67,70 @@ macro_rules! console {
 }
 
 task_local! {
-    // action will be taken out from option after finished
-    static CURRENT_ACTION: RefCell<Option<Action>>;
+    // the action is always present for the whole scope, ActionFuture takes it back out of the task
+    // local slot only once the scoped future has finished
+    static CURRENT_ACTION: RefCell<Action>;
 }
 
 pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION.try_with(|action| action.borrow().as_ref().map(|action| action.id.clone())).unwrap_or_default()
+    CURRENT_ACTION.try_with(|action| action.borrow().id.clone()).ok()
 }
 
 /// Trigger trace for current action.
 pub fn trace() {
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            action.trace = true;
-        }
+        action.borrow_mut().trace = true;
     });
 }
 
+pin_project! {
+    /// Hand written so the task is stored exactly once.
+    ///
+    /// An `async fn` wrapping the task would hold it three times over: as its own parameter, as the
+    /// upvar of the inner `async move` block, and again as the awaitee inside that block. Coroutine
+    /// parameters and upvars live in the layout prefix and are never overlapped, so a 6KB task turned
+    /// into an 18KB action future and tripped `clippy::large_futures`.
+    pub struct ActionFuture<F> {
+        #[pin]
+        inner: TaskLocalFuture<RefCell<Action>, F>,
+    }
+}
+
+// the `Result<_, Exception>` bound lives on the `Future` impl instead of here, so callers passing an
+// inline async block do not need to annotate its output type
 #[inline]
-pub async fn action<F, R>(kind: &'static str, ref_ids: Option<Vec<String>>, task: F) -> F::Output
-where
-    F: Future<Output = Result<R, Exception>>,
-{
+pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task: F) -> ActionFuture<F> {
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    CURRENT_ACTION
-        .scope(RefCell::new(Some(action)), async move {
-            let result = task.await;
+    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(action), task) }
+}
 
-            let mut current_action = CURRENT_ACTION
-                .with(|current_action| current_action.take().expect("current action must be within the scope"));
+impl<F, R> Future for ActionFuture<F>
+where
+    F: Future<Output = Result<R, Exception>>,
+{
+    type Output = F::Output;
 
-            if let Err(e) = &result {
-                current_action.log_exception(e);
-            }
-            current_action.finish();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut this = self.project();
+        let result = ready!(this.inner.as_mut().poll(cx));
 
-            if let Some(sender) = SENDER.get() {
-                let _result = sender.send(Message::Action(current_action.into()));
-            }
+        // the scope has ended, so the action comes out of the slot rather than the task local
+        let mut current_action =
+            this.inner.take_value().map(RefCell::into_inner).expect("current action must be within the scope");
 
-            result
-        })
-        .await
+        if let Err(e) = &result {
+            current_action.log_exception(e);
+        }
+        current_action.finish();
+
+        if let Some(sender) = SENDER.get() {
+            let _result = sender.send(Message::Action(current_action.into()));
+        }
+
+        Poll::Ready(result)
+    }
 }
 
 // DO NOT call log! in Display impl, and pass it as message arguments
@@ -157,9 +183,7 @@ pub fn __log(
     location: &'static str,
 ) {
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            action.log(severity, error_code, Some(location), message);
-        }
+        action.borrow_mut().log(severity, error_code, Some(location), message);
     });
 }
 
@@ -167,9 +191,7 @@ pub fn __log(
 #[inline]
 pub fn __log_exception(exception: &Exception) {
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            action.log_exception(exception);
-        }
+        action.borrow_mut().log_exception(exception);
     });
 }
 
@@ -218,21 +240,21 @@ pub fn __context(key: &'static str, mut values: Vec<String>, location: &'static 
     const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            for value in &mut values {
-                truncate_with_marker(value, MAX_CONTEXT_VALUE_LEN);
-            }
+        let mut action = action.borrow_mut();
 
-            if values.len() == 1
-                && let Some(value) = values.first()
-            {
-                action.log(None, None, Some(location), format_args!("[context] {key}={value}"));
-            } else {
-                action.log(None, None, Some(location), format_args!("[context] {key}={values:?}"));
-            }
-
-            action.context.push((key, values));
+        for value in &mut values {
+            truncate_with_marker(value, MAX_CONTEXT_VALUE_LEN);
         }
+
+        if values.len() == 1
+            && let Some(value) = values.first()
+        {
+            action.log(None, None, Some(location), format_args!("[context] {key}={value}"));
+        } else {
+            action.log(None, None, Some(location), format_args!("[context] {key}={values:?}"));
+        }
+
+        action.context.push((key, values));
     });
 }
 
@@ -253,10 +275,9 @@ macro_rules! stats {
 #[inline]
 pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
-        if let Some(action) = action.borrow_mut().as_mut() {
-            action.log(None, None, Some(location), format_args!("[stats] {key}={value}"));
-            action.add_stat(key, value);
-        }
+        let mut action = action.borrow_mut();
+        action.log(None, None, Some(location), format_args!("[stats] {key}={value}"));
+        action.add_stat(key, value);
     });
 }
 
