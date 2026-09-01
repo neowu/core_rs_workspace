@@ -27,6 +27,7 @@ use framework::metrics::Metrics;
 use framework::stats;
 use framework::task::TaskExecutor;
 use framework::time::DateTime;
+use futures::FutureExt as _;
 use futures::StreamExt as _;
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
@@ -189,15 +190,15 @@ where
     }
 }
 
-async fn handle_message<H, S, M, Fut>(raw: jetstream::Message, handler: H, state: S)
+fn handle_message<H, S, M, Fut>(raw: jetstream::Message, handler: H, state: S) -> impl Future<Output = ()>
 where
     H: Fn(S, Message<M>) -> Fut,
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
-    let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id = header(&raw, REF_ID).map(|id| vec![id.to_owned()]);
-    let _result = log::action("message", ref_id, async {
+    log::action("message", ref_id, async move {
+        let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
         let subject = raw.subject.to_string();
         context!(subject = &subject, fn = type_name::<H>());
         log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
@@ -211,7 +212,7 @@ where
         if let Some(client) = header(&raw, CLIENT) {
             context!(client = client);
         }
-        stats!(nats_read_entries = 1, nats_read_bytes = raw.payload.len());
+        stats!(nats_read_messages = 1, nats_read_bytes = raw.payload.len());
         let result = match from_json::<M>(&String::from_utf8_lossy(&raw.payload)) {
             Ok(payload) => handler(state, Message { subject, payload }).await,
             Err(e) => Err(exception!("failed to decode message", code = "NATS_INVALID_MESSAGE", source = e)),
@@ -228,7 +229,7 @@ where
         }
         result
     })
-    .await;
+    .map(drop)
 }
 
 // one durable pull consumer for a single subject/type. a single task pulls a batch, hands the
@@ -333,19 +334,24 @@ where
     }
 }
 
-async fn handle_batch<H, S, M, Fut>(subject: &'static str, raw_messages: &[jetstream::Message], handler: &H, state: S)
+fn handle_batch<H, S, M, Fut>(
+    subject: &'static str,
+    raw_messages: &[jetstream::Message],
+    handler: &H,
+    state: S,
+) -> impl Future<Output = ()>
 where
     H: Fn(S, Vec<Message<M>>) -> Fut,
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
-    let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
     let ref_id: Option<Vec<String>> = raw_messages
         .iter()
         .map(|raw| header(raw, REF_ID).map(str::to_owned))
         .collect::<Option<HashSet<String>>>()
         .map(|set| set.into_iter().collect::<Vec<String>>());
-    let _result = log::action("message", ref_id, async move {
+    log::action("message", ref_id, async move {
+        let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
         context!(subject = subject, fn = type_name::<H>());
         if let Some(client) = raw_messages
             .iter()
@@ -392,7 +398,7 @@ where
         }
         result
     })
-    .await;
+    .map(drop)
 }
 
 // ref_id and client headers are set and consumed by the framework only.

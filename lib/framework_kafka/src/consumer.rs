@@ -18,6 +18,7 @@ use framework::metrics::Counter;
 use framework::metrics::Metrics;
 use framework::stats;
 use framework::time::DateTime;
+use futures::FutureExt as _;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
 use rdkafka::Message as _;
@@ -46,8 +47,7 @@ pub struct Message<T> {
     pub payload: T,
 }
 
-type MessageHandler<S> =
-    Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>> + Send>;
+type MessageHandler<S> = Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 pub struct ConsumerConfig {
     pub poll_max_wait_time: Duration,
@@ -104,12 +104,12 @@ where
     {
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
-        let handler = move |state: S, messages: Vec<BorrowedMessage>| {
+        let wrapper: MessageHandler<S> = Box::new(move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
-            handle_messages(topic, messages, handler, &state, &counter)
-        };
+            Box::pin(handle_messages(topic, messages, handler, &state, &counter))
+        });
 
-        self.handlers.insert(topic, Box::new(handler));
+        self.handlers.insert(topic, wrapper);
     }
 
     pub fn add_bulk_handler<H, Fut, M>(&mut self, topic: &Topic<M>, handler: H)
@@ -120,12 +120,12 @@ where
     {
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
-        let handler = move |state: S, messages: Vec<BorrowedMessage>| {
+        let wrapper: MessageHandler<S> = Box::new(move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
-            handle_bulk_messages(topic, messages, handler, state, Arc::clone(&counter))
-        };
+            Box::pin(handle_bulk_messages(topic, messages, handler, state, Arc::clone(&counter)))
+        });
 
-        self.handlers.insert(topic, Box::new(handler));
+        self.handlers.insert(topic, wrapper);
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
@@ -201,7 +201,7 @@ fn handle_bulk_messages<H, S, M, Fut>(
     handler: H,
     state: S,
     counter: Arc<Counter>,
-) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
+) -> impl Future<Output = ()>
 where
     S: Send + 'static,
     H: Fn(S, Vec<Message<M>>) -> Fut + Send + 'static,
@@ -214,7 +214,7 @@ where
         .collect::<Option<HashSet<String>>>()
         .map(|set| set.into_iter().collect::<Vec<String>>());
 
-    Box::pin(log::action("message", ref_id, async move {
+    log::action("message", ref_id, async move {
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
@@ -250,7 +250,8 @@ where
             context!(client = clients);
         }
         handler(state, messages).await
-    }))
+    })
+    .map(drop)
 }
 
 struct MessageNode {
@@ -264,7 +265,7 @@ fn handle_messages<H, S, M, Fut>(
     handler: H,
     state: &S,
     counter: &Arc<Counter>,
-) -> Pin<Box<dyn Future<Output = Result<(), Exception>> + Send>>
+) -> impl Future<Output = ()> + use<H, S, M, Fut>
 where
     S: Clone + Send + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
@@ -308,20 +309,24 @@ where
         });
     }
 
-    Box::pin(async move {
+    async move {
         handles.join_all().await;
-        Ok(())
-    })
+    }
 }
 
-async fn handle_message<H, S, M, Fut>(topic: &'static str, raw_message: OwnedMessage, handler: H, state: S)
+fn handle_message<H, S, M, Fut>(
+    topic: &'static str,
+    raw_message: OwnedMessage,
+    handler: H,
+    state: S,
+) -> impl Future<Output = ()>
 where
     H: Fn(S, Message<M>) -> Fut,
     Fut: Future<Output = Result<(), Exception>>,
     M: DeserializeOwned,
 {
     let ref_id = header(&raw_message, REF_ID).map(|id| vec![id.to_owned()]);
-    let _result = log::action("message", ref_id, async {
+    log::action("message", ref_id, async move {
         let key = key(&raw_message);
         let payload = payload(&raw_message);
         context!(topic = topic, key = format!("{:?}", key), fn = type_name::<H>());
@@ -341,7 +346,7 @@ where
             .map_err(|e| exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e))?;
         handler(state, Message { key, payload }).await
     })
-    .await;
+    .map(drop)
 }
 
 // ref_id and client headers are set and consumed by the framework only.

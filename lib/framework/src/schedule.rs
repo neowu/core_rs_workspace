@@ -71,7 +71,7 @@ where
         J: Fn(S, JobContext) -> Fut + Copy + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     {
-        let job = Box::new(move |state: S, context| process_job(job, state, context));
+        let job: Job<S> = Box::new(move |state, context| Box::pin(process_job(job, state, context)));
         self.schedules.push(Arc::new(Schedule { name, job, trigger }));
     }
 
@@ -126,7 +126,7 @@ where
     }
 }
 
-fn process_job<S, J, Fut>(job: J, state: S, context: JobContext) -> Pin<Box<dyn Future<Output = ()> + Send>>
+fn process_job<S, J, Fut>(job: J, state: S, context: JobContext) -> impl Future<Output = ()> + Send
 where
     S: Send + 'static,
     J: Fn(S, JobContext) -> Fut + Send + 'static,
@@ -134,18 +134,16 @@ where
 {
     let ref_ids = log::current_action_id().map(|id| vec![id]);
     let triggered = ref_ids.is_some(); // must be triggered thru controller
-    Box::pin(
-        action("job", ref_ids, async move {
-            context!(
-                job = context.name,
-                scheduled_time = context.scheduled_time.to_rfc3339(),
-                fn = type_name::<J>()
-            );
-            if triggered {
-                warn!(error_code = "MANUAL_OPERATION", "trigger job manually");
-            }
-            job(state, context).await
-        })
-        .map(drop),
-    )
+    action("job", ref_ids, async move {
+        context!(
+            job = context.name,
+            scheduled_time = context.scheduled_time.to_rfc3339(),
+            fn = type_name::<J>()
+        );
+        if triggered {
+            warn!(error_code = "MANUAL_OPERATION", "trigger job manually");
+        }
+        job(state, context).await
+    })
+    .map(drop)
 }

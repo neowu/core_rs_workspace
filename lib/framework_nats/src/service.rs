@@ -26,6 +26,7 @@ use framework::span;
 use framework::stats;
 use framework::string::intern;
 use framework::task::TaskExecutor;
+use futures::FutureExt as _;
 use futures::StreamExt as _;
 use futures::stream::select_all;
 use serde::Serialize;
@@ -139,21 +140,25 @@ impl Service {
     }
 }
 
-async fn handle_request<H, Fut, Req, Res>(client: Client, message: Message, handler: Arc<H>)
+fn handle_request<H, Fut, Req, Res>(
+    client: Client,
+    message: Message,
+    handler: Arc<H>,
+) -> impl Future<Output = ()> + Send
 where
-    H: Fn(Req) -> Fut,
-    Fut: Future<Output = Result<Res, Exception>>,
-    Req: DeserializeOwned + 'static,
-    Res: Serialize + Debug + 'static,
+    H: Fn(Req) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<Res, Exception>> + Send,
+    Req: DeserializeOwned + Send + 'static,
+    Res: Serialize + Debug + Send + 'static,
 {
     let ref_id = header(&message, REF_ID).map(|id| vec![id.to_owned()]);
-    let _result = log::action("nats", ref_id, async {
+    log::action("nats", ref_id, async move {
         context!(subject = message.subject.as_str());
         if let Some(client_name) = header(&message, CLIENT) {
             context!(client = client_name);
         }
         log!("[request] payload={}", String::from_utf8_lossy(&message.payload));
-        stats!(nats_request_messages = 1, nats_request_bytes = message.payload.len());
+        stats!(nats_request_bytes = message.payload.len());
 
         let Some(reply) = message.reply else {
             return Err(exception!("invalid reply subject", code = "NATS_INVALID_MESSAGE"));
@@ -168,20 +173,23 @@ where
             Ok(response) => {
                 let payload = encode(&response)?;
                 log!("[reply] payload={payload}");
+                stats!(nats_response_bytes = payload.len());
                 client.publish(reply, payload.into()).await?;
                 Ok(())
             }
             Err(e) => {
                 let body =
                     ErrorResponse { severity: e.severity, code: e.code.map(str::to_owned), message: e.message.clone() };
+                let payload = to_json(&body)?;
                 let mut headers = HeaderMap::new();
                 headers.insert(ERROR, "true");
-                client.publish_with_headers(reply, headers, to_json(&body)?.into()).await?;
+                stats!(nats_response_bytes = payload.len());
+                client.publish_with_headers(reply, headers, payload.into()).await?;
                 Err(e)
             }
         }
     })
-    .await;
+    .map(drop)
 }
 
 // nats api client, mirrors framework::web::api::ApiClient
@@ -203,7 +211,7 @@ impl ServiceClient {
         let _span = span!("nats");
         let payload = encode(request)?;
 
-        stats!(nats_request_messages = 1, nats_request_bytes = payload.len());
+        stats!(nats_write_bytes = payload.len());
 
         log!("[request] subject={subject}, payload={payload}");
         // reply must arrive within the connection level request timeout (async-nats default: 10s),
@@ -228,6 +236,7 @@ impl ServiceClient {
 
         let reply_payload = String::from_utf8_lossy(&reply.payload);
         log!("[reply] payload={reply_payload}");
+        stats!(nats_read_bytes = reply_payload.len());
         let is_error = reply.headers.as_ref().is_some_and(|reply_headers| reply_headers.get(ERROR).is_some());
         if is_error {
             let error: ErrorResponse = from_json(&reply_payload)?;
