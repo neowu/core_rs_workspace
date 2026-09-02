@@ -14,54 +14,80 @@ use serde::de::DeserializeOwned;
 
 use crate::console;
 
-/// Loads a JSON config file into a deserializable type, panicking on any error.
+/// Loads a JSON config into a deserializable type, panicking on any error.
 ///
-/// Intended to be called once at startup. In debug builds it first loads
-/// `.env` (see [`load_env!`]) so that `env:` references in the config resolve
-/// against those variables; in release builds the `.env` step is a no-op. The
-/// config path is resolved with [`asset_path!`], which also panics if the file
-/// is not found.
+/// Intended to be called once at startup. The config content comes from the
+/// first available source:
+///
+/// 1. the environment variable named by `env`, when set and not blank, which
+///    is how deployments without a writable asset dir (e.g. Cloud Run worker)
+///    supply their config;
+/// 2. `path` resolved next to the current exe;
+/// 3. `path` resolved against `CARGO_MANIFEST_DIR`, in debug builds only.
+///
+/// In debug builds `.env` is loaded first, so that `env:` references in the
+/// config resolve against those variables, and so that the config env var
+/// itself can be set locally to exercise the deployed path; in release builds
+/// that step is a no-op.
 ///
 /// Because this only runs at startup, every failure is fatal and surfaces as a
 /// panic rather than a `Result`.
+///
+/// ```ignore
+/// let config: AppConfig = load_config!("assets/conf.json");
+/// let config: AppConfig = load_config!("assets/conf.json", env = "CONFIG");
+/// ```
 #[macro_export]
 macro_rules! load_config {
-    ($path:expr) => {{ $crate::config::__load_config($path, env!("CARGO_MANIFEST_DIR")) }};
+    ($path:expr) => {{ $crate::config::__load_config(None, $path, env!("CARGO_MANIFEST_DIR")) }};
+    ($path:expr, env = $env:expr) => {{ $crate::config::__load_config(Some($env), $path, env!("CARGO_MANIFEST_DIR")) }};
 }
 
 #[doc(hidden)]
-#[cfg_attr(not(debug_assertions), allow(unused_variables))] // manifest_dir is only used with debug_assertions
-pub fn __load_config<T>(path: &'static str, manifest_dir: &'static str) -> T
+pub fn __load_config<T>(env_name: Option<&str>, path: &str, manifest_dir: &str) -> T
 where
     T: DeserializeOwned,
 {
-    let mut target_config_path: Option<PathBuf> = None;
+    #[cfg(debug_assertions)]
+    load_dev_env(manifest_dir);
 
+    let json = if let Some(json) = env_name.and_then(load_from_env) {
+        json
+    } else {
+        let config_path = resolve_config_path(path, manifest_dir);
+        read_to_string(&config_path)
+            .unwrap_or_else(|err| panic!("failed to read config, path={}, err={err}", config_path.display()))
+    };
+
+    console!("config:\n{json}");
+    serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to parse config, err={err}"))
+}
+
+fn load_from_env(env_name: &str) -> Option<String> {
+    let json = env::var(env_name).ok().filter(|json| !json.trim().is_empty())?;
+    console!("load config from env, env={env_name}");
+    Some(json)
+}
+
+#[cfg_attr(not(debug_assertions), allow(unused_variables))] // manifest_dir is only used with debug_assertions
+fn resolve_config_path(path: &str, manifest_dir: &str) -> PathBuf {
     let exe_path = current_exe().expect("cannot get current exe path");
     let config_path = exe_path.with_file_name(path);
     if config_path.exists() {
         console!("load config from exe path, path={}", config_path.display());
-        target_config_path = Some(config_path);
-    } else {
-        #[cfg(debug_assertions)]
-        {
-            let dev_config_path = PathBuf::from(manifest_dir).join(path);
-            if dev_config_path.exists() {
-                load_dev_env(manifest_dir);
-                console!("load config from source code folder, path={}", dev_config_path.display());
-                target_config_path = Some(dev_config_path);
-            }
+        return config_path;
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        let dev_config_path = PathBuf::from(manifest_dir).join(path);
+        if dev_config_path.exists() {
+            console!("load config from source code folder, path={}", dev_config_path.display());
+            return dev_config_path;
         }
     }
 
-    if let Some(target_config_path) = target_config_path {
-        let json = read_to_string(&target_config_path)
-            .unwrap_or_else(|err| panic!("failed to read config, path={}, err={err}", target_config_path.display()));
-        console!("config:\n{json}");
-        serde_json::from_str(&json).unwrap_or_else(|err| panic!("failed to parse config, err={err}"))
-    } else {
-        panic!("config not found, path={}, exe={}", exe_path.with_file_name(path).display(), exe_path.display());
-    }
+    panic!("config not found, path={}, exe={}", config_path.display(), exe_path.display());
 }
 
 #[cfg(debug_assertions)]
@@ -146,7 +172,110 @@ impl From<EnvString> for String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::create_dir_all;
+    use std::fs::remove_dir_all;
+    use std::fs::write;
+    use std::path::Path;
+
     use super::*;
+
+    #[derive(Deserialize)]
+    struct TestConfig {
+        name: String,
+    }
+
+    #[derive(Deserialize)]
+    struct TestSecretConfig {
+        token: EnvString,
+    }
+
+    // each test owns its own dir, so tests stay independent while running in parallel
+    fn test_dir(name: &str) -> PathBuf {
+        let dir = env::temp_dir().join(format!("framework_config_test_{name}"));
+        if dir.exists() {
+            remove_dir_all(&dir).unwrap();
+        }
+        create_dir_all(dir.join("assets")).unwrap();
+        dir
+    }
+
+    fn write_config(dir: &Path, json: &str) -> String {
+        write(dir.join("assets/conf.json"), json).unwrap();
+        "assets/conf.json".to_owned()
+    }
+
+    #[test]
+    fn load_config_from_source_folder() {
+        let dir = test_dir("source_folder");
+        let path = write_config(&dir, r#"{"name":"from file"}"#);
+
+        let config: TestConfig = __load_config(None, &path, dir.to_str().unwrap());
+
+        assert_eq!(config.name, "from file");
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_config_from_env() {
+        let dir = test_dir("env");
+        let path = write_config(&dir, r#"{"name":"from file"}"#);
+        unsafe { env::set_var("CONFIG_TEST_JSON", r#"{"name":"from env"}"#) }
+
+        let config: TestConfig = __load_config(Some("CONFIG_TEST_JSON"), &path, dir.to_str().unwrap());
+
+        assert_eq!(config.name, "from env"); // env wins over the file on disk
+        unsafe { env::remove_var("CONFIG_TEST_JSON") }
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_config_with_blank_env() {
+        let dir = test_dir("blank_env");
+        let path = write_config(&dir, r#"{"name":"from file"}"#);
+        unsafe { env::set_var("CONFIG_TEST_JSON_BLANK", "  ") }
+
+        let config: TestConfig = __load_config(Some("CONFIG_TEST_JSON_BLANK"), &path, dir.to_str().unwrap());
+
+        assert_eq!(config.name, "from file"); // a blank env var is treated as not set
+        unsafe { env::remove_var("CONFIG_TEST_JSON_BLANK") }
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_config_with_unset_env() {
+        let dir = test_dir("unset_env");
+        let path = write_config(&dir, r#"{"name":"from file"}"#);
+        unsafe { env::remove_var("CONFIG_TEST_JSON_UNSET") }
+
+        let config: TestConfig = __load_config(Some("CONFIG_TEST_JSON_UNSET"), &path, dir.to_str().unwrap());
+
+        assert_eq!(config.name, "from file");
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "config not found")]
+    fn load_config_with_missing_file() {
+        let dir = test_dir("missing_file");
+        let _: TestConfig = __load_config(None, "assets/conf.json", dir.to_str().unwrap());
+    }
+
+    // dev env must be loaded before the env var is read, so the deployed path can be exercised locally
+    #[cfg(debug_assertions)]
+    #[test]
+    fn load_config_from_env_resolves_dev_env() {
+        let dir = test_dir("dev_env");
+        let path = write_config(&dir, r#"{"token":"missing"}"#);
+        write(dir.join(".env"), "CONFIG_TEST_DEV_TOKEN=dev token\n# comment\n").unwrap();
+        unsafe { env::set_var("CONFIG_TEST_DEV_JSON", r#"{"token":"env:CONFIG_TEST_DEV_TOKEN"}"#) }
+
+        let config: TestSecretConfig = __load_config(Some("CONFIG_TEST_DEV_JSON"), &path, dir.to_str().unwrap());
+
+        assert_eq!(config.token.0, "dev token");
+        unsafe { env::remove_var("CONFIG_TEST_DEV_JSON") }
+        unsafe { env::remove_var("CONFIG_TEST_DEV_TOKEN") }
+        remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn env_string_with_literal_value() {

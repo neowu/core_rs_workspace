@@ -22,12 +22,12 @@ async fn main() {
     let system = system.start_logger(ConsoleAppender);
 
     let client =
-        UserServiceClient::new(HttpClient::new(HttpClientConfig::internal_only()), "http://localhost:8080".to_owned());
+        UserServiceClient::new(HttpClient::new(HttpClientConfig::default()), "http://127.0.0.1:8080".to_owned());
 
     spawn_action!("client", async move {
         log::trace();
 
-        let user_id = client.create(CreateUserRequest { name: "neo".to_owned(), rating: None }).await?;
+        let user_id = client.create(CreateUserRequest { name: "neo".to_owned(), rating: Some(-1) }).await?;
 
         client.update(UpdateUserRequest { id: user_id, rating: Some(1), tags: Some(vec!["tag1".to_owned()]) }).await?;
 

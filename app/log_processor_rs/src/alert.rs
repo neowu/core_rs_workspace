@@ -53,32 +53,39 @@ impl AlertService {
         if message.severity == Severity::Info {
             return;
         }
-        self.process(&Alert {
-            id: &message.id,
-            app: &message.app,
-            severity: message.severity,
-            error_code: message.error_code.as_deref(),
-            error_message: message.error_message.as_deref(),
-        });
+        self.process(
+            &Alert {
+                id: &message.id,
+                app: &message.app,
+                severity: message.severity,
+                error_code: message.error_code.as_deref(),
+                error_message: message.error_message.as_deref(),
+            },
+            &action_info(&message.kind, &message.context),
+        );
     }
 
     pub(crate) fn process_metrics(&self, message: &MetricsMessage) {
         if message.severity == Severity::Info {
             return;
         }
-        self.process(&Alert {
-            id: &message.id,
-            app: &message.app,
-            severity: message.severity,
-            error_code: message.error_code.as_deref(),
-            error_message: message.error_message.as_deref(),
-        });
+        self.process(
+            &Alert {
+                id: &message.id,
+                app: &message.app,
+                severity: message.severity,
+                error_code: message.error_code.as_deref(),
+                error_message: message.error_message.as_deref(),
+            },
+            &format!("host: {}", message.host),
+        );
     }
 
-    fn process(&self, alert: &Alert<'_>) {
+    // detail is the message specific line shown right under the id
+    fn process(&self, alert: &Alert<'_>, info: &str) {
         let Some(count) = self.check(alert) else { return };
 
-        let message = message(alert, count);
+        let message = message(alert, info, count);
         let severity = alert.severity;
         let slack = Arc::clone(&self.slack);
         // notify out of band, slack must never slow down log ingestion nor fail the batch
@@ -123,7 +130,7 @@ fn error_code<'a>(alert: &Alert<'a>) -> &'a str {
     alert.error_code.unwrap_or("UNASSIGNED")
 }
 
-fn message(alert: &Alert<'_>, count: u32) -> String {
+fn message(alert: &Alert<'_>, info: &str, count: u32) -> String {
     let mut message = String::with_capacity(256);
     // the first notification of a key has nothing to count yet
     if count > 0 {
@@ -131,14 +138,55 @@ fn message(alert: &Alert<'_>, count: u32) -> String {
     }
     write_str!(
         message,
-        "{}: {}\nid: {}\nerror_code: {}\nmessage: {}\n",
+        "{}: *{}*\nid: {}\n{}\nerror_code: *{}*\nmessage: {}\n",
         alert.severity,
         alert.app,
         alert.id,
+        info,
         error_code(alert),
         alert.error_message.unwrap_or_default()
     );
     message
+}
+
+fn action_info(kind: &str, context: &[(String, Vec<String>)]) -> String {
+    let mut line = String::with_capacity(64);
+    write_str!(line, "kind: {kind}");
+    // the interesting field differs per kind, an action carries only the ones its own framework layer set
+    match kind {
+        "http" => {
+            // an api request names the handler, anything else (static resource, unmatched path) only has the request line
+            if let Some(name) = context_value(context, "fn") {
+                write_str!(line, ", fn={name}");
+            } else if let Some(url) = context_value(context, "uri") {
+                write_str!(line, ", method={}, url={url}", context_value(context, "method").unwrap_or_default());
+            }
+        }
+        "message" => {
+            // kafka names the topic, nats the subject
+            if let Some(topic) = context_value(context, "topic") {
+                write_str!(line, ", topic={topic}");
+            } else if let Some(subject) = context_value(context, "subject") {
+                write_str!(line, ", subject={subject}");
+            }
+        }
+        "task" => {
+            if let Some(task) = context_value(context, "task") {
+                write_str!(line, ", task={task}");
+            }
+        }
+        "nats" => {
+            if let Some(name) = context_value(context, "fn") {
+                write_str!(line, ", fn={name}");
+            }
+        }
+        _ => {}
+    }
+    line
+}
+
+fn context_value<'a>(context: &'a [(String, Vec<String>)], key: &str) -> Option<&'a str> {
+    context.iter().find(|(name, _)| name.as_str() == key).and_then(|(_, values)| values.first()).map(String::as_str)
 }
 
 #[cfg(test)]
@@ -156,6 +204,7 @@ mod tests {
     use super::alert_key;
     use super::message;
     use crate::alert::Alert;
+    use crate::alert::action_info;
     use crate::alert::slack::SlackClient;
 
     fn service() -> AlertService {
@@ -164,6 +213,10 @@ mod tests {
 
     fn alert(severity: Severity) -> Alert<'static> {
         Alert { id: "id", app: "app", severity, error_code: Some("ERROR_CODE"), error_message: Some("error message") }
+    }
+
+    fn context(entries: &[(&str, &str)]) -> Vec<(String, Vec<String>)> {
+        entries.iter().map(|(key, value)| ((*key).to_owned(), vec![(*value).to_owned()])).collect()
     }
 
     // moves the last sent time of every entry back, to simulate the interval passing
@@ -263,16 +316,16 @@ mod tests {
     #[test]
     fn message_without_count() {
         assert_eq!(
-            message(&alert(Severity::Error), 0),
-            "ERROR: app\nid: id\nerror_code: ERROR_CODE\nmessage: error message\n"
+            message(&alert(Severity::Error), "kind: task", 0),
+            "ERROR: *app*\nid: id\nkind: task\nerror_code: *ERROR_CODE*\nmessage: error message\n"
         );
     }
 
     #[test]
     fn message_with_count() {
         assert_eq!(
-            message(&alert(Severity::Warn), 3),
-            "[3] WARN: app\nid: id\nerror_code: ERROR_CODE\nmessage: error message\n"
+            message(&alert(Severity::Warn), "kind: task", 3),
+            "[3] WARN: *app*\nid: id\nkind: task\nerror_code: *ERROR_CODE*\nmessage: error message\n"
         );
     }
 
@@ -282,6 +335,48 @@ mod tests {
         alert.error_code = None;
         alert.error_message = None;
 
-        assert_eq!(message(&alert, 0), "ERROR: app\nid: id\nerror_code: UNASSIGNED\nmessage: \n");
+        assert_eq!(
+            message(&alert, "kind: task", 0),
+            "ERROR: *app*\nid: id\nkind: task\nerror_code: *UNASSIGNED*\nmessage: \n"
+        );
+    }
+
+    #[test]
+    fn info_of_api_request() {
+        let context = context(&[("method", "GET"), ("uri", "/user/1"), ("fn", "UserServiceImpl::get")]);
+
+        assert_eq!(action_info("http", &context), "kind: http, fn=UserServiceImpl::get");
+    }
+
+    #[test]
+    fn info_of_non_api_request() {
+        let context = context(&[("method", "GET"), ("uri", "/static/main.css")]);
+
+        assert_eq!(action_info("http", &context), "kind: http, method=GET, url=/static/main.css");
+    }
+
+    #[test]
+    fn info_of_message() {
+        assert_eq!(action_info("message", &context(&[("topic", "topic")])), "kind: message, topic=topic");
+        assert_eq!(action_info("message", &context(&[("subject", "subject")])), "kind: message, subject=subject");
+    }
+
+    #[test]
+    fn info_of_task() {
+        let context = context(&[("task", "init_clickhouse")]);
+
+        assert_eq!(action_info("task", &context), "kind: task, task=init_clickhouse");
+    }
+
+    #[test]
+    fn info_of_nats() {
+        let context = context(&[("subject", "subject"), ("fn", "UserServiceImpl::get")]);
+
+        assert_eq!(action_info("nats", &context), "kind: nats, fn=UserServiceImpl::get");
+    }
+
+    #[test]
+    fn info_without_context() {
+        assert_eq!(action_info("http", &[]), "kind: http");
     }
 }

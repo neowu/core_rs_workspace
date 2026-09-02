@@ -27,6 +27,7 @@ struct SlackMessageApiRequest<'a> {
 #[derive(Debug, Serialize)]
 struct Attachment<'a> {
     text: &'a str,
+    color: &'static str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,9 +44,11 @@ impl SlackClient {
     pub(crate) async fn send(&self, severity: Severity, message: &str) -> Result<(), Exception> {
         let _span = span!("slack");
 
+        let color = if severity == Severity::Error { "#a30101" } else { "#ff5c33" };
+
         let body = json::to_json(&SlackMessageApiRequest {
             channel: self.channel(severity),
-            attachments: [Attachment { text: message }],
+            attachments: [Attachment { color, text: message }],
         })?;
 
         let mut request = HttpRequest::new(Method::POST, "https://slack.com/api/chat.postMessage");

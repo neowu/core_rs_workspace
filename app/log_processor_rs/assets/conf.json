@@ -1,13 +1,13 @@
 {
-  "nats_uri": "env:NATS_URI",
+  "nats_uri": "dev.internal:4222",
   "clickhouse": {
-    "uri": "env:CLICKHOUSE_URI",
-    "user": "env:CLICKHOUSE_USER",
+    "uri": "http://dev.internal:8123",
+    "user": "root",
     "password": "env:CLICKHOUSE_PASSWORD"
   },
   "slack": {
     "token": "env:SLACK_TOKEN",
-    "error_channel": "env:SLACK_ERROR_CHANNEL",
-    "warn_channel": "env:SLACK_WARN_CHANNEL"
+    "error_channel": "C01649N90SG",
+    "warn_channel": "C0163881VDY"
   }
 }

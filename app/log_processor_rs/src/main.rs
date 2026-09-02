@@ -34,23 +34,23 @@ mod nats;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    nats_uri: EnvString,
+    nats_uri: String,
     clickhouse: ClickhouseConfig,
     slack: Option<SlackConfig>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ClickhouseConfig {
-    uri: EnvString,
-    user: EnvString,
+    uri: String,
+    user: String,
     password: EnvString,
 }
 
 #[derive(Debug, Deserialize)]
 struct SlackConfig {
     token: EnvString,
-    error_channel: EnvString,
-    warn_channel: EnvString,
+    error_channel: String,
+    warn_channel: String,
 }
 
 pub struct AppState {
@@ -60,7 +60,7 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Exception> {
-    let config: AppConfig = load_config!("assets/conf.json");
+    let config: AppConfig = load_config!("assets/conf.json", env = "CONFIG");
 
     let mut system = System::init(env!("CARGO_PKG_NAME"));
     system.add_metrics(consumer_metrics());
@@ -120,12 +120,10 @@ async fn main() -> Result<(), Exception> {
 fn alert_service(config: Option<SlackConfig>) -> Option<AlertService> {
     if let Some(config) = config {
         let token = String::from(config.token);
-        let error_channel = String::from(config.error_channel);
-        let warn_channel = String::from(config.warn_channel);
         assert!(!token.is_empty(), "slack token must not be empty");
-        assert!(!error_channel.is_empty(), "slack error channel must not be empty");
-        assert!(!warn_channel.is_empty(), "slack warn channel must not be empty");
-        Some(AlertService::new(SlackClient::new(token, error_channel, warn_channel)))
+        assert!(!config.error_channel.is_empty(), "slack error channel must not be empty");
+        assert!(!config.warn_channel.is_empty(), "slack warn channel must not be empty");
+        Some(AlertService::new(SlackClient::new(token, config.error_channel, config.warn_channel)))
     } else {
         None
     }
