@@ -1,28 +1,20 @@
-use demo::AppConfig;
 use framework::appender::ConsoleAppender;
-use framework::appender::GCloudAppender;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::http::StreamExt;
-use framework::load_config;
 use framework::log;
+use framework::log::trace;
 use framework::stats;
 use framework::system::System;
 use framework::warn;
 
 #[tokio::main]
 async fn main() {
-    let config: AppConfig = load_config!("assets/conf.json");
-
     let system = System::init(env!("CARGO_PKG_NAME"));
-    let system = match config.log_appender.as_str() {
-        "console" => system.start_logger(ConsoleAppender),
-        "gcloud" => system.start_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    };
+    let system = system.start_logger(ConsoleAppender);
 
     let _result = log::action("test_http_client", None, async {
         test_http().await
@@ -37,7 +29,7 @@ async fn main() {
 #[allow(unused)]
 async fn test_http() -> Result<(), Exception> {
     let http_client = HttpClient::new(HttpClientConfig::default());
-    let mut request = HttpRequest::new(Method::GET, "http://localhost:8080/504");
+    let mut request = HttpRequest::new(Method::GET, "http://localhost:8080/long");
     // request.body("{some json}".to_owned(), "application/json".to_owned());
     // request.headers.insert(header::USER_AGENT, "Rust".to_string());
 
@@ -49,7 +41,7 @@ async fn test_http() -> Result<(), Exception> {
     //     println!("line={line}");
     // }
     stats!(http_client_hello = 1);
-    warn!(error_code = "TRIGGER", "test");
+    trace();
     Ok(())
 }
 

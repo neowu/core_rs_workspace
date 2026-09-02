@@ -4,7 +4,6 @@
   "retention": "limits",
   "max_consumers": -1,
   "max_age": 2592000000000000,
-  "max_msg_size": 4194304,
   "max_bytes": 10737418240,
   "storage": "file",
   "num_replicas": 1,

@@ -19,7 +19,7 @@ axum.workspace = true
 axum-extra = { version = "*", features = ["cookie"] }
 tower-http = {version ="*", features = ["fs"]}
 
-reqwest = { version = "0", features = ["stream"] }
+reqwest = { version = "0", features = ["stream", "socks"] } # socks feature is required under VPN / shadowrocks
 
 futures = "*"
 pin-project-lite = "*"

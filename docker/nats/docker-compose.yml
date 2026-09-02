@@ -2,13 +2,14 @@ services:
   nats:
     image: nats:2-alpine
     command:
-      - --name=nats
-      - --http_port=8222
-      - --jetstream
+      - --config=/etc/nats/nats-server.conf
+    volumes:
+      - ./conf/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data
     ports:
-      - 4222:4222
-      - 6222:6222
-      - 8222:8222
+      - 4222:4222 # service port
+      - 6222:6222 # cluster port
+      - 8222:8222 # monitor port
 
   nats-cli:
     image: natsio/nats-box:latest
@@ -20,3 +21,6 @@ services:
       - ./conf:/opt/conf
     depends_on:
       - nats
+
+volumes:
+  nats-data:

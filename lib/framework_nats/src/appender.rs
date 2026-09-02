@@ -5,9 +5,11 @@ use async_nats::jetstream::Context;
 use async_nats::jetstream::ContextBuilder;
 use framework::appender::ActionMessage;
 use framework::appender::Appender;
+use framework::appender::ConsoleAppender;
 use framework::appender::MetricsMessage;
 use framework::console;
 use framework::json::to_json;
+use framework::log::Severity;
 
 pub const ACTION_SUBJECT: &str = "log.action";
 pub const METRICS_SUBJECT: &str = "log.metrics";
@@ -47,12 +49,20 @@ impl Appender for NatsAppender {
             Ok(payload) => self.publish(ACTION_SUBJECT, payload).await,
             Err(e) => console!("ERROR failed to serialize action, error={e}"),
         }
+
+        if action.severity == Severity::Error {
+            ConsoleAppender.append_action(action).await;
+        }
     }
 
     async fn append_metrics(&self, metrics: MetricsMessage) {
         match to_json(&metrics) {
             Ok(payload) => self.publish(METRICS_SUBJECT, payload).await,
             Err(e) => console!("ERROR failed to serialize metrics, error={e}"),
+        }
+
+        if metrics.severity == Severity::Error {
+            ConsoleAppender.append_metrics(metrics).await;
         }
     }
 }
