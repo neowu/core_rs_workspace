@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "app/log_processor_rs/Dockerfile", "-t", "${_IMAGE}:${_VERSION}", "-t", "${_IMAGE}:latest", "."]
+images:
+  - ${_IMAGE}:${_VERSION}
+  - ${_IMAGE}:latest
+timeout: 3600s
+options:
+  machineType: E2_HIGHCPU_8
+  dynamicSubstitutions: true
+tags: ["log-processor-rs"]
+substitutions:
+  _IMAGE: ${_REPOSITORY}/log-processor-rs

@@ -1,0 +1,15 @@
+[package]
+name = "log_processor_rs"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+framework.workspace = true
+framework_clickhouse.workspace = true
+framework_nats.workspace = true
+
+serde.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

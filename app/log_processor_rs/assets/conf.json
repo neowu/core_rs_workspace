@@ -1,0 +1,13 @@
+{
+  "nats_uri": "env:NATS_URI",
+  "clickhouse": {
+    "uri": "env:CLICKHOUSE_URI",
+    "user": "env:CLICKHOUSE_USER",
+    "password": "env:CLICKHOUSE_PASSWORD"
+  },
+  "slack": {
+    "token": "env:SLACK_TOKEN",
+    "error_channel": "env:SLACK_ERROR_CHANNEL",
+    "warn_channel": "env:SLACK_WARN_CHANNEL"
+  }
+}
