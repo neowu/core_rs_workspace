@@ -2,7 +2,6 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-use framework::appender::ConsoleAppender;
 use framework::asset_path;
 use framework::cloud::GCloudAppender;
 use framework::config::EnvString;
@@ -38,7 +37,6 @@ mod kibana;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    log_appender: String,
     kafka_uri: String,
     elasticsearch_uri: String,
     kibana_uri: String,
@@ -75,13 +73,9 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);
     consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
-    system.add_metrics(consumer.consumer_metrics());
+    system.add_metrics(consumer.metrics());
 
-    let system = match config.log_appender.as_str() {
-        "console" => system.start_logger(ConsoleAppender),
-        "gcloud" => system.start_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    };
+    let system = system.start_logger(GCloudAppender);
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;

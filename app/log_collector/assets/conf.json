@@ -1,4 +1,4 @@
 {
-  "log_appender": "console",
+  "nats_appender_url": "nats://dev.internal:4222",
   "kafka_uri": "dev.internal:9092"
 }

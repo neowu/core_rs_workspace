@@ -48,7 +48,7 @@ pub async fn main() {
 
     consumer.add_handler(&state.topics.test_single, handler_single);
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
-    system.add_metrics(consumer.consumer_metrics());
+    system.add_metrics(consumer.metrics());
 
     let system = system.start_logger(ConsoleAppender);
 

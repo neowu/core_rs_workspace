@@ -12,22 +12,30 @@ by the NATS subjects it consumes and the ClickHouse tables it owns.
 
 ## 2. Architecture
 
-```
-  app (framework::log)                     log_processor_rs
-        │                                  ┌──────────────────────────────────────────┐
-        │ nats appender                    │                                          │
-        ▼                                  │   action consumer ──┐                    │
-  ┌───────────────┐   log.action           │   (batch, durable)  │                    │
-  │ NATS          │───────────────────────▶│                     ├──▶ AlertService ───┼──▶ Slack
-  │ JetStream     │   log.metrics          │   metrics consumer ─┘    (throttled,     │
-  │ stream "log"  │───────────────────────▶│   (batch, durable)        out of band)   │
-  └───────────────┘                        │           │                              │
-                                           │           ▼                              │
-                                           │      ClickHouse insert                   │
-                                           └──────────────────────────────────────────┘
-                                                       │
-                                                       ▼
-                                            log.action_rs / trace_rs / metrics_rs
+```mermaid
+flowchart LR
+    app["app<br/>(framework::log)"]
+    nats["NATS JetStream<br/>stream &quot;log&quot;"]
+
+    subgraph proc["log_processor_rs"]
+        action["action consumer<br/>(batch, durable)"]
+        metrics["metrics consumer<br/>(batch, durable)"]
+        alert["AlertService<br/>(throttled, out of band)"]
+        ch["ClickHouse insert"]
+    end
+
+    slack["Slack"]
+    tables["log.action_rs / trace_rs / metrics_rs"]
+
+    app -->|nats appender| nats
+    nats -->|log.action| action
+    nats -->|log.metrics| metrics
+    action --> alert
+    metrics --> alert
+    action --> ch
+    metrics --> ch
+    alert --> slack
+    ch --> tables
 ```
 
 Two independent `BatchConsumer`s run as `System` services, one per subject, sharing an `Arc<AppState>`.
@@ -36,14 +44,14 @@ handler. One batch becomes one ClickHouse insert.
 
 ## 3. Module layout
 
-| Path | Responsibility |
-| --- | --- |
-| `src/main.rs` | config, startup wiring, JetStream + ClickHouse schema init, graceful shutdown |
-| `src/nats.rs` | ClickHouse `Enum8` severity and its mapping from `framework::log::Severity` |
-| `src/nats/action_handler.rs` | `ActionMessage` batch → `action_rs` + `trace_rs` rows |
-| `src/nats/metrics_handler.rs` | `MetricsMessage` batch → `metrics_rs` rows |
-| `src/alert.rs` | alert throttling state and message formatting |
-| `src/alert/slack.rs` | `chat.postMessage` client, channel selection per severity |
+| Path                          | Responsibility                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `src/main.rs`                 | config, startup wiring, JetStream + ClickHouse schema init, graceful shutdown |
+| `src/nats.rs`                 | ClickHouse `Enum8` severity and its mapping from `framework::log::Severity`   |
+| `src/nats/action_handler.rs`  | `ActionMessage` batch → `action_rs` + `trace_rs` rows                         |
+| `src/nats/metrics_handler.rs` | `MetricsMessage` batch → `metrics_rs` rows                                    |
+| `src/alert.rs`                | alert throttling state and message formatting                                 |
+| `src/alert/slack.rs`          | `chat.postMessage` client, channel selection per severity                     |
 
 The crate uses the `foo.rs` + `foo/` module layout (no `mod.rs`), as the workspace `mod_module_files`
 lint requires.
@@ -149,9 +157,9 @@ Severity is part of the key even though the requirement reads "same app and erro
 can share an error code, and the two intervals are only well defined if they are counted separately.
 
 | severity | notification interval |
-| --- | --- |
-| ERROR | 1 minute |
-| WARN | 4 hours |
+| -------- | --------------------- |
+| ERROR    | 1 minute              |
+| WARN     | 4 hours               |
 
 Within an interval the alert is suppressed and a counter increments. The first alert past the interval
 notifies and reports how many were suppressed, then resets. The count is omitted from the message when
@@ -205,13 +213,13 @@ response body is parsed and checked, not just the status code.
 
 `assets/conf.json` holds only `env:` references; no value is baked into the image.
 
-| variable | required | purpose |
-| --- | --- | --- |
-| `NATS_URI` | yes | JetStream server |
-| `CLICKHOUSE_URI` / `_USER` / `_PASSWORD` | yes | ClickHouse connection |
-| `SLACK_TOKEN` | no | bot token; empty disables alerting |
-| `SLACK_ERROR_CHANNEL` | no | channel for ERROR |
-| `SLACK_WARN_CHANNEL` | no | channel for WARN |
+| variable                                 | required | purpose                            |
+| ---------------------------------------- | -------- | ---------------------------------- |
+| `NATS_URI`                               | yes      | JetStream server                   |
+| `CLICKHOUSE_URI` / `_USER` / `_PASSWORD` | yes      | ClickHouse connection              |
+| `SLACK_TOKEN`                            | no       | bot token; empty disables alerting |
+| `SLACK_ERROR_CHANNEL`                    | no       | channel for ERROR                  |
+| `SLACK_WARN_CHANNEL`                     | no       | channel for WARN                   |
 
 `EnvString` panics when an `env:` reference resolves to a missing variable, so the Slack variables must
 be **defined but may be empty**. `alert_service()` treats any empty value as "not configured", logs

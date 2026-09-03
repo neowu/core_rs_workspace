@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use axum::Router;
-use framework::appender::ConsoleAppender;
-use framework::cloud::GCloudAppender;
 use framework::load_config;
 use framework::system::DefaultEnv;
 use framework::system::System;
@@ -10,6 +8,7 @@ use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_kafka::Topic;
 use framework_kafka::producer::Producer;
+use framework_nats::appender::NatsAppender;
 use kafka::EventMessage;
 use serde::Deserialize;
 
@@ -18,7 +17,7 @@ mod web;
 
 #[derive(Debug, Deserialize)]
 struct AppConfig {
-    log_appender: String,
+    nats_appender_url: String,
     kafka_uri: String,
 }
 
@@ -46,11 +45,7 @@ async fn main() {
     let http_server = HttpServer::new(HttpServerConfig::default());
     system.add_metrics(http_server.metrics());
 
-    let system = match config.log_appender.as_str() {
-        "console" => system.start_logger(ConsoleAppender),
-        "gcloud" => system.start_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    };
+    let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);
 
     system.start_service(|token| http_server.start(app, token));
 
