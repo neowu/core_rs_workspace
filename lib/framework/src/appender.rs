@@ -16,6 +16,12 @@ pub trait Appender: Send + 'static {
     fn append_action(&self, action: ActionMessage) -> impl Future<Output = ()> + Send;
 
     fn append_metrics(&self, metrics: MetricsMessage) -> impl Future<Output = ()> + Send;
+
+    /// Called once after the daemon drained the channel, before the process exits.
+    /// The default does nothing, an appender that buffers must flush here.
+    fn flush(&self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
 }
 
 /// Carried on the single channel feeding the appender daemon.

@@ -395,6 +395,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cloud_run_probe"
+version = "0.8.5"
+dependencies = [
+ "framework",
+ "libc",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "demo"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "axum",
  "framework",
@@ -737,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "axum",
  "axum-extra",
@@ -760,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "framework_clickhouse"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "clickhouse",
  "framework",
@@ -770,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "framework_db"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "bytes",
  "framework",
@@ -781,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "framework",
  "futures",
@@ -793,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -802,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "async-nats",
  "framework",
@@ -1375,7 +1383,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "log_collector"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "axum",
  "framework",
@@ -1388,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1400,7 +1408,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor_rs"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "framework",
  "framework_clickhouse",

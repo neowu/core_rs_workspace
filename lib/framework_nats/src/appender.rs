@@ -1,8 +1,5 @@
-use std::time::Duration;
-
+use async_nats::Client;
 use async_nats::ConnectOptions;
-use async_nats::jetstream::Context;
-use async_nats::jetstream::ContextBuilder;
 use framework::appender::ActionMessage;
 use framework::appender::Appender;
 use framework::appender::ConsoleAppender;
@@ -15,7 +12,7 @@ pub const ACTION_SUBJECT: &str = "log.action";
 pub const METRICS_SUBJECT: &str = "log.metrics";
 
 pub struct NatsAppender {
-    context: Context,
+    client: Client,
 }
 
 impl NatsAppender {
@@ -25,19 +22,14 @@ impl NatsAppender {
             .await
             .unwrap_or_else(|e| panic!("failed to connect to log nats server, error={e}"));
 
-        let context = ContextBuilder::new()
-            .timeout(Duration::from_secs(15))
-            .max_ack_inflight(20_000)
-            .backpressure_on_inflight(false) // fail fast with MaxAckPending instead of waiting
-            .build(client);
-
-        Self { context }
+        Self { client }
     }
 
-    // the ack is deliberately not awaited, the appender is a single daemon task and a server round trip
-    // per message would cap the throughput of the whole app
+    // the log stream captures log.>, so a core publish still lands in the stream, without the
+    // jetstream reply inbox, whose ack the appender would never await anyway, and which the stream
+    // never sends since it is created with no_ack
     async fn publish(&self, subject: &'static str, payload: String) {
-        if let Err(e) = self.context.publish(subject, payload.into()).await {
+        if let Err(e) = self.client.publish(subject, payload.into()).await {
             console!("ERROR failed to publish log message, subject={subject}, error={e}");
         }
     }
@@ -63,6 +55,14 @@ impl Appender for NatsAppender {
 
         if metrics.severity == Severity::Error {
             ConsoleAppender.append_metrics(metrics).await;
+        }
+    }
+
+    // publish only queues the message on the client channel, the connection task owns the socket,
+    // so without this the buffered messages die with the runtime
+    async fn flush(&self) {
+        if let Err(e) = self.client.flush().await {
+            console!("ERROR failed to flush log messages, error={e}");
         }
     }
 }

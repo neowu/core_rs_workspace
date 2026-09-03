@@ -108,6 +108,7 @@ impl System<Init> {
                     else => break,
                 }
             }
+            appender.flush().await;
             console!("appender stopped");
         }));
 
