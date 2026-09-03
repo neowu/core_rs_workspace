@@ -27,16 +27,19 @@ impl Env for CloudRunEnv {
     async fn host(&self) -> String {
         // CLOUD_RUN_EXECUTION is only set on job, worker pool falls back to the revision
         let Ok(revision) = env::var("CLOUD_RUN_EXECUTION").or_else(|_| env::var("CLOUD_RUN_REVISION")) else {
+            console!("WARN not found cloud run env, fallback to hostname");
             return hostname();
         };
 
         match instance_id().await {
             Ok(id) => {
                 let id = id.trim();
-                format!("{revision}-{}", id.get(..8).unwrap_or(id))
+                let host = format!("{revision}-{}", id.get(..8).unwrap_or(id));
+                console!("found cloud run env, host={host}");
+                host
             }
             Err(err) => {
-                console!("failed to query gcloud metadata server, only use revision, error={err}");
+                console!("WARN failed to query gcloud metadata server, only use revision, error={err}");
                 revision
             }
         }
