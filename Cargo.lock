@@ -395,14 +395,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cloud_run_probe"
-version = "0.8.5"
-dependencies = [
- "framework",
- "libc",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
