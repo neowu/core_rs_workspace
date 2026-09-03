@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use framework::appender::ConsoleAppender;
-use framework::appender::GCloudAppender;
 use framework::asset_path;
+use framework::cloud::GCloudAppender;
 use framework::config::EnvString;
 use framework::console;
 use framework::context;
@@ -13,6 +13,7 @@ use framework::load_config;
 use framework::log;
 use framework::schedule::Scheduler;
 use framework::spawn_action;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 use framework::time::Offset;
@@ -61,7 +62,7 @@ pub struct AppState {
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json");
 
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
 
     let executor = start_executor();
     system.add_metrics(executor.metrics());

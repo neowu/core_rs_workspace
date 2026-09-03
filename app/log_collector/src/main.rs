@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use axum::Router;
 use framework::appender::ConsoleAppender;
-use framework::appender::GCloudAppender;
+use framework::cloud::GCloudAppender;
 use framework::load_config;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
@@ -34,7 +35,7 @@ struct Topics {
 async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
 
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
     let state = Arc::new(AppState {
         topics: Topics { event: Topic::new("event-v2") },
         producer: Producer::new(config.kafka_uri),

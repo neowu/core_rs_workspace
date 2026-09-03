@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use demo::AppConfig;
 use framework::appender::ConsoleAppender;
-use framework::appender::GCloudAppender;
 use framework::exception::Exception;
-use framework::load_config;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::warn;
 use framework_kafka::Topic;
@@ -35,9 +33,7 @@ struct Topics {
 
 #[tokio::main]
 pub async fn main() {
-    let config: AppConfig = load_config!("assets/conf.json");
-
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
     let (tx, rx) = mpsc::channel::<TestMessage>(1000);
     let state = Arc::new(State {
         topics: Topics { test_single: Topic::new("test_single"), test_bulk: Topic::new("test") },
@@ -54,11 +50,7 @@ pub async fn main() {
     consumer.add_bulk_handler(&state.topics.test_bulk, handler_bulk);
     system.add_metrics(consumer.consumer_metrics());
 
-    let system = match config.log_appender.as_str() {
-        "console" => system.start_logger(ConsoleAppender),
-        "gcloud" => system.start_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    };
+    let system = system.start_logger(ConsoleAppender);
 
     system.start_service(|token| consumer.start(state, token));
 

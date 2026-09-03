@@ -7,6 +7,7 @@ use framework::exception::Exception;
 use framework::log;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::time::DateTime;
 use framework::time::Offset;
@@ -19,7 +20,7 @@ struct State {}
 
 #[tokio::main]
 pub async fn main() {
-    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
+    let system = System::init(env!("CARGO_BIN_NAME"), DefaultEnv).await.start_logger(ConsoleAppender);
 
     let state = Arc::new(State {});
 

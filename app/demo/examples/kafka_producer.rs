@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use framework::appender::ConsoleAppender;
 use framework::spawn_action;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 use framework_kafka::Topic;
@@ -18,7 +19,7 @@ struct TestMessage {
 pub async fn main() {
     let producer = Producer::new("dev.internal:9092".to_owned());
 
-    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
+    let system = System::init(env!("CARGO_BIN_NAME"), DefaultEnv).await.start_logger(ConsoleAppender);
     let executor = start_executor();
 
     spawn_action!("produce", async move {

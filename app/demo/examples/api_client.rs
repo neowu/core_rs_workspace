@@ -10,12 +10,13 @@ use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::log;
 use framework::spawn_action;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 
 #[tokio::main]
 async fn main() {
-    let system = System::init(env!("CARGO_BIN_NAME"));
+    let system = System::init(env!("CARGO_BIN_NAME"), DefaultEnv).await;
 
     let executor = start_executor();
 

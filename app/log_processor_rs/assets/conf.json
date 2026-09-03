@@ -1,5 +1,5 @@
 {
-  "nats_uri": "dev.internal:4222",
+  "nats_uri": "nats://dev.internal:4222",
   "clickhouse": {
     "uri": "http://dev.internal:8123",
     "user": "root",

@@ -2,6 +2,7 @@ use demo::AppConfig;
 use framework::appender::ConsoleAppender;
 use framework::load_config;
 use framework::log;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework_db::Database;
 use framework_db::DbConfig;
@@ -10,7 +11,7 @@ use framework_db::database;
 #[tokio::main]
 pub async fn main() {
     let config: AppConfig = load_config!("assets/conf.json");
-    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
+    let system = System::init(env!("CARGO_BIN_NAME"), DefaultEnv).await.start_logger(ConsoleAppender);
 
     let db = Database::new(DbConfig {
         uri: config.db_url,

@@ -1,13 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demo::AppConfig;
 use framework::appender::ConsoleAppender;
-use framework::appender::GCloudAppender;
 use framework::exception;
 use framework::exception::Exception;
-use framework::load_config;
 use framework::spawn_action;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 use framework_macro::nats_api;
@@ -48,9 +46,7 @@ impl GreetingService for GreetingServiceImpl {
 
 #[tokio::main]
 pub async fn main() {
-    let config: AppConfig = load_config!("assets/conf.json");
-
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
     let nats_client = framework_nats::connect("dev.internal:4222").await;
 
     let executor = start_executor();
@@ -61,11 +57,7 @@ pub async fn main() {
     let client = GreetingServiceClient::new(nats_client);
     system.add_metrics(service.metrics());
 
-    let system = match config.log_appender.as_str() {
-        "console" => system.start_logger(ConsoleAppender),
-        "gcloud" => system.start_logger(GCloudAppender),
-        value => panic!("unknown appender, value={value}"),
-    };
+    let system = system.start_logger(ConsoleAppender);
 
     system.start_service(|token| service.start(token));
 

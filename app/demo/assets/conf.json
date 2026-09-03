@@ -1,5 +1,5 @@
 {
-  "log_appender": "console",
+  "nats_appender_url": "nats://dev.internal:4222",
   "db_url": "postgres://dev.internal:5432/test",
   "db_user": "postgres",
   "db_password": "env:POSTGRES_PASSWORD"

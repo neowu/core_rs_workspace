@@ -12,6 +12,7 @@ use framework::shell;
 use framework::span;
 use framework::spawn_action;
 use framework::stats;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 use framework::warn;
@@ -19,7 +20,7 @@ use tokio::task::yield_now;
 
 #[tokio::main]
 async fn main() {
-    let system = System::init(env!("CARGO_BIN_NAME")).start_logger(ConsoleAppender);
+    let system = System::init(env!("CARGO_BIN_NAME"), DefaultEnv).await.start_logger(ConsoleAppender);
     let executor = start_executor();
     test_action();
 

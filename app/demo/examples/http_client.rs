@@ -8,12 +8,13 @@ use framework::http::StreamExt;
 use framework::log;
 use framework::log::trace;
 use framework::stats;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::warn;
 
 #[tokio::main]
 async fn main() {
-    let system = System::init(env!("CARGO_PKG_NAME"));
+    let system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
     let system = system.start_logger(ConsoleAppender);
 
     let _result = log::action("test_http_client", None, async {

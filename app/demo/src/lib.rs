@@ -4,6 +4,7 @@ use axum::Router;
 use framework::config::EnvString;
 use framework::load_config;
 use framework::schedule::Scheduler;
+use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
 use framework::time::Offset;
@@ -28,7 +29,7 @@ pub struct AppState {
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
-    pub log_appender: String,
+    pub nats_appender_url: String,
     pub db_url: String,
     pub db_user: String,
     pub db_password: EnvString,
@@ -38,7 +39,7 @@ pub struct AppConfig {
 pub async fn run() {
     let config: AppConfig = load_config!("assets/conf.json");
 
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
     let executor = start_executor();
 
     system.add_metrics(executor.metrics());
@@ -64,7 +65,7 @@ pub async fn run() {
     let http_server = HttpServer::new(HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() });
     system.add_metrics(http_server.metrics());
 
-    let system = system.start_logger(NatsAppender::new("dev.internal:4222").await);
+    let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);
     system.start_service(|token| scheduler.start(state, token));
     system.start_service(|token| http_server.start(app, token));
 

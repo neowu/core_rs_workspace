@@ -41,10 +41,28 @@ pub(crate) struct Context {
 pub(crate) static CONTEXT: OnceLock<Context> = OnceLock::new();
 pub(crate) static SENDER: OnceLock<UnboundedSender<Message>> = OnceLock::new();
 
+/// Resolves the host name from the runtime env, on managed platforms the os hostname carries no
+/// information, e.g. gcloud run always reports "localhost".
+/// An env must not fail the startup, fall back to [hostname] when it cannot resolve anything.
+pub trait Env {
+    fn host(&self) -> impl Future<Output = String> + Send;
+}
+
+/// Default env, uses the os hostname.
+pub struct DefaultEnv;
+
+impl Env for DefaultEnv {
+    async fn host(&self) -> String {
+        hostname()
+    }
+}
+
 impl System<Init> {
-    pub fn init(app: &'static str) -> Self {
+    pub async fn init(app: &'static str, env: impl Env) -> Self {
+        let host = env.host().await;
+
         let token = CancellationToken::new();
-        let _result = CONTEXT.set(Context { app, host: hostname() });
+        let _result = CONTEXT.set(Context { app, host });
 
         listen_shutdown_signal(token.clone());
 

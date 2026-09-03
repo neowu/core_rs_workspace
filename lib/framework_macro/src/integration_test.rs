@@ -38,8 +38,12 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         #vis async fn #ident() {
             #function
 
-            let system = ::framework::system::System::init(env!("CARGO_PKG_NAME"))
-                .start_logger(::framework::appender::ConsoleAppender);
+            let system = ::framework::system::System::init(
+                env!("CARGO_PKG_NAME"),
+                ::framework::system::DefaultEnv,
+            )
+            .await
+            .start_logger(::framework::appender::ConsoleAppender);
 
             let result = ::framework::log::action("test", None, async {
                 ::framework::context!(test = #name);

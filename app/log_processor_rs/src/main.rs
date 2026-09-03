@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use framework::appender::ConsoleAppender;
 use framework::asset_path;
+use framework::cloud::CloudRunEnv;
 use framework::config::EnvString;
 use framework::console;
 use framework::context;
@@ -62,7 +63,7 @@ pub struct AppState {
 async fn main() -> Result<(), Exception> {
     let config: AppConfig = load_config!("assets/conf.json", env = "CONFIG");
 
-    let mut system = System::init(env!("CARGO_PKG_NAME"));
+    let mut system = System::init(env!("CARGO_PKG_NAME"), CloudRunEnv).await;
     system.add_metrics(consumer_metrics());
 
     // slack notification runs on the executor, out of the consumer path
