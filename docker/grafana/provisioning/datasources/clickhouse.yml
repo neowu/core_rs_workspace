@@ -1,0 +1,18 @@
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse
+    uid: clickhouse
+    type: grafana-clickhouse-datasource
+    isDefault: true
+    jsonData:
+      host: clickhouse.ubgame.dev
+      port: 443
+      protocol: http
+      secure: true
+      username: root
+      tlsSkipVerify: false
+      defaultDatabase: log
+      defaultTable: action
+    secureJsonData:
+      password: $CLICKHOUSE_PASSWORD
