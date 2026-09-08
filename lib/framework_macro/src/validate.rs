@@ -92,20 +92,26 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
 
 fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Vec<TokenStream>> {
     let field_ident = &field.ident;
+    // str::len() returns byte length, which is not char count for non-ascii utf-8
+    let length = if field.is_string_type() {
+        quote!(chars().count())
+    } else {
+        quote!(len())
+    };
     let mut body = vec![];
 
     if let Some(max) = attr.optional_int_meta_value("max")? {
         let message = format!("{field_ident} length must not be greater than {max}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
-                if let Some(ref value) = self.#field_ident && value.len() > #max {
-                    let value = value.len();
+                if let Some(ref value) = self.#field_ident && value.#length > #max {
+                    let value = value.#length;
                     return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
-                let value = self.#field_ident.len();
+                let value = self.#field_ident.#length;
                 if value > #max {
                     return Err(framework::validation_error!(format!(#message)));
                 }
@@ -117,14 +123,14 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
         let message = format!("{field_ident} length must not be less than {min}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
-                if let Some(ref value) = self.#field_ident && value.len() < #min {
-                    let value = value.len();
+                if let Some(ref value) = self.#field_ident && value.#length < #min {
+                    let value = value.#length;
                     return Err(framework::validation_error!(format!(#message)));
                 }
             ));
         } else {
             body.push(quote!(
-                let value = self.#field_ident.len();
+                let value = self.#field_ident.#length;
                 if value < #min {
                     return Err(framework::validation_error!(format!(#message)));
                 }
@@ -203,6 +209,10 @@ mod tests {
                 col3: Option<Vec<String>>,
                 #[not_blank]
                 col4: String,
+                #[length(min = 1, max = 10)]
+                col5: String,
+                #[length(max = 10)]
+                col6: Option<String>,
                 #[validate]
                 child: Child,
                 #[validate]
@@ -245,6 +255,20 @@ mod tests {
 
                     if self.col4.chars().all(char::is_whitespace) {
                         return Err(framework::validation_error!("col4 must not be blank"));
+                    }
+
+                    let value = self.col5.chars().count();
+                    if value > 10 {
+                        return Err(framework::validation_error!(format!("col5 length must not be greater than 10, value={value}")));
+                    }
+                    let value = self.col5.chars().count();
+                    if value < 1 {
+                        return Err(framework::validation_error!(format!("col5 length must not be less than 1, value={value}")));
+                    }
+
+                    if let Some(ref value) = self.col6 && value.chars().count() > 10 {
+                        let value = value.chars().count();
+                        return Err(framework::validation_error!(format!("col6 length must not be greater than 10, value={value}")));
                     }
 
                     self.child.validate()?;

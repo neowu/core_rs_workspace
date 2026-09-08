@@ -11,7 +11,7 @@ mod validate;
 /// `#[derive(Validate)]` supports following field validations:
 /// ```
 /// #[range(min = 1, max = 10)]    // for Numeric
-/// #[length(max = 10, min = 1)]   // for String, Collections
+/// #[length(max = 10, min = 1)]   // for String (char count), Collections (element count)
 /// #[validate]                    // for nested struct
 /// #[not_blank]                   // for String
 /// ```

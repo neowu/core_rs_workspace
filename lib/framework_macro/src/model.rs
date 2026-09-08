@@ -54,6 +54,11 @@ impl FieldModel {
         self.field_type.starts_with("Option<Vec<")
     }
 
+    // includes Option<String>, since length validation applies to the inner value
+    pub(crate) fn is_string_type(&self) -> bool {
+        self.field_type == "String" || self.field_type == "Option<String>"
+    }
+
     pub(crate) fn attr(&self, attr_name: &'static str) -> Result<&AttributeModel> {
         self.optional_attr(attr_name)
             .ok_or_else(|| Error::new_spanned(&self.ident, format!("can not find {attr_name} attribute")))
