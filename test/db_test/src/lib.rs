@@ -3,7 +3,7 @@ use framework_db::DbConfig;
 
 pub fn client() -> Database {
     let config = DbConfig {
-        uri: "postgres://dev.internal:5432/postgres".to_owned(),
+        uri: "postgres://postgres.test:5432/postgres".to_owned(),
         user: "postgres".to_owned(),
         password: "postgres".to_owned(),
         client: env!("CARGO_PKG_NAME"),

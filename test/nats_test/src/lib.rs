@@ -45,5 +45,5 @@ pub async fn setup_consumer(client: Client, durable: &str, ack_policy: AckPolicy
 }
 
 pub async fn client() -> Client {
-    framework_nats::connect("dev.internal:4222").await
+    framework_nats::connect("nats.test:4222").await
 }

@@ -6,7 +6,7 @@ datasources:
     type: grafana-clickhouse-datasource
     isDefault: true
     jsonData:
-      host: clickhouse.ubgame.dev
+      host: clickhouse.test
       port: 443
       protocol: http
       secure: true
