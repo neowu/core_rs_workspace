@@ -2,7 +2,7 @@ use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 
 pub fn client() -> ClickHouse {
-    ClickHouse::new("http://dev.internal:8123", "root", "root", None)
+    ClickHouse::new("http://clickhouse.test:8123", "root", "root", None)
 }
 
 // wait_for_async_insert=0: insert() returns once the server buffered the batch

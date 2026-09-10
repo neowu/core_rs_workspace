@@ -6,4 +6,4 @@ container run -d --name clickhouse --cpus 4 --memory 2g \
     -e CLICKHOUSE_PASSWORD=root \
     -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
     --ulimit nofile=262144 \
-    clickhouse/clickhouse-server:latest
+    clickhouse/clickhouse-server:26.8
