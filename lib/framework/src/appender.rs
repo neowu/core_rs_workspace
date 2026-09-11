@@ -177,7 +177,7 @@ fn write_action(action: ActionMessage) {
     println!("{log}");
 
     if let Some(logs) = action.logs {
-        println!("{logs}");
+        eprintln!("{logs}");
     }
 }
 
