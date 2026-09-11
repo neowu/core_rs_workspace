@@ -115,7 +115,7 @@ fn load_env(exe_path: &Path, manifest_dir: &str) {
         }
         keys.push(key);
     }
-    console!("override env vars, keys={keys:?}");
+    console!("load env vars, path={}, keys={keys:?}", path.display());
 }
 
 // unlike the config, a missing .env is not an error, it just means there is nothing to load
@@ -123,7 +123,6 @@ fn load_env(exe_path: &Path, manifest_dir: &str) {
 fn resolve_env_path(exe_path: &Path, manifest_dir: &str) -> Option<PathBuf> {
     let env_path = exe_path.with_file_name(".env");
     if env_path.exists() {
-        console!("load env vars from exe path, path={}", env_path.display());
         return Some(env_path);
     }
 
@@ -131,7 +130,6 @@ fn resolve_env_path(exe_path: &Path, manifest_dir: &str) -> Option<PathBuf> {
     {
         let dev_env_path = PathBuf::from(manifest_dir).join(".env");
         if dev_env_path.exists() {
-            console!("load env vars from source code folder, path={}", dev_env_path.display());
             return Some(dev_env_path);
         }
     }
