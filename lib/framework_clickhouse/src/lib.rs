@@ -35,14 +35,7 @@ pub struct ClickHouse {
 impl ClickHouse {
     pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
         console!("create clickhouse client, uri={uri}, user={user}, db={database:?}");
-        // async_insert lets the server batch writes; wait_for_async_insert=0 returns once buffered, not flushed.
-        // inserts added later inherit these settings from the shared client.
-        let client = Client::default()
-            .with_url(uri)
-            .with_user(user)
-            .with_password(password)
-            .with_setting("async_insert", "1")
-            .with_setting("wait_for_async_insert", "0");
+        let client = Client::default().with_url(uri).with_user(user).with_password(password);
         let client = if let Some(database) = database { client.with_database(database) } else { client };
 
         Self { client }
@@ -94,16 +87,20 @@ impl ClickHouse {
         Ok(rows)
     }
 
-    // async_insert is enabled on the client, so end() hands the batch to the server and returns
-    // without waiting for the on-disk flush (wait_for_async_insert=0); the server batches across requests.
     pub async fn insert<T>(&self, table: &str, rows: &[T]) -> Result<(), Exception>
     where
         T: RowOwned + RowWrite,
     {
         let _span = span!("clickhouse");
         // Inserter accumulates the serialized byte count and row count, returned as Quantities by end().
+        // async_insert lets the server batch writes across requests; wait_for_async_insert=0 makes
+        // end() hand the batch over and return once buffered, without waiting for the on-disk flush.
         // fully qualified because the hidden clickhouse::Row trait also declares a NAME const
-        let mut inserter = self.client.inserter::<T>(table);
+        let mut inserter = self
+            .client
+            .inserter::<T>(table)
+            .with_setting("async_insert", "1")
+            .with_setting("wait_for_async_insert", "0");
         for row in rows {
             inserter.write(row).await.map_err(|err| exception!("failed to insert", source = err))?;
         }
