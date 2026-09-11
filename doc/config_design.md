@@ -21,21 +21,25 @@ should be diffable in git, secrets must never be.
 ## Resolution order
 
 ```rust
-#[cfg(debug_assertions)]
-load_dev_env(manifest_dir);
+let exe_path = current_exe().expect("cannot get current exe path");
+load_env(&exe_path, manifest_dir);
 
 let json = if let Some(json) = env_name.and_then(load_from_env) {
     json
 } else {
-    let config_path = resolve_config_path(path, manifest_dir);
+    let config_path = resolve_config_path(&exe_path, path, manifest_dir);
     read_to_string(&config_path).unwrap_or_else(|err| panic!(".."))
 };
 ```
 
-1. `.env` next to `CARGO_MANIFEST_DIR`, **debug builds only** — loaded first, not last (below).
+1. `.env` next to the current exe, else next to `CARGO_MANIFEST_DIR` in **debug builds only** —
+   loaded first, not last (below). First match wins; the two are never merged.
 2. the env var named by `env`, when set and not blank.
 3. `path` resolved next to the current exe (`exe_path.with_file_name(path)`).
 4. `path` joined onto `CARGO_MANIFEST_DIR`, **debug builds only**.
+
+`current_exe()` is resolved once and shared by steps 1 and 3, so a single process cannot disagree
+with itself about where "next to the exe" is.
 
 **Env is checked before the filesystem, not as a fallback for a missing file.** If it were a
 fallback, a stale `assets/conf.json` baked into the image would silently win whenever the env var
@@ -108,7 +112,7 @@ currently unchecked — see *Known gaps*.
 so the `'static` bound constrained nothing reachable while blocking tests from passing a temp dir.
 This also matches `asset::__resolve`.
 
-## `.env` is loaded first, in debug builds only
+## `.env` is loaded first
 
 It used to load lazily, inside the source-folder branch. Hoisting it to the top of `__load_config`
 buys two things:
@@ -117,8 +121,19 @@ buys two things:
 - `.env` can define the config env var itself, so **the deployed code path is exercisable locally**.
   Otherwise step 2 would only ever run in production.
 
-In release builds the whole function is `cfg`'d out — no cost, and no chance of reading a stray
-`.env` from a working directory.
+Release builds read it too. The file is looked up next to the exe — the same directory deployment
+already has to populate with `assets/` — so this stays exe-relative and there is still no chance of
+picking up a stray `.env` from whatever the working directory happens to be. Only the
+`CARGO_MANIFEST_DIR` fallback is debug-only, since that path does not exist in an image.
+
+A missing `.env` is not an error; it just means nothing to load. That is the opposite of the config
+itself, where nothing found is fatal, and the asymmetry is deliberate: a config is required to
+start, whereas `.env` is an overlay that a properly-provisioned deployment may not need at all.
+
+**Values in `.env` overwrite variables already present in the process environment.** Last writer
+wins, and `.env` is the last writer. This keeps debug and release behaviour identical, but it means
+a `.env` shipped next to the exe silently outranks anything the platform injected — so ship one only
+when that is what you want.
 
 The parser is deliberately minimal: line-based, `#` comments and blank lines skipped, first `=`
 splits, both sides trimmed, and a line without `=` panics. No quoting, escapes, `export` prefix or
@@ -171,7 +186,9 @@ config not found, path=/opt/app/assets/conf.json, exe=/opt/app/log_processor_rs
 
 - **Called once, at startup, before any other thread runs.** Required for `env::set_var` soundness.
 - **Env beats disk**, and a blank env var is indistinguishable from an unset one.
-- **Release builds read only next to the exe.** `.env` and the manifest fallback are debug-only.
+- **Release builds read only next to the exe.** The `CARGO_MANIFEST_DIR` fallback is debug-only;
+  `.env` itself is now read in both profiles.
+- **`.env` overwrites the process environment**, rather than filling in only what is unset.
 - **Deployment must place `assets/` beside the binary**, per each app's `Dockerfile`.
 - **The config JSON is echoed to stdout** by `console!` before parsing, deliberately — it is the
   only record of what a revision actually started with.
@@ -187,7 +204,12 @@ config not found, path=/opt/app/assets/conf.json, exe=/opt/app/log_processor_rs
 | `load_config_with_blank_env` | blank is treated as unset, falls through to the file |
 | `load_config_with_unset_env` | unset falls through to the file |
 | `load_config_with_missing_file` | panics with `config not found` |
-| `load_config_from_env_resolves_dev_env` | `.env` is loaded *before* the env var is read — fails if `load_dev_env` moves back into the file branch |
+| `load_config_from_env_resolves_dev_env` | `.env` is loaded *before* the env var is read — fails if `load_env` moves back into the file branch |
+| `load_env_from_exe_path` | the exe-dir branch, i.e. the one that has to work in release |
+| `load_env_prefers_exe_path_over_source_folder` | first match wins; the two files are not merged |
+| `load_env_overrides_existing_var` | `.env` beats an already-set process variable |
+| `load_env_with_missing_file` | a missing `.env` is not fatal |
+| `load_env_with_invalid_line` | panics with `invalid env line` |
 
 Tests pass a per-test temp dir as `manifest_dir`, which is why the `'static` bound had to go.
 
@@ -200,8 +222,15 @@ Tests pass a per-test temp dir as `manifest_dir`, which is why the `'static` bou
    `{config:?}` — none exists today — would dump credentials.
 3. **The relative-path precondition is unchecked.** Since `path` is always a literal, a
    `const { assert!(..) }` in the macro could reject an absolute path at compile time for free.
-4. **`asset_path!` duplicates the resolution** with the same precondition and the opposite argument
-   order (`__resolve(manifest_dir, path)` vs `resolve_config_path(path, manifest_dir)`). They should
-   share one function.
-5. **No test for release-build behaviour.** `cargo test` is a debug build, so the two `cfg`'d-out
-   branches are never exercised as they ship.
+4. **`asset_path!` duplicates the resolution** with the same precondition, the opposite argument
+   order, and its own `current_exe()` call (`__resolve(manifest_dir, path)` vs
+   `resolve_config_path(exe_path, path, manifest_dir)`). They should share one function.
+5. **No test for release-build behaviour.** `cargo test` is a debug build, so the `cfg`'d-out
+   branches are never exercised as they ship. Partly mitigated for `.env`: the `load_env_*` tests
+   call `load_env` directly with a synthetic exe path, so the exe-dir logic release depends on is
+   covered even though the `cfg` arms themselves are not.
+6. **Nothing places `.env` into an image.** No `Dockerfile` copies one into the runtime stage, so
+   the release path above is currently unused in deployment. Adding it needs care: neither
+   `.dockerignorefile` nor `.gcloudignore` excludes `.env`, and app `.env` files hold real
+   credentials, so a broad `COPY` would bake secrets into a published image. Prefer `env = "NAME"`
+   plus `EnvString`, as `log_processor_rs` already does.

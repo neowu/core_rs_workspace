@@ -6,6 +6,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fs::read_to_string;
 use std::ops::Deref;
+use std::path::Path;
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -25,10 +26,12 @@ use crate::console;
 /// 2. `path` resolved next to the current exe;
 /// 3. `path` resolved against `CARGO_MANIFEST_DIR`, in debug builds only.
 ///
-/// In debug builds `.env` is loaded first, so that `env:` references in the
-/// config resolve against those variables, and so that the config env var
-/// itself can be set locally to exercise the deployed path; in release builds
-/// that step is a no-op.
+/// A `.env` file is loaded first, so that `env:` references in the config
+/// resolve against those variables, and so that the config env var itself can
+/// be set locally to exercise the deployed path. It is taken from the first
+/// place it exists: next to the current exe, then `CARGO_MANIFEST_DIR` in debug
+/// builds only. A missing `.env` is not an error, but a value it does define
+/// overwrites whatever the process environment already held.
 ///
 /// Because this only runs at startup, every failure is fatal and surfaces as a
 /// panic rather than a `Result`.
@@ -48,13 +51,13 @@ pub fn __load_config<T>(env_name: Option<&str>, path: &str, manifest_dir: &str) 
 where
     T: DeserializeOwned,
 {
-    #[cfg(debug_assertions)]
-    load_dev_env(manifest_dir);
+    let exe_path = current_exe().expect("cannot get current exe path");
+    load_env(&exe_path, manifest_dir);
 
     let json = if let Some(json) = env_name.and_then(load_from_env) {
         json
     } else {
-        let config_path = resolve_config_path(path, manifest_dir);
+        let config_path = resolve_config_path(&exe_path, path, manifest_dir);
         read_to_string(&config_path)
             .unwrap_or_else(|err| panic!("failed to read config, path={}, err={err}", config_path.display()))
     };
@@ -70,8 +73,7 @@ fn load_from_env(env_name: &str) -> Option<String> {
 }
 
 #[cfg_attr(not(debug_assertions), allow(unused_variables))] // manifest_dir is only used with debug_assertions
-fn resolve_config_path(path: &str, manifest_dir: &str) -> PathBuf {
-    let exe_path = current_exe().expect("cannot get current exe path");
+fn resolve_config_path(exe_path: &Path, path: &str, manifest_dir: &str) -> PathBuf {
     let config_path = exe_path.with_file_name(path);
     if config_path.exists() {
         console!("load config from exe path, path={}", config_path.display());
@@ -90,17 +92,15 @@ fn resolve_config_path(path: &str, manifest_dir: &str) -> PathBuf {
     panic!("config not found, path={}, exe={}", config_path.display(), exe_path.display());
 }
 
-#[cfg(debug_assertions)]
-fn load_dev_env(manifest_dir: &str) {
-    let path = PathBuf::from(manifest_dir).join(".env");
-    if !path.exists() {
+fn load_env(exe_path: &Path, manifest_dir: &str) {
+    let Some(path) = resolve_env_path(exe_path, manifest_dir) else {
         return;
-    }
+    };
 
     let content = read_to_string(&path)
         .unwrap_or_else(|err| panic!("failed to read env file, path={}, err={err}", path.display()));
 
-    console!("load dev env vars, path={}", path.display());
+    let mut keys = vec![];
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -109,10 +109,34 @@ fn load_dev_env(manifest_dir: &str) {
         let Some((key, value)) = line.split_once('=') else {
             panic!("invalid env line, path={}, line={line}", path.display());
         };
+        let key = key.trim();
         unsafe {
-            env::set_var(key.trim(), value.trim());
+            env::set_var(key, value.trim());
+        }
+        keys.push(key);
+    }
+    console!("override env vars, keys={keys:?}");
+}
+
+// unlike the config, a missing .env is not an error, it just means there is nothing to load
+#[cfg_attr(not(debug_assertions), allow(unused_variables))] // manifest_dir is only used with debug_assertions
+fn resolve_env_path(exe_path: &Path, manifest_dir: &str) -> Option<PathBuf> {
+    let env_path = exe_path.with_file_name(".env");
+    if env_path.exists() {
+        console!("load env vars from exe path, path={}", env_path.display());
+        return Some(env_path);
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        let dev_env_path = PathBuf::from(manifest_dir).join(".env");
+        if dev_env_path.exists() {
+            console!("load env vars from source code folder, path={}", dev_env_path.display());
+            return Some(dev_env_path);
         }
     }
+
+    None
 }
 
 /// A string configuration loaded inline or from an environment variable.
@@ -199,6 +223,11 @@ mod tests {
         dir
     }
 
+    // load_env only ever calls with_file_name on the exe path, so the file itself need not exist
+    fn fake_exe(dir: &Path) -> PathBuf {
+        dir.join("app")
+    }
+
     fn write_config(dir: &Path, json: &str) -> String {
         write(dir.join("assets/conf.json"), json).unwrap();
         "assets/conf.json".to_owned()
@@ -275,6 +304,66 @@ mod tests {
         unsafe { env::remove_var("CONFIG_TEST_DEV_JSON") }
         unsafe { env::remove_var("CONFIG_TEST_DEV_TOKEN") }
         remove_dir_all(&dir).unwrap();
+    }
+
+    // the branch that must work in release, and the one __load_config cannot reach:
+    // the real test binary lives in target/debug/deps, which is no place to plant a .env
+    #[test]
+    fn load_env_from_exe_path() {
+        let dir = test_dir("env_exe_path");
+        write(dir.join(".env"), "CONFIG_TEST_EXE_TOKEN=exe token\n# comment\n\n").unwrap();
+
+        load_env(&fake_exe(&dir), "/framework_config_test_missing_manifest");
+
+        assert_eq!(env::var("CONFIG_TEST_EXE_TOKEN").unwrap(), "exe token");
+        unsafe { env::remove_var("CONFIG_TEST_EXE_TOKEN") }
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_env_prefers_exe_path_over_source_folder() {
+        let dir = test_dir("env_exe_wins");
+        let manifest_dir = test_dir("env_exe_wins_manifest");
+        write(dir.join(".env"), "CONFIG_TEST_BOTH_TOKEN=exe token\n").unwrap();
+        write(manifest_dir.join(".env"), "CONFIG_TEST_BOTH_TOKEN=source token\n").unwrap();
+
+        load_env(&fake_exe(&dir), manifest_dir.to_str().unwrap());
+
+        assert_eq!(env::var("CONFIG_TEST_BOTH_TOKEN").unwrap(), "exe token"); // first match wins, the two are never merged
+        unsafe { env::remove_var("CONFIG_TEST_BOTH_TOKEN") }
+        remove_dir_all(&dir).unwrap();
+        remove_dir_all(&manifest_dir).unwrap();
+    }
+
+    #[test]
+    fn load_env_overrides_existing_var() {
+        let dir = test_dir("env_override");
+        write(dir.join(".env"), "CONFIG_TEST_OVERRIDE_TOKEN=from env file\n").unwrap();
+        unsafe { env::set_var("CONFIG_TEST_OVERRIDE_TOKEN", "from process") }
+
+        load_env(&fake_exe(&dir), "/framework_config_test_missing_manifest");
+
+        assert_eq!(env::var("CONFIG_TEST_OVERRIDE_TOKEN").unwrap(), "from env file"); // .env wins over the process env
+        unsafe { env::remove_var("CONFIG_TEST_OVERRIDE_TOKEN") }
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn load_env_with_missing_file() {
+        let dir = test_dir("env_missing");
+
+        load_env(&fake_exe(&dir), "/framework_config_test_missing_manifest"); // not fatal, unlike a missing config
+
+        remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid env line")]
+    fn load_env_with_invalid_line() {
+        let dir = test_dir("env_invalid_line");
+        write(dir.join(".env"), "CONFIG_TEST_INVALID_TOKEN\n").unwrap();
+
+        load_env(&fake_exe(&dir), "/framework_config_test_missing_manifest");
     }
 
     #[test]
