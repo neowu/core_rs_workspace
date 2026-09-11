@@ -77,6 +77,23 @@ impl ClickHouse {
         Ok(row)
     }
 
+    pub async fn select_all<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<Vec<T>, Exception>
+    where
+        T: RowOwned + RowRead,
+    {
+        let _span = span!("clickhouse");
+        log!("select_all, sql={sql}, params={params:?}");
+        let mut query = self.client.query(sql);
+        for param in params {
+            query = param.bind(query);
+        }
+        let rows = query.fetch_all().await.map_err(|err| exception!("failed to execute statement", source = err))?;
+
+        stats!(clickhouse_read_rows = rows.len());
+
+        Ok(rows)
+    }
+
     // async_insert is enabled on the client, so end() hands the batch to the server and returns
     // without waiting for the on-disk flush (wait_for_async_insert=0); the server batches across requests.
     pub async fn insert<T>(&self, table: &str, rows: &[T]) -> Result<(), Exception>

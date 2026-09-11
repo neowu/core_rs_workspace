@@ -66,6 +66,11 @@ async fn entity() -> Result<(), Exception> {
         assert_eq!(entity, *expected);
     }
 
+    for entity in clickhouse.select_all::<Entity>("SELECT ?fields FROM entity ORDER BY id ASC", &[]).await? {
+        let expected = entities.iter().find(|e| e.id == entity.id).unwrap();
+        assert_eq!(entity, *expected);
+    }
+
     // toString() renders what the server sees, so a wrong enum mapping or array element type
     // fails here even though the symmetric serde round trip above would still pass
     let (count, tags, levels) = clickhouse
