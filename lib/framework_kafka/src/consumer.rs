@@ -236,7 +236,7 @@ where
         stats!(kafka_read_messages = messages.len(), kafka_read_bytes = bytes);
         if let Some(timestamp) = raw_messages.iter().filter_map(timestamp).min() {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
-            let lag = (DateTime::now() - timestamp).as_millis();
+            let lag = (DateTime::now() - timestamp).as_nanos();
             if lag > 0 {
                 stats!(kafka_consumer_lag = lag);
             }
@@ -334,7 +334,7 @@ where
         stats!(kafka_read_entries = 1, kafka_read_bytes = payload.len());
         if let Some(timestamp) = timestamp(&raw_message) {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
-            let lag = (DateTime::now() - timestamp).as_millis();
+            let lag = (DateTime::now() - timestamp).as_nanos();
             if lag > 0 {
                 stats!(kafka_consumer_lag = lag);
             }
