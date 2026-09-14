@@ -153,6 +153,7 @@ async fn init_clickhouse(clickhouse: ClickHouse) -> Result<(), Exception> {
         clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/action.sql"))?, &[]).await?;
         clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/trace.sql"))?, &[]).await?;
         clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/event.sql"))?, &[]).await?;
+        clickhouse.execute(&fs::read_to_string(asset_path!("assets/clickhouse/stat.sql"))?, &[]).await?;
 
         Ok(())
     })

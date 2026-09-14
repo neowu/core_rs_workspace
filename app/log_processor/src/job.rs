@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use framework::time::Date;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
+use framework::time::Date;
 use regex::Regex;
 
 use crate::AppState;
@@ -57,6 +57,8 @@ pub(crate) async fn archive_to_gcs_job(state: Arc<AppState>, context: JobContext
                 &[&format!("log/event/{year}/event-{date}.parquet"), &yesterday],
             )
             .await?;
+
+        // no need to export stats into parquet, as it is time sensitive info
     }
     Ok(())
 }
