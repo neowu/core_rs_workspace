@@ -3,6 +3,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::http::StatusCode;
 use framework::asset_path;
+use framework::log::trace;
 use framework::web::route::get;
 use framework::web::server::ServeDir;
 use framework::web::server::ServeFile;
@@ -20,6 +21,7 @@ pub(crate) fn routes() -> Router {
 }
 
 async fn http_503() -> StatusCode {
+    trace();
     StatusCode::SERVICE_UNAVAILABLE
 }
 

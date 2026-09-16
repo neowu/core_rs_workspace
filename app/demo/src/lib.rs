@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use axum::Router;
+use framework::appender::ConsoleAppender;
 use framework::config::EnvString;
 use framework::load_config;
 use framework::schedule::Scheduler;
@@ -13,7 +14,6 @@ use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_db::Database;
 use framework_db::DbConfig;
-use framework_nats::appender::NatsAppender;
 use serde::Deserialize;
 
 use crate::job::demo_job;
@@ -65,7 +65,8 @@ pub async fn run() {
     let http_server = HttpServer::new(HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() });
     system.add_metrics(http_server.metrics());
 
-    let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);
+    // let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);
+    let system = system.start_logger(ConsoleAppender);
     system.start_service(|token| scheduler.start(state, token));
     system.start_service(|token| http_server.start(app, token));
 

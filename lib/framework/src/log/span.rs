@@ -84,10 +84,10 @@ mod tests {
 
     fn with_action<F: FnOnce()>(task: F) -> Action {
         // mirrors ActionFuture: the action comes out of the task local slot after the scope ends
-        let mut scope = pin!(CURRENT_ACTION.scope(
-            RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())),
-            async { task() },
-        ));
+        let mut scope = pin!(
+            CURRENT_ACTION
+                .scope(RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())), async { task() },)
+        );
         block_on(scope.as_mut());
         scope.take_value().map(RefCell::into_inner).expect("action must be in scope")
     }

@@ -6,8 +6,11 @@ use axum::Router;
 use axum::extract::MatchedPath;
 use axum::extract::Request;
 use axum::extract::State;
+use axum::http::HeaderName;
 use axum::http::StatusCode;
 use axum::http::header;
+use axum::http::uri::Authority;
+use axum::http::uri::PathAndQuery;
 use axum::middleware;
 use axum::middleware::Next;
 use axum::response::IntoResponse as _;
@@ -25,6 +28,8 @@ use crate::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
 use crate::web::client_info::client_info;
+
+const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 pub struct HttpServerConfig {
     pub bind_address: String,
@@ -102,7 +107,7 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
     let _counter = counter.increase();
 
     let response = log::action("http", ref_id, async {
-        context!(uri = request.uri().to_string(), method = request.method().as_str());
+        context!(uri = request_url(&request), method = request.method().as_str());
 
         for (name, value) in request.headers() {
             if name != header::COOKIE {
@@ -150,4 +155,63 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
     })
     .await;
     if let Ok(response) = response { response } else { StatusCode::INTERNAL_SERVER_ERROR.into_response() }
+}
+
+// http/1.1 request uri is in origin-form (only path and query), rebuild the absolute url with scheme and host
+fn request_url<T>(request: &http::Request<T>) -> String {
+    let uri = request.uri();
+
+    let scheme = request
+        .headers()
+        .get(X_FORWARDED_PROTO)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(',').next().unwrap_or(value).trim())
+        .or_else(|| uri.scheme_str())
+        .unwrap_or("http");
+
+    let host = uri
+        .authority()
+        .map(Authority::as_str)
+        .or_else(|| request.headers().get(header::HOST).and_then(|value| value.to_str().ok()));
+
+    let path_and_query = uri.path_and_query().map_or("/", PathAndQuery::as_str);
+
+    match host {
+        Some(host) => format!("{scheme}://{host}{path_and_query}"),
+        None => path_and_query.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_url_with_host_header() {
+        let request = Request::builder().uri("/503?key=value").header(header::HOST, "localhost:8080").body(()).unwrap();
+        assert_eq!(request_url(&request), "http://localhost:8080/503?key=value");
+    }
+
+    #[test]
+    fn request_url_with_forwarded_proto() {
+        let request = Request::builder()
+            .uri("/503")
+            .header(header::HOST, "example.com")
+            .header(X_FORWARDED_PROTO, "https, http")
+            .body(())
+            .unwrap();
+        assert_eq!(request_url(&request), "https://example.com/503");
+    }
+
+    #[test]
+    fn request_url_with_absolute_uri() {
+        let request = Request::builder().uri("https://example.com/503").body(()).unwrap();
+        assert_eq!(request_url(&request), "https://example.com/503");
+    }
+
+    #[test]
+    fn request_url_without_host() {
+        let request = Request::builder().uri("/503").body(()).unwrap();
+        assert_eq!(request_url(&request), "/503");
+    }
 }
