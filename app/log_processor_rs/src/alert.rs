@@ -14,8 +14,8 @@ use crate::alert::slack::SlackClient;
 
 pub(crate) mod slack;
 
-// an ERROR needs attention right away, a WARN is only worth a periodic reminder
-const ERROR_INTERVAL: Duration = Duration::from_secs(60);
+// an ERROR needs immediate attention, a WARN is only worth a periodic reminder
+const ERROR_INTERVAL: Duration = Duration::from_mins(5);
 const WARN_INTERVAL: Duration = Duration::from_hours(4);
 
 // bounds the state, an entry past its interval notifies on the next alert anyway, so dropping it only loses the count
