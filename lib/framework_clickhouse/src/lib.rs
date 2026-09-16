@@ -49,7 +49,10 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        query.execute().await.map_err(|err| exception!("failed to execute statement", source = err))
+        query
+            .execute()
+            .await
+            .map_err(|err| exception!("failed to execute statement", code = "CLICKHOUSE_ERROR", source = err))
     }
 
     pub async fn select_one<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<Option<T>, Exception>
@@ -62,8 +65,10 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        let row =
-            query.fetch_optional().await.map_err(|err| exception!("failed to execute statement", source = err))?;
+        let row = query
+            .fetch_optional()
+            .await
+            .map_err(|err| exception!("failed to select one", code = "CLICKHOUSE_ERROR", source = err))?;
 
         stats!(clickhouse_read_rows = if row.is_some() { 1 } else { 0 });
 
@@ -80,7 +85,10 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        let rows = query.fetch_all().await.map_err(|err| exception!("failed to execute statement", source = err))?;
+        let rows = query
+            .fetch_all()
+            .await
+            .map_err(|err| exception!("failed to select all", code = "CLICKHOUSE_ERROR", source = err))?;
 
         stats!(clickhouse_read_rows = rows.len());
 
@@ -102,9 +110,15 @@ impl ClickHouse {
             .with_setting("async_insert", "1")
             .with_setting("wait_for_async_insert", "0");
         for row in rows {
-            inserter.write(row).await.map_err(|err| exception!("failed to insert", source = err))?;
+            inserter
+                .write(row)
+                .await
+                .map_err(|err| exception!("failed to insert", code = "CLICKHOUSE_ERROR", source = err))?;
         }
-        let quantities = inserter.end().await.map_err(|err| exception!("failed to commit insert", source = err))?;
+        let quantities = inserter
+            .end()
+            .await
+            .map_err(|err| exception!("failed to commit insert", code = "CLICKHOUSE_ERROR", source = err))?;
         stats!(clickhouse_write_rows = quantities.rows, clickhouse_write_bytes = quantities.bytes);
         Ok(())
     }
