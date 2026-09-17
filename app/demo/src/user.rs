@@ -1,6 +1,7 @@
 use framework::exception::Exception;
 use framework_db::Json;
 use framework_db::types::Timestamp;
+use framework_macro::ApiType;
 use framework_macro::Entity;
 use framework_macro::Validate;
 use framework_macro::api;
@@ -26,7 +27,7 @@ pub struct User {
     pub created_date: Timestamp,
 }
 
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate, ApiType)]
 pub struct CreateUserRequest {
     #[not_blank]
     pub name: String,
@@ -34,13 +35,13 @@ pub struct CreateUserRequest {
     pub rating: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate, ApiType)]
 pub struct GetUserByNameRequest {
     #[not_blank]
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ApiType)]
 pub struct GetUserResponse {
     pub id: Uuid,
     pub name: String,
@@ -48,7 +49,7 @@ pub struct GetUserResponse {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ApiType)]
 pub struct UpdateUserRequest {
     pub id: Uuid,
     pub rating: Option<i32>,

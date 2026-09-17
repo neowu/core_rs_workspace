@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use axum::Router;
-use framework::time::DateTime;
+use framework::api::ServiceDefinition;
+use framework::api::TypeRegistry;
 use framework::exception::Exception;
+use framework::time::DateTime;
 use framework::validate::Validator as _;
 use framework_db::Json;
 use framework_db::repository;
@@ -20,6 +22,10 @@ use crate::user::UserService;
 pub fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { state };
     UserService::route(Arc::new(service))
+}
+
+pub fn api_definition(registry: &mut TypeRegistry) -> ServiceDefinition {
+    UserServiceImpl::api_definition(registry)
 }
 
 struct UserServiceImpl {

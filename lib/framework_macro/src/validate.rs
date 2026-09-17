@@ -3,7 +3,7 @@ use quote::quote;
 use syn::Result;
 
 use crate::model;
-use crate::model::AttributeModel;
+use crate::model::ConstraintsModel;
 use crate::model::FieldModel;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
@@ -26,17 +26,13 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 }
 
 fn build_field_validators(field: &FieldModel) -> Result<Vec<TokenStream>> {
+    let constraints = field.constraints()?;
     let mut body = vec![];
 
-    if let Some(attr) = field.optional_attr("range") {
-        body.extend(build_range_validator(field, attr)?);
-    }
+    body.extend(build_range_validator(field, &constraints));
+    body.extend(build_length_validator(field, &constraints));
 
-    if let Some(attr) = field.optional_attr("length") {
-        body.extend(build_length_validator(field, attr)?);
-    }
-
-    if field.optional_attr("not_blank").is_some() {
+    if constraints.not_blank {
         body.push(build_not_blank_validator(field));
     }
 
@@ -47,11 +43,11 @@ fn build_field_validators(field: &FieldModel) -> Result<Vec<TokenStream>> {
     Ok(body)
 }
 
-fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Vec<TokenStream>> {
+fn build_range_validator(field: &FieldModel, constraints: &ConstraintsModel) -> Vec<TokenStream> {
     let field_ident = &field.ident;
     let mut body = vec![];
 
-    if let Some(max) = attr.optional_int_meta_value("max")? {
+    if let Some(max) = &constraints.max {
         let message = format!("{field_ident} must not be greater than {max}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
@@ -69,7 +65,7 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
         }
     }
 
-    if let Some(min) = attr.optional_int_meta_value("min")? {
+    if let Some(min) = &constraints.min {
         let message = format!("{field_ident} must not be less than {min}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
@@ -87,10 +83,10 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
         }
     }
 
-    Ok(body)
+    body
 }
 
-fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Vec<TokenStream>> {
+fn build_length_validator(field: &FieldModel, constraints: &ConstraintsModel) -> Vec<TokenStream> {
     let field_ident = &field.ident;
     // str::len() returns byte length, which is not char count for non-ascii utf-8
     let length = if field.is_string_type() {
@@ -100,7 +96,7 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
     };
     let mut body = vec![];
 
-    if let Some(max) = attr.optional_int_meta_value("max")? {
+    if let Some(max) = &constraints.max_length {
         let message = format!("{field_ident} length must not be greater than {max}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
@@ -119,7 +115,7 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
         }
     }
 
-    if let Some(min) = attr.optional_int_meta_value("min")? {
+    if let Some(min) = &constraints.min_length {
         let message = format!("{field_ident} length must not be less than {min}, value={{value}}");
         if field.is_optional_type() {
             body.push(quote!(
@@ -138,7 +134,7 @@ fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<V
         }
     }
 
-    Ok(body)
+    body
 }
 
 fn build_not_blank_validator(field: &FieldModel) -> TokenStream {

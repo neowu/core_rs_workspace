@@ -756,6 +756,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower-http",
+ "uuid",
 ]
 
 [[package]]

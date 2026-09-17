@@ -4,3 +4,4 @@
 /.zed/
 .env
 /build/env.toml
+/report

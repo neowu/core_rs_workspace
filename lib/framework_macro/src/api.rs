@@ -23,6 +23,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
     let mut route_statements = vec![];
     let mut client_methods = vec![];
+    let mut operation_definitions = vec![];
 
     for item in &mut trait_def.items {
         let TraitItem::Fn(method) = item else {
@@ -39,6 +40,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         method.sig.output = ReturnType::Type(RArrow::default(), Box::new(new_return));
         route_statements.push(build_route_statement(&model));
         client_methods.push(build_client_method(&model));
+        operation_definitions.push(build_operation_definition(&model));
     }
 
     trait_def.items.push(TraitItem::Fn(parse_quote! {
@@ -59,6 +61,19 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             let router = Router::new();
             #(#route_statements)*
             router
+        }
+    }));
+
+    let trait_name = trait_ident.to_string();
+    trait_def.items.push(TraitItem::Fn(parse_quote! {
+        fn api_definition(registry: &mut ::framework::api::TypeRegistry) -> ::framework::api::ServiceDefinition
+        where
+            Self: Sized,
+        {
+            ::framework::api::ServiceDefinition {
+                name: #trait_name.to_owned(),
+                operations: vec![#(#operation_definitions),*],
+            }
         }
     }));
 
@@ -90,6 +105,7 @@ struct MethodModel {
     filter: TokenStream,
     extractor: TokenStream,
     client_call: Ident,
+    http_method: &'static str,
 }
 
 fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
@@ -99,8 +115,8 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
         return Err(Error::new_spanned(method, "method must be `async fn`"));
     }
 
-    if method_ident == "route" {
-        return Err(Error::new_spanned(method, "method name `route` is reserved by #[api]"));
+    if method_ident == "route" || method_ident == "api_definition" {
+        return Err(Error::new_spanned(method, format!("method name `{method_ident}` is reserved by #[api]")));
     }
 
     let mut http_method = None;
@@ -109,17 +125,17 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     for attr in &method.attrs {
         let attr_path = attr.path();
         if attr_path.is_ident("get") {
-            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("get")));
+            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("get"), "GET"));
         } else if attr_path.is_ident("post") {
-            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("post")));
+            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("post"), "POST"));
         } else if attr_path.is_ident("put") {
-            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("put")));
+            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("put"), "PUT"));
         } else if attr_path.is_ident("path") {
             path = Some(attr.parse_args::<LitStr>()?);
         }
     }
 
-    let (filter, extractor, client_call) = http_method.ok_or_else(|| {
+    let (filter, extractor, client_call, http_method) = http_method.ok_or_else(|| {
         Error::new_spanned(method, "missing HTTP method attribute, expected #[get], #[post] or #[put]")
     })?;
     let path = path.ok_or_else(|| Error::new_spanned(method, "missing #[path(\"...\")] attribute"))?;
@@ -147,7 +163,30 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     };
     let response_type = (**return_type).clone();
 
-    Ok(MethodModel { method_ident, path, request_type, response_type, filter, extractor, client_call })
+    Ok(MethodModel { method_ident, path, request_type, response_type, filter, extractor, client_call, http_method })
+}
+
+fn build_operation_definition(model: &MethodModel) -> TokenStream {
+    let name = model.method_ident.to_string();
+    let http_method = model.http_method;
+    let path = &model.path;
+    let response_type = &model.response_type;
+
+    let request = if let Some(request_type) = &model.request_type {
+        quote!(Some(<#request_type as ::framework::api::ApiType>::type_ref(registry)))
+    } else {
+        quote!(None)
+    };
+
+    quote! {
+        ::framework::api::OperationDefinition {
+            name: #name.to_owned(),
+            method: #http_method.to_owned(),
+            path: #path.to_owned(),
+            request: #request,
+            response: <#response_type as ::framework::api::ApiType>::optional_type_ref(registry),
+        }
+    }
 }
 
 fn build_route_statement(model: &MethodModel) -> TokenStream {
@@ -212,6 +251,7 @@ mod tests {
     use super::build;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn build_api() {
         let source = quote! {
             #[api]
@@ -284,6 +324,38 @@ mod tests {
                             }),
                         );
                         router
+                    }
+
+                    fn api_definition(registry: &mut ::framework::api::TypeRegistry) -> ::framework::api::ServiceDefinition
+                    where
+                        Self: Sized,
+                    {
+                        ::framework::api::ServiceDefinition {
+                            name: "UserService".to_owned(),
+                            operations: vec![
+                                ::framework::api::OperationDefinition {
+                                    name: "search".to_owned(),
+                                    method: "GET".to_owned(),
+                                    path: "/user/search".to_owned(),
+                                    request: Some(<SearchUserRequest as ::framework::api::ApiType>::type_ref(registry)),
+                                    response: <Result<SearchUserResponse, Exception> as ::framework::api::ApiType>::optional_type_ref(registry),
+                                },
+                                ::framework::api::OperationDefinition {
+                                    name: "create".to_owned(),
+                                    method: "POST".to_owned(),
+                                    path: "/user/create".to_owned(),
+                                    request: Some(<CreateUserRequest as ::framework::api::ApiType>::type_ref(registry)),
+                                    response: <Result<CreateUserResponse, Exception> as ::framework::api::ApiType>::optional_type_ref(registry),
+                                },
+                                ::framework::api::OperationDefinition {
+                                    name: "update".to_owned(),
+                                    method: "PUT".to_owned(),
+                                    path: "/user/update".to_owned(),
+                                    request: Some(<UpdateUserRequest as ::framework::api::ApiType>::type_ref(registry)),
+                                    response: <Result<UpdateUserResponse, Exception> as ::framework::api::ApiType>::optional_type_ref(registry),
+                                }
+                            ],
+                        }
                     }
                 }
 
@@ -373,6 +445,31 @@ mod tests {
                         );
                         router
                     }
+
+                    fn api_definition(registry: &mut ::framework::api::TypeRegistry) -> ::framework::api::ServiceDefinition
+                    where
+                        Self: Sized,
+                    {
+                        ::framework::api::ServiceDefinition {
+                            name: "UserService".to_owned(),
+                            operations: vec![
+                                ::framework::api::OperationDefinition {
+                                    name: "get_all".to_owned(),
+                                    method: "GET".to_owned(),
+                                    path: "/user/get_all".to_owned(),
+                                    request: None,
+                                    response: <Result<GetAllUserResponse, Exception> as ::framework::api::ApiType>::optional_type_ref(registry),
+                                },
+                                ::framework::api::OperationDefinition {
+                                    name: "create".to_owned(),
+                                    method: "POST".to_owned(),
+                                    path: "/user/create".to_owned(),
+                                    request: Some(<CreateUserRequest as ::framework::api::ApiType>::type_ref(registry)),
+                                    response: <Result<(), Exception> as ::framework::api::ApiType>::optional_type_ref(registry),
+                                }
+                            ],
+                        }
+                    }
                 }
 
                 pub struct UserServiceClient {
@@ -410,5 +507,19 @@ mod tests {
 
         let error = build(source).unwrap_err();
         assert_eq!(error.to_string(), "method name `route` is reserved by #[api]");
+    }
+
+    #[test]
+    fn build_api_with_reserved_api_definition_name() {
+        let source = quote! {
+            pub trait UserService {
+                #[get]
+                #[path("/user/api")]
+                async fn api_definition(&self) -> Result<(), Exception>;
+            }
+        };
+
+        let error = build(source).unwrap_err();
+        assert_eq!(error.to_string(), "method name `api_definition` is reserved by #[api]");
     }
 }

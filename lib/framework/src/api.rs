@@ -9,3 +9,15 @@ pub struct ErrorResponse {
     pub code: Option<String>,
     pub message: String,
 }
+
+pub use definition::ApiDefinition;
+pub use definition::ApiType;
+pub use definition::Constraints;
+pub use definition::FieldDefinition;
+pub use definition::OperationDefinition;
+pub use definition::ServiceDefinition;
+pub use definition::TypeDefinition;
+pub use definition::TypeRef;
+pub use definition::TypeRegistry;
+
+mod definition;

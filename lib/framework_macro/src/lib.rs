@@ -1,6 +1,7 @@
 use syn::Error;
 
 mod api;
+mod api_type;
 mod entity;
 mod enum8;
 mod integration_test;
@@ -18,6 +19,16 @@ mod validate;
 #[proc_macro_derive(Validate, attributes(range, length, validate, not_blank))]
 pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// `#[derive(ApiType)]` describes a struct (named fields) or fieldless enum for `GET /_sys/api`,
+/// required by every request/response type of `#[api]` methods.
+/// Reads the same validation attributes as `Validate` (`range`, `length`, `not_blank`) into field constraints,
+/// the simple type name must be unique within the app, generic types are not supported.
+/// Rust field/variant names are the wire names, so `#[serde(rename)]` and `#[serde(rename_all)]` are rejected.
+#[proc_macro_derive(ApiType, attributes(range, length, validate, not_blank))]
+pub fn api_type(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    api_type::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// Derive `framework_db::Entity` for a struct, plus a `FIELD_<NAME>` const per column.
@@ -46,10 +57,12 @@ pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// `#[api]` derives an axum route builder and an HTTP client from a trait.
 /// Each method must be `async fn`, annotated with one of `#[get]`, `#[post]`, `#[put]` plus `#[path("/...")]`,
 /// take `&self` and a single request parameter, and return `Result<..., Exception>`.
-/// Adds a `route(service)` associated fn to the trait, and generates a sibling `<Trait>Client` struct
-/// implementing the trait, both with the trait's own visibility.
+/// Adds `route(service)` and `api_definition(registry)` associated fns to the trait, and generates a sibling
+/// `<Trait>Client` struct implementing the trait, both with the trait's own visibility.
+/// Request/response types must derive `ApiType`.
 /// ```text
 /// let router = UserService::route(Arc::new(service));
+/// apis.add(UserServiceImpl::api_definition);
 /// let client = UserServiceClient::new(http_client, api_url, client);
 /// ```
 #[proc_macro_attribute]

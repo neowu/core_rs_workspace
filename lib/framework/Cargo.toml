@@ -10,6 +10,8 @@ serde_html_form = "*"
 
 time = { version = "*", features = ["formatting", "parsing"] }
 
+uuid.workspace = true
+
 tokio.workspace = true
 tokio-util = { version = "*", features = ["rt"] }
 tokio-stream = "*"

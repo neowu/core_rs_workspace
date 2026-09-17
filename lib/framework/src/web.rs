@@ -6,6 +6,7 @@ pub mod client_info;
 pub mod error;
 pub mod route;
 pub mod server;
+pub mod sys;
 
 const REF_ID: HeaderName = HeaderName::from_static("ref-id");
 const CLIENT: HeaderName = HeaderName::from_static("client");

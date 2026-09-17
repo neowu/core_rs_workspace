@@ -12,6 +12,7 @@ use framework::time::Offset;
 use framework::time::SignedDuration;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
+use framework::web::sys::ApiRegistry;
 use framework_db::Database;
 use framework_db::DbConfig;
 use serde::Deserialize;
@@ -58,8 +59,12 @@ pub async fn run() {
     scheduler.schedule_fixed_rate("demo", demo_job, SignedDuration::from_hours(1));
     let scheduler_routes = scheduler.routes(state);
 
+    let mut apis = ApiRegistry::new(env!("CARGO_PKG_NAME"));
+    apis.add(user::web::api_definition);
+
     let app = Router::new();
     let app = app.merge(scheduler_routes);
+    let app = app.merge(apis.routes());
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes());
     let http_server = HttpServer::new(HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() });
