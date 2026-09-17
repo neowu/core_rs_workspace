@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Session 2 — Futures, async/await, Tokio &amp; Pin</title>
+<style>
+/* ─────────────────────────────  tokens  ───────────────────────────── */
+:root{
+  --bg:#0b0f17;
+  --bg2:#111726;
+  --panel:rgba(255,255,255,.045);
+  --panel-b:rgba(255,255,255,.10);
+  --fg:#e8edf7;
+  --dim:#9aa7bd;
+  --dim2:#6c7a92;
+  --rust:#f74c00;
+  --rust2:#ff8a3d;
+  --cyan:#3ddbd9;
+  --violet:#a78bfa;
+  --green:#5ee08a;
+  --red:#ff5a6a;
+  --yellow:#ffcb47;
+  --mono:'SFMono-Regular',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',system-ui,sans-serif;
+  --r:16px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+  overflow:hidden;-webkit-font-smoothing:antialiased;
+}
+
+/* ───────────────────────────  backdrop  ──────────────────────────── */
+#bg{position:fixed;inset:0;z-index:0;overflow:hidden;background:
+   radial-gradient(1200px 700px at 12% -10%, #1a2338 0%, transparent 60%),
+   radial-gradient(900px 600px at 95% 110%, #221426 0%, transparent 60%),
+   var(--bg);}
+#bg .grid{position:absolute;inset:-50%;
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+  background-size:52px 52px;transform:perspective(600px) rotateX(58deg) translateY(-6%);
+  mask-image:radial-gradient(ellipse 70% 60% at 50% 35%,#000 20%,transparent 75%);
+  animation:drift 40s linear infinite;}
+@keyframes drift{to{background-position:0 520px,520px 0}}
+.orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.36;mix-blend-mode:screen}
+.orb.a{width:420px;height:420px;background:var(--rust);top:-120px;left:-80px;animation:float1 19s ease-in-out infinite}
+.orb.b{width:380px;height:380px;background:#2b6cff;bottom:-140px;right:-60px;animation:float2 23s ease-in-out infinite}
+.orb.c{width:300px;height:300px;background:var(--violet);top:45%;left:60%;animation:float3 27s ease-in-out infinite}
+@keyframes float1{50%{transform:translate(120px,90px) scale(1.15)}}
+@keyframes float2{50%{transform:translate(-120px,-70px) scale(1.2)}}
+@keyframes float3{50%{transform:translate(-90px,110px) scale(.85)}}
+#stars{position:absolute;inset:0}
+#fx{position:fixed;inset:0;z-index:99;pointer-events:none}
+
+/* ─────────────────────────────  stage  ───────────────────────────── */
+#deck{position:relative;z-index:1;height:100%;width:100%}
+.slide{
+  position:absolute;inset:0;display:none;
+  padding:46px 60px 76px;overflow:auto;
+  flex-direction:column;
+}
+.slide.active{display:flex;animation:slideIn .5s cubic-bezier(.2,.8,.25,1) both}
+.slide.back.active{animation:slideInBack .5s cubic-bezier(.2,.8,.25,1) both}
+@keyframes slideIn{from{opacity:0;transform:translateX(56px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes slideInBack{from{opacity:0;transform:translateX(-56px) scale(.985)}to{opacity:1;transform:none}}
+.slide::-webkit-scrollbar{width:9px}
+.slide::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:9px}
+
+/* ───────────────────────────  chrome  ────────────────────────────── */
+#progress{position:fixed;top:0;left:0;height:3px;z-index:60;
+  background:linear-gradient(90deg,var(--rust),var(--rust2),var(--yellow));
+  box-shadow:0 0 14px var(--rust);transition:width .45s cubic-bezier(.2,.8,.25,1);width:0}
+#hud{position:fixed;bottom:16px;left:0;right:0;z-index:60;display:flex;align-items:center;
+  justify-content:center;gap:16px;pointer-events:none}
+#dots{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;max-width:62vw;pointer-events:auto}
+.dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;
+  transition:all .25s;border:0;padding:0}
+.dot:hover{background:rgba(255,255,255,.55);transform:scale(1.5)}
+.dot.on{background:var(--rust);box-shadow:0 0 10px var(--rust);width:22px;border-radius:5px}
+#counter{position:fixed;bottom:14px;right:22px;z-index:60;font-family:var(--mono);font-size:12px;
+  color:var(--dim2);letter-spacing:.08em}
+#hint{position:fixed;bottom:14px;left:22px;z-index:60;font-family:var(--mono);font-size:11px;
+  color:var(--dim2);letter-spacing:.04em}
+kbd{font-family:var(--mono);font-size:10px;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.14);border-bottom-width:2px;border-radius:5px;padding:1px 5px;color:var(--dim)}
+.navarrow{position:fixed;top:50%;transform:translateY(-50%);z-index:60;width:44px;height:44px;
+  border-radius:50%;border:1px solid var(--panel-b);background:rgba(10,14,22,.5);color:var(--dim);
+  backdrop-filter:blur(8px);cursor:pointer;font-size:18px;display:grid;place-items:center;transition:.2s;opacity:.35}
+.navarrow:hover{opacity:1;color:#fff;border-color:var(--rust);box-shadow:0 0 18px rgba(247,76,0,.4)}
+#prev{left:14px}#next{right:14px}
+
+/* ───────────────────────────  type  ──────────────────────────────── */
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--rust2);margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.eyebrow::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--rust),transparent)}
+h1{font-size:clamp(34px,4.6vw,62px);line-height:1.04;margin:0 0 14px;letter-spacing:-.025em;font-weight:800}
+h2{font-size:clamp(26px,3.1vw,42px);line-height:1.1;margin:0 0 6px;letter-spacing:-.022em;font-weight:750}
+h3{font-size:17px;margin:0 0 8px;letter-spacing:-.01em;font-weight:700}
+p{margin:0 0 12px;color:var(--dim);line-height:1.62;font-size:16px;max-width:76ch}
+.lead{font-size:19px;color:#c7d2e5}
+.grad{background:linear-gradient(100deg,var(--rust) 0%,var(--rust2) 35%,var(--yellow) 70%,var(--cyan) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;background-size:220% auto;
+  animation:shimmer 7s linear infinite}
+@keyframes shimmer{to{background-position:220% center}}
+code:not(pre code){font-family:var(--mono);font-size:.9em;background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:1px 6px;color:#ffd9c2}
+.hl{color:var(--fg);font-weight:650}
+.tiny{font-size:13px;color:var(--dim2)}
+
+/* ───────────────────────────  layout  ────────────────────────────── */
+.body{flex:1;min-height:0}
+.cols{display:grid;gap:22px}
+.c2{grid-template-columns:1fr 1fr}
+.c3{grid-template-columns:repeat(3,1fr)}
+.c21{grid-template-columns:1.25fr .9fr}
+.c12{grid-template-columns:.9fr 1.25fr}
+@media(max-width:1080px){.cols{grid-template-columns:1fr!important}}
+.card{background:var(--panel);border:1px solid var(--panel-b);border-radius:var(--r);padding:18px 20px;
+  backdrop-filter:blur(10px);position:relative;overflow:hidden}
+.card.glow::before{content:'';position:absolute;inset:-1px;border-radius:var(--r);padding:1px;
+  background:linear-gradient(140deg,var(--rust),transparent 45%,var(--cyan));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;opacity:.55;pointer-events:none}
+.card .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);margin-bottom:8px}
+.lift{transition:transform .25s,box-shadow .25s,border-color .25s}
+.lift:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.22);box-shadow:0 18px 40px -20px rgba(0,0,0,.9)}
+
+/* ───────────────────────────  code  ──────────────────────────────── */
+pre{margin:0;background:rgba(6,9,15,.72);border:1px solid var(--panel-b);border-radius:12px;
+  padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:13.5px;line-height:1.62;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+pre.sm{font-size:12.2px;line-height:1.55}
+pre::-webkit-scrollbar{height:8px;width:8px}
+pre::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+.t-kw{color:#ff7b72}.t-fn{color:#7ee3ff}.t-ty{color:#ffd580}.t-str{color:#9ee493}
+.t-num{color:#c3a6ff}.t-cm{color:#5d6b82;font-style:italic}.t-mac{color:var(--violet)}
+.t-lt{color:#ff9ecb}.t-at{color:var(--rust2)}
+pre .mark{background:rgba(247,76,0,.16);border-bottom:1px solid rgba(247,76,0,.5);border-radius:3px}
+.term{background:rgba(2,5,9,.85);border:1px solid rgba(93,220,160,.18);border-radius:12px;
+  font-family:var(--mono);font-size:13px;line-height:1.75;padding:12px 14px;color:#b9f6ca;
+  min-height:60px;overflow:auto}
+.term .l{opacity:0;animation:pop .28s forwards}
+@keyframes pop{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.term .muted{color:#5d7a68}.term .warn{color:var(--yellow)}.term .err{color:var(--red)}
+.term .hot{color:#fff;text-shadow:0 0 12px var(--green)}
+
+/* ───────────────────────────  controls  ──────────────────────────── */
+.btn{font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;color:var(--fg);cursor:pointer;
+  background:rgba(255,255,255,.06);border:1px solid var(--panel-b);border-radius:10px;padding:8px 14px;
+  transition:.18s;position:relative;overflow:hidden}
+.btn:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3);transform:translateY(-1px)}
+.btn:active{transform:translateY(1px) scale(.98)}
+.btn.p{background:linear-gradient(120deg,var(--rust),var(--rust2));border-color:transparent;color:#fff;font-weight:650;
+  box-shadow:0 8px 22px -12px var(--rust)}
+.btn.p:hover{box-shadow:0 12px 30px -10px var(--rust)}
+.btn.g{border-color:rgba(94,224,138,.45);color:var(--green)}
+.btn.r{border-color:rgba(255,90,106,.45);color:var(--red)}
+.btn:disabled{opacity:.32;cursor:not-allowed;transform:none}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pill{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;
+  border:1px solid var(--panel-b);background:rgba(255,255,255,.05);color:var(--dim)}
+.pill.on{border-color:var(--rust);color:var(--rust2);background:rgba(247,76,0,.12)}
+
+/* ───────────────────────────  reveal  ────────────────────────────── */
+.r{opacity:0;transform:translateY(16px)}
+.slide.active .r{animation:rise .6s cubic-bezier(.2,.8,.25,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+.slide.active .r:nth-child(1){animation-delay:.05s}
+.slide.active .r:nth-child(2){animation-delay:.12s}
+.slide.active .r:nth-child(3){animation-delay:.19s}
+.slide.active .r:nth-child(4){animation-delay:.26s}
+.slide.active .r:nth-child(5){animation-delay:.33s}
+.slide.active .r:nth-child(6){animation-delay:.40s}
+.slide.active .r:nth-child(7){animation-delay:.47s}
+.slide.active .r:nth-child(8){animation-delay:.54s}
+
+/* ───────────────────────  bespoke widgets  ───────────────────────── */
+/* title */
+.hero{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;height:100%}
+.orbit{position:relative;width:210px;height:210px;margin-bottom:22px}
+.orbit .core{position:absolute;inset:38%;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,var(--rust2),var(--rust));
+  box-shadow:0 0 50px rgba(247,76,0,.65);animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.14);box-shadow:0 0 80px rgba(247,76,0,.85)}}
+.ring{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(255,255,255,.16)}
+.ring.r2{inset:22px}.ring.r3{inset:44px}
+.sat{position:absolute;top:50%;left:50%;width:0;height:0}
+.sat span{position:absolute;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  padding:3px 9px;border-radius:999px;border:1px solid var(--panel-b);background:rgba(11,15,23,.85);
+  transform:translate(-50%,-50%);white-space:nowrap}
+.spin{animation:spin 16s linear infinite;transform-origin:center}
+.spin.rev{animation-duration:11s;animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:10px}
+.stage{border:1px solid var(--panel-b);border-radius:14px;padding:16px;background:rgba(255,255,255,.035);
+  text-align:center;transition:.35s;position:relative}
+.stage .big{font-family:var(--mono);font-size:12px;color:var(--dim2)}
+.stage.on{border-color:var(--rust);background:rgba(247,76,0,.12);transform:translateY(-6px) scale(1.03);
+  box-shadow:0 20px 44px -22px var(--rust)}
+.stage.on .big{color:var(--rust2)}
+.arrowx{font-size:22px;color:var(--dim2);transition:.3s}
+.arrowx.on{color:var(--rust2);text-shadow:0 0 14px var(--rust)}
+
+/* timeline */
+.tl{display:flex;flex-direction:column;gap:10px;font-family:var(--mono);font-size:12px}
+.tlrow{display:grid;grid-template-columns:78px 1fr;gap:10px;align-items:center}
+.track{height:24px;border-radius:7px;background:rgba(255,255,255,.05);position:relative;overflow:hidden;
+  border:1px solid var(--panel-b)}
+.bar{position:absolute;top:0;bottom:0;border-radius:6px;width:0;
+  background:linear-gradient(90deg,var(--rust),var(--rust2));transition:width .1s linear;
+  display:flex;align-items:center;justify-content:flex-end;padding-right:7px;font-size:10.5px;color:#fff}
+.bar.b2{background:linear-gradient(90deg,#2b6cff,var(--cyan))}
+.ticks{display:grid;grid-template-columns:78px 1fr;gap:10px;color:var(--dim2);font-size:10.5px}
+.ticks div:last-child{display:flex;justify-content:space-between}
+
+/* state machine */
+.sm{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+.node{flex:1;min-width:150px;border:1px solid var(--panel-b);border-radius:14px;padding:14px;
+  background:rgba(255,255,255,.03);transition:.35s;position:relative}
+.node .n{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--dim)}
+.node .f{font-family:var(--mono);font-size:11px;color:var(--dim2);margin-top:6px;line-height:1.6}
+.node.on{border-color:var(--cyan);background:rgba(61,219,217,.1);box-shadow:0 0 0 1px var(--cyan),0 18px 40px -22px var(--cyan)}
+.node.on .n{color:var(--cyan)}
+.node.done{border-color:rgba(94,224,138,.5)}
+.node.done .n{color:var(--green)}
+.node .badge{position:absolute;top:-9px;right:10px;font-family:var(--mono);font-size:10px;padding:2px 8px;
+  border-radius:999px;background:var(--cyan);color:#05202a;font-weight:700;opacity:0;transition:.3s}
+.node.on .badge{opacity:1}
+
+/* memory */
+.memwrap{position:relative;min-height:220px}
+.slot{position:absolute;top:26px;width:236px;border:1px dashed rgba(255,255,255,.16);border-radius:12px;
+  height:158px;display:flex;align-items:flex-start;justify-content:center;padding-top:6px;
+  font-family:var(--mono);font-size:10.5px;color:var(--dim2)}
+.slotA{left:8px}.slotB{left:330px}
+.struct{position:absolute;top:52px;left:20px;width:212px;border:1px solid var(--rust);border-radius:12px;
+  background:rgba(247,76,0,.10);padding:8px;font-family:var(--mono);font-size:11.5px;
+  transition:left .95s cubic-bezier(.65,-0.2,.3,1.25),top .95s cubic-bezier(.65,-0.2,.3,1.25);z-index:2}
+.struct .fld{display:flex;justify-content:space-between;padding:4px 7px;border-radius:7px;
+  background:rgba(255,255,255,.05);margin-bottom:4px}
+.struct .fld b{color:var(--cyan);font-weight:600}
+.struct .fld.tgt{background:rgba(61,219,217,.16);border:1px solid rgba(61,219,217,.4)}
+#memsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
+.ghost{position:absolute;width:212px;height:26px;border:1px dashed rgba(255,90,106,.55);border-radius:8px;
+  opacity:0;transition:opacity .4s;font-family:var(--mono);font-size:10px;color:var(--red);
+  display:grid;place-items:center;z-index:1}
+
+/* flip cards */
+.flip{perspective:900px;height:132px;cursor:pointer}
+.flipin{position:relative;width:100%;height:100%;transition:transform .65s cubic-bezier(.3,1.3,.4,1);
+  transform-style:preserve-3d}
+.flip.on .flipin{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;border:1px solid var(--panel-b);
+  padding:14px 16px;display:flex;flex-direction:column;justify-content:center;background:rgba(255,255,255,.04)}
+.face.b{transform:rotateY(180deg);background:rgba(94,224,138,.09);border-color:rgba(94,224,138,.35)}
+.face .tag{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:7px}
+.face.f .tag{color:var(--red)}.face.b .tag{color:var(--green)}
+.face p{font-size:13.5px;margin:0;color:var(--dim)}
+.face.b p{color:#cfe9d8}
+
+/* size bars */
+.sz{display:flex;flex-direction:column;gap:12px}
+.szrow{display:grid;grid-template-columns:150px 1fr 92px;gap:12px;align-items:center;font-family:var(--mono);font-size:12.5px}
+.szbar{height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--panel-b);overflow:hidden}
+.szfill{height:100%;width:0;border-radius:7px;transition:width 1s cubic-bezier(.2,.8,.25,1);
+  background:linear-gradient(90deg,var(--rust),var(--rust2))}
+.szfill.ok{background:linear-gradient(90deg,#1e8f52,var(--green))}
+.szval{text-align:right;color:var(--dim)}
+.mult{font-family:var(--mono);font-size:11px;color:var(--yellow)}
+
+/* misc */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim2);padding:8px 10px;border-bottom:1px solid var(--panel-b)}
+.tbl td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.055);color:var(--dim);vertical-align:top}
+.tbl tr:hover td{background:rgba(255,255,255,.03);color:var(--fg)}
+.tbl td code{white-space:nowrap}
+.num{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;flex:none;
+  background:linear-gradient(140deg,var(--rust),var(--rust2));color:#fff;font-family:var(--mono);
+  font-size:12px;font-weight:700;box-shadow:0 6px 16px -8px var(--rust)}
+.li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.li:last-child{border:0}
+.li div{flex:1}
+.note{border-left:2px solid var(--rust);padding:8px 0 8px 14px;color:#d8c6bb;font-style:italic;font-size:15px}
+.shake{animation:shake .45s}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
+.hidden{display:none!important}
+.parked{display:flex;gap:8px;flex-wrap:wrap}
+.parked span{font-family:var(--mono);font-size:11.5px;padding:5px 11px;border-radius:999px;
+  border:1px dashed rgba(255,255,255,.2);color:var(--dim2)}
+.hotspot{cursor:pointer;border-bottom:1px dashed rgba(255,203,71,.6);transition:.2s}
+.hotspot:hover{background:rgba(255,203,71,.14)}
+.hotspot.on{background:rgba(255,203,71,.2)}
+#annot{min-height:70px}
+.beat{animation:beat .9s ease-in-out infinite}
+@keyframes beat{50%{transform:scale(1.06)}}
+</style>
+</head>
+<body>
+
+<div id="bg"><div class="grid"></div><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div><canvas id="stars"></canvas></div>
+<canvas id="fx"></canvas>
+<div id="progress"></div>
+
+<div id="deck">
+
+<!-- ═══════════════ 1 · TITLE ═══════════════ -->
+<section class="slide">
+  <div class="hero">
+    <div class="orbit r">
+      <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
+      <div class="core"></div>
+      <div class="sat spin"><span style="left:105px;top:0">poll()</span><span style="left:-105px;top:0">Waker</span></div>
+      <div class="sat spin rev"><span style="left:0;top:78px">Pin</span><span style="left:0;top:-78px">Pending</span></div>
+    </div>
+    <div class="eyebrow r" style="justify-content:center">Rust &amp; Framework Training · Phase 2 · Session 2</div>
+    <h1 class="r">Futures, <span class="grad">async/await</span>,<br/>Tokio &amp; <span class="grad">Pin</span></h1>
+    <p class="lead r" style="max-width:62ch;text-align:center">
+      A future is an inert, self-referential state machine that <span class="hl">someone must poll</span>.
+      Everything else today falls out of that one sentence.
+    </p>
+    <div class="row r" style="justify-content:center;margin-top:18px">
+      <span class="pill">90 min</span><span class="pill">18 slides</span>
+      <span class="pill">live code · interactive</span><span class="pill">rustc stable · edition 2024 · tokio 1.53.1</span>
+    </div>
+    <p class="tiny r" style="margin-top:26px">
+      <kbd>→</kbd> <kbd>Space</kbd> next &nbsp;·&nbsp; <kbd>←</kbd> back &nbsp;·&nbsp; <kbd>F</kbd> fullscreen &nbsp;·&nbsp; <kbd>C</kbd> 🎉
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ 2 · THREE ANSWERS ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">0:00 — the framing</div>
+  <h2 class="r">Three answers to “what do I do while waiting?”</h2>
+  <p class="r">Hover each. Rust’s answer is the only one where the thing that waits is <span class="hl">a value you own</span>.</p>
+  <div class="cols c3 r" style="margin-top:14px">
+    <div class="card lift" style="border-color:rgba(255,203,71,.3)">
+      <div class="k" style="color:var(--yellow)">Java</div>
+      <h3>Block a thread</h3>
+      <p style="font-size:14px">The platform gives you more threads. Waiting costs an OS thread + its stack.</p>
+      <div class="term" style="border-color:rgba(255,203,71,.2);color:var(--yellow);min-height:auto">
+        thread-1 ▐████ blocked ████▌<br/>thread-2 ▐████ blocked ████▌<br/>thread-3 ▐███ running ███▌
+      </div>
+    </div>
+    <div class="card lift" style="border-color:rgba(61,219,217,.3)">
+      <div class="k" style="color:var(--cyan)">JavaScript</div>
+      <h3>Never block</h3>
+      <p style="font-size:14px">One thread, and the event loop owns it. You don’t choose — the runtime is the language.</p>
+      <div class="term" style="border-color:rgba(61,219,217,.2);color:var(--cyan);min-height:auto">
+        loop ▸ task ▸ microtask ▸ task<br/>↺ hidden, always there<br/>promise already in flight
+      </div>
+    </div>
+    <div class="card lift glow">
+      <div class="k" style="color:var(--rust2)">Rust</div>
+      <h3>Own the waiting</h3>
+      <p style="font-size:14px">A <code>Future</code> is a value that makes progress only when something calls <code>poll</code> on it.</p>
+      <div class="term" style="border-color:rgba(247,76,0,.25);color:var(--rust2);min-height:auto">
+        no thread parked<br/>no hidden event loop<br/>the runtime is a <span class="muted">Cargo.toml</span> line
+      </div>
+    </div>
+  </div>
+  <div class="cols c2 r" style="margin-top:20px">
+    <div class="card">
+      <div class="k">app/demo/src/main.rs — four lines, all four matter</div>
+      <pre><code>#[tokio::main]
+async fn main() {
+    demo::run().await;
+}</code></pre>
+    </div>
+    <div class="card">
+      <h3>Why this can’t be a real <code>main</code></h3>
+      <p style="font-size:14.5px"><code>main</code> returns <code>()</code>. An <code>async fn</code> returns a <span class="hl">future</span>.
+      <code>#[tokio::main]</code> rewrites it into a synchronous <code>main</code> that builds a runtime and hands it that future to poll.</p>
+      <p class="note" style="font-size:14.5px">Everything async in this repo bottoms out in that one call.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 3 · THE MODEL ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">the model, in one paragraph</div>
+  <h2 class="r">Nothing runs until something polls</h2>
+  <p class="r">Click <b>Advance</b> and watch where the body actually executes.</p>
+
+  <div class="card r" style="margin-top:16px;padding:26px">
+    <div class="pipe">
+      <div class="stage" id="p0"><div class="big">you call</div><div style="font-family:var(--mono);font-size:16px;margin-top:6px">work("a")</div><div class="big" style="margin-top:8px">nothing runs</div></div>
+      <div class="arrowx" id="pa0">→</div>
+      <div class="stage" id="p1"><div class="big">you hold</div><div style="font-family:var(--mono);font-size:16px;margin-top:6px">enum WorkFuture</div><div class="big" style="margin-top:8px">still nothing runs</div></div>
+      <div class="arrowx" id="pa1">→</div>
+      <div class="stage" id="p2"><div class="big">runtime calls</div><div style="font-family:var(--mono);font-size:16px;margin-top:6px">poll(Pin&lt;&amp;mut F&gt;, cx)</div><div class="big" style="margin-top:8px">NOW the body runs</div></div>
+    </div>
+    <div class="row" style="margin-top:22px;justify-content:center">
+      <button class="btn p" id="pipeGo">Advance ▸</button>
+      <button class="btn" id="pipeReset">reset</button>
+      <span class="pill" id="pipeLabel">stage 0 / 3</span>
+    </div>
+  </div>
+
+  <div class="cols c3 r" style="margin-top:18px">
+    <div class="card"><div class="k">poll returns</div><p style="font-size:14px"><code>Poll::Pending</code> — after arranging for a <span class="hl">waker</span> to be called when progress becomes possible.</p></div>
+    <div class="card"><div class="k">or</div><p style="font-size:14px"><code>Poll::Ready(v)</code> — and it is done. <code>.await</code> never polls it again.</p></div>
+    <div class="card"><div class="k">the runtime</div><p style="font-size:14px">tokio owns a queue of futures, polls them, and re-queues the ones that get woken. That’s it.</p></div>
+  </div>
+
+  <div class="card r" style="margin-top:16px;border-color:rgba(167,139,250,.35)">
+    <div class="k" style="color:var(--violet)">ask the group — do not answer yet</div>
+    <div class="row" style="gap:18px">
+      <div style="flex:1;min-width:230px"><p style="font-size:14px;margin:0">1 · In TypeScript, when does the body of <code>async function f()</code> start?</p></div>
+      <div style="flex:1;min-width:230px"><p style="font-size:14px;margin:0">2 · In Rust, when does the body of <code>async fn f()</code> start?</p></div>
+      <div style="flex:1;min-width:230px"><p style="font-size:14px;margin:0">3 · What can you do with a Rust future that you cannot do with a JS promise?</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 4 · LAZINESS ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">0:08 — §2.1 a future is inert</div>
+  <h2 class="r">Calling an <code style="font-size:.72em">async fn</code> runs <span class="grad">none</span> of it</h2>
+  <div class="cols c2 r" style="margin-top:14px">
+    <div class="card">
+      <div class="k">app/demo/examples/training_s2.rs — [type this]</div>
+      <pre class="sm"><code>async fn work(name: &amp;str) -&gt; u32 {
+    println!("  [{name}] body started");
+    sleep(Duration::from_millis(50)).await;
+    println!("  [{name}] body finished");
+    7
+}
+
+#[tokio::main]
+async fn main() {
+    let started  = Instant::now();
+    let future   = work("a");                  // ← click "call work(\"a\")"
+    println!("  future created, elapsed={:?}", started.elapsed());
+    println!("  size_of future = {}", size_of_val(&amp;future));
+    let value = future.await;                  // ← click ".await it"
+    println!("  awaited, value={value}");
+}</code></pre>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <div class="k">terminal</div>
+      <div class="term" id="lazyTerm" style="flex:1;min-height:210px"><span class="muted">$ cargo run -p demo --example training_s2</span></div>
+      <div class="row">
+        <button class="btn" id="lazyCall">call work("a")</button>
+        <button class="btn p" id="lazyAwait" disabled>.await it</button>
+        <button class="btn" id="lazyReset">reset</button>
+      </div>
+      <div class="row">
+        <span class="pill" id="lazyState">no future yet</span>
+        <span class="pill" id="lazySize">size_of = —</span>
+      </div>
+    </div>
+  </div>
+  <div class="cols c3 r" style="margin-top:16px">
+    <div class="card lift"><div class="k">1</div><p style="font-size:14px"><b class="hl">“body started” printed <i>after</i> “future created”.</b> The first <code>println!</code> is inside the state machine. Constructing it does not run it.</p></div>
+    <div class="card lift"><div class="k">2</div><p style="font-size:14px"><b class="hl">152 bytes, on the stack.</b> A plain value. No <code>Box</code>, no allocation, no thread. <code>size_of_val</code> on a future is a habit worth forming.</p></div>
+    <div class="card lift"><div class="k">3</div><p style="font-size:14px"><b class="hl">A JS reader expects the opposite.</b> In TS <code>work("a")</code> starts immediately and <code>await</code> just subscribes. Here <code>.await</code> <i>is</i> what makes it run.</p></div>
+  </div>
+  <p class="note r" style="margin-top:14px">A future you never <code>.await</code> is a future that never ran. Clippy catches the obvious case (<code>#[must_use]</code>), but not, say, building a future in a <code>match</code> arm and dropping it.</p>
+</section>
+
+<!-- ═══════════════ 5 · CONCURRENCY ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§2.2 — concurrency comes from the runtime, not from <code>async</code></div>
+  <h2 class="r">Same two futures. 104 ms or 51 ms.</h2>
+  <div class="cols c12 r" style="margin-top:14px">
+    <div class="card">
+      <div class="k">[type this]</div>
+      <pre class="sm"><code>let _ = work("b").await;
+let _ = work("c").await;
+// sequential elapsed=104.07ms
+
+let (_x, _y) = tokio::join!(work("d"), work("e"));
+// join elapsed=51.33ms</code></pre>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="runSeq">run sequential</button>
+        <button class="btn p" id="runJoin">run join!</button>
+        <button class="btn" id="runBoth">run both</button>
+      </div>
+      <p class="tiny" style="margin-top:12px">Each <code>work()</code> sleeps 50 ms.</p>
+    </div>
+    <div class="card">
+      <div class="tl">
+        <div class="tlrow"><span style="color:var(--dim2)">sequential</span><div class="track"><div class="bar" id="barSeq"></div></div></div>
+        <div class="tlrow"><span style="color:var(--dim2)">&nbsp;&nbsp;↳ work(b)</span><div class="track"><div class="bar" id="barB"></div></div></div>
+        <div class="tlrow"><span style="color:var(--dim2)">&nbsp;&nbsp;↳ work(c)</span><div class="track"><div class="bar" id="barC"></div></div></div>
+        <div style="height:8px"></div>
+        <div class="tlrow"><span style="color:var(--cyan)">join!</span><div class="track"><div class="bar b2" id="barJoin"></div></div></div>
+        <div class="tlrow"><span style="color:var(--dim2)">&nbsp;&nbsp;↳ work(d)</span><div class="track"><div class="bar b2" id="barD"></div></div></div>
+        <div class="tlrow"><span style="color:var(--dim2)">&nbsp;&nbsp;↳ work(e)</span><div class="track"><div class="bar b2" id="barE"></div></div></div>
+        <div class="ticks" style="margin-top:6px"><span></span><div><span>0 ms</span><span>25</span><span>50</span><span>75</span><span>100 ms</span></div></div>
+      </div>
+      <div class="term" id="concTerm" style="margin-top:14px;min-height:92px"><span class="muted">press a button ▸</span></div>
+    </div>
+  </div>
+  <div class="cols c2 r" style="margin-top:16px">
+    <div class="card"><h3>Why is sequential 100 ms?</h3><p style="font-size:14.5px">Because <code>.await</code> means “poll this until it is <code>Ready</code> before continuing”. It is as sequential as any blocking call. <b class="hl"><code>async</code> alone buys you nothing</b> — concurrency appears only when something polls more than one future.</p></div>
+    <div class="card"><h3>Note the interleaving</h3><p style="font-size:14.5px"><code>d</code> and <code>e</code> both start, then <code>e</code> finishes first. <code>join!</code> polls its branches in a loop <b class="hl">in one task</b> — no parallelism, just interleaving at <code>.await</code> points. <code>tokio::spawn</code> is the one that may use different threads.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 6 · POLL IT YOURSELF ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§2.3 — the centre of the session · do not skip</div>
+  <h2 class="r">Drive a future by hand, with <span class="grad">no runtime at all</span></h2>
+  <div class="cols c2 r" style="margin-top:12px">
+    <div class="card">
+      <pre class="sm"><code>struct Countdown { remaining: u32 }
+
+impl Future for Countdown {
+    type Output = &amp;'static str;
+
+    fn poll(mut self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;Self::Output&gt; {
+        println!("  poll, remaining={}", self.remaining);
+        if self.remaining == 0 {
+            return Poll::Ready("liftoff");
+        }
+        self.remaining -= 1;
+        cx.waker().wake_by_ref();   // "I could make progress again immediately"
+        Poll::Pending
+    }
+}</code></pre>
+      <pre class="sm" style="margin-top:12px"><code>let mut future = pin!(Countdown { remaining: 2 });
+let mut cx = Context::from_waker(Waker::noop());
+loop {
+    match future.as_mut().poll(&amp;mut cx) {
+        Poll::Pending      =&gt; println!("  got Pending, loop again"),
+        Poll::Ready(value) =&gt; { println!("  got Ready({value})"); break; }
+    }
+}</code></pre>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <div class="row" style="justify-content:space-between">
+        <div class="k" style="margin:0">your hand-rolled executor</div>
+        <span class="pill" id="cdState">remaining = 2</span>
+      </div>
+      <div style="display:grid;place-items:center;padding:8px 0">
+        <div id="cdDial" style="font-family:var(--mono);font-size:64px;font-weight:800;color:var(--rust2);
+             text-shadow:0 0 34px rgba(247,76,0,.55);transition:.25s">2</div>
+      </div>
+      <div class="row">
+        <button class="btn p" id="cdPoll">poll(&amp;mut cx) ▸</button>
+        <button class="btn g" id="cdAuto">run the loop</button>
+        <button class="btn" id="cdReset">reset</button>
+      </div>
+      <div class="term" id="cdTerm" style="flex:1;min-height:150px"></div>
+      <p class="tiny">What you just wrote <b class="hl">is</b> a runtime — for one future, with a busy-wait instead of a ready queue. Tokio is this loop plus a work-stealing scheduler, an epoll/kqueue driver, and a timer wheel.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 7 · THE TRAIT ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">the whole thing</div>
+  <h2 class="r">Five lines. Everything else is built on them.</h2>
+  <div class="card glow r" style="margin-top:16px">
+    <pre style="font-size:16px;background:transparent;border:0;box-shadow:none"><code>pub trait Future {
+    type Output;
+    fn poll(self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;Self::Output&gt;;
+}
+
+pub enum Poll&lt;T&gt; { Ready(T), Pending }</code></pre>
+  </div>
+  <p class="r" style="margin-top:14px"><code>async fn</code>, <code>.await</code>, <code>join!</code>, <code>select!</code>, tokio itself — all of it sits on top of that. Four points, one per question the group <i>will</i> ask:</p>
+  <div class="cols c2 r" style="margin-top:8px">
+    <div class="card lift"><div class="k" style="color:var(--cyan)">cx: &amp;mut Context</div><p style="font-size:14.5px">Its only job is to carry a <code>Waker</code>. Returning <code>Pending</code> <b class="hl">without</b> arranging for the waker to be called is how a future hangs forever. <code>Countdown</code> cheats and wakes itself; a real leaf future hands the waker to the OS event source.</p></div>
+    <div class="card lift"><div class="k" style="color:var(--violet)">a Waker is not “resume this coroutine”</div><p style="font-size:14.5px">It is “put the <b class="hl">task</b> that owns this future back on the ready queue”, which re-polls the whole future tree from the top. That is why <code>poll</code> must be cheap and re-entrant.</p></div>
+    <div class="card lift"><div class="k" style="color:var(--yellow)">Poll::Pending is a return, not a yield</div><p style="font-size:14.5px">The stack is <b class="hl">gone</b>. Anything the body needs after the await must have been saved into the future’s own memory. That is the entire reason the next section exists.</p></div>
+    <div class="card lift" style="border-color:rgba(247,76,0,.45)"><div class="k" style="color:var(--rust2)">self: Pin&lt;&amp;mut Self&gt;, not &amp;mut Self</div><p style="font-size:14.5px">Nobody has explained this yet. Write <b class="hl">“why Pin?”</b> on the board and point at it — it gets answered at 0:45.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 8 · DESUGARING ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">0:28 — §3.1 the desugaring</div>
+  <h2 class="r">Every local live across an <code style="font-size:.72em">.await</code> becomes a <span class="grad">field</span></h2>
+  <p class="r">Click a line on the left to see where it lands on the right.</p>
+  <div class="cols c2 r" style="margin-top:12px">
+    <div class="card">
+      <div class="k">what you write</div>
+      <pre id="desugarSrc"><code>async fn two_step() -&gt; u32 {
+    <span class="hotspot" data-d="0">let total = 40;</span>                 // local, before the await
+    <span class="hotspot" data-d="1">sleep(20.ms()).await;</span>           // suspension point
+    <span class="hotspot" data-d="2">total + 2</span>                      // still needed after the await
+}</code></pre>
+      <div id="annot" class="card" style="margin-top:14px;background:rgba(255,203,71,.07);border-color:rgba(255,203,71,.3)">
+        <p style="font-size:14px;margin:0;color:#e9dcc0" id="annotText">▸ click a highlighted line.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="k">what the compiler builds</div>
+      <pre id="desugarDst"><code>enum TwoStep {
+    <span data-t="0">Start,</span>
+    <span data-t="1">WaitingOnSleep { sleeping: Sleep, total: u32 },</span>
+    <span data-t="2">Done,</span>
+}</code></pre>
+      <div class="card" style="margin-top:14px;border-color:rgba(247,76,0,.4);background:rgba(247,76,0,.07)">
+        <p style="font-size:15px;margin:0;color:#ffd9c2">
+          <b>The rule.</b> Every local that is live across an <code>.await</code> becomes a field of the state machine.
+          Every <code>.await</code> becomes a state. Locals that do <i>not</i> cross an await stay ordinary stack
+          variables inside <code>poll</code> and cost nothing.
+        </p>
+      </div>
+      <p class="tiny" style="margin-top:12px">This is why a future’s size is what it is: the <b class="hl">maximum</b> set of simultaneously-live cross-await locals, plus the awaited sub-futures, plus a discriminant.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 9 · STATE MACHINE ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§3.2 — write the machine out by hand</div>
+  <h2 class="r">Step the machine. Watch <code style="font-size:.72em">WaitingFirst</code> get polled twice.</h2>
+  <div class="cols c21 r" style="margin-top:12px">
+    <div class="card">
+      <pre class="sm"><code>fn poll(self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;u32&gt; {
+    let this = self.get_mut();
+    loop {
+        match &amp;mut this.state {
+            TwoStepState::Start =&gt; {
+                let total = 40;
+                this.state = TwoStepState::WaitingFirst(
+                    Box::pin(sleep(Duration::from_millis(20))), total);
+                // loop round: fall straight into the next state
+            }
+            TwoStepState::WaitingFirst(sleeping, total) =&gt; {
+                let total = *total;
+                match sleeping.as_mut().poll(cx) {
+                    Poll::Pending  =&gt; return Poll::Pending,
+                    Poll::Ready(()) =&gt; {
+                        this.state = TwoStepState::Done;
+                        return Poll::Ready(total + 2);
+                    }
+                }
+            }
+            TwoStepState::Done =&gt; panic!("polled after completion"),
+        }
+    }
+}</code></pre>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <div class="sm" style="display:flex;flex-direction:column;gap:10px">
+        <div class="node" id="sm0"><span class="badge">here</span><div class="n">Start</div><div class="f">no fields yet</div></div>
+        <div class="node" id="sm1"><span class="badge">here</span><div class="n">WaitingFirst</div><div class="f">sleeping: Pin&lt;Box&lt;Sleep&gt;&gt;<br/>total: u32 = <span id="smTotal">—</span></div></div>
+        <div class="node" id="sm2"><span class="badge">here</span><div class="n">Done</div><div class="f">panics if polled again</div></div>
+      </div>
+      <div class="row">
+        <button class="btn p" id="smPoll">poll() ▸</button>
+        <button class="btn" id="smReset">reset</button>
+        <span class="pill" id="smCount">polls: 0</span>
+      </div>
+      <div class="term" id="smTerm" style="flex:1;min-height:110px"></div>
+    </div>
+  </div>
+  <div class="cols c3 r" style="margin-top:14px">
+    <div class="card"><div class="k">polled twice</div><p style="font-size:13.5px">First poll registers the timer and returns <code>Pending</code>. The timer fires, wakes the task, tokio polls <b class="hl">from the top</b>, the <code>match</code> lands back in <code>WaitingFirst</code>, and now <code>Sleep</code> is <code>Ready</code>. There is no “continue where the CPU left off”.</p></div>
+    <div class="card"><div class="k">total is in the variant</div><p style="font-size:13.5px">It was a local. It crossed an await. It became a field. That is §3.1’s rule, made concrete.</p></div>
+    <div class="card" style="border-color:rgba(247,76,0,.4)"><div class="k" style="color:var(--rust2)">why Box::pin the inner Sleep?</div><p style="font-size:13.5px"><code>Sleep::poll</code> needs <code>Pin&lt;&amp;mut Sleep&gt;</code>. From a field you either heap-pin it (honest, wasteful) or <b class="hl">project</b> the outer pin into it — which is what the compiler does, free, and what makes the machine self-referential. Next slide.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 10 · SELF-REFERENCE ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">0:45 — §4.1 / §4.2 the problem</div>
+  <h2 class="r">Move the bytes. Watch the pointer <span class="grad">lie</span>.</h2>
+  <div class="cols c12 r" style="margin-top:10px">
+    <div class="card">
+      <pre class="sm"><code>async fn borrows_across_await() {
+    let owned = String::from("hello");
+    let borrowed: &amp;str = &amp;owned;   // a reference into this future's OWN memory
+    yield_now().await;
+    println!("{borrowed} {}", owned.len());
+}</code></pre>
+      <p style="font-size:14px;margin-top:12px">Both live across the await, so both become fields — and one points at the other. <code>size_of_val</code> says <b class="hl">64 bytes</b>, containing a pointer to one of its own fields.</p>
+      <div class="card" style="border-color:rgba(255,90,106,.4);background:rgba(255,90,106,.07);margin-top:8px">
+        <p style="font-size:14.5px;margin:0;color:#ffd0d5"><b>The invariant.</b> Once a self-referential future has been polled even once, it must never move again.</p>
+      </div>
+      <p class="tiny" style="margin-top:10px">Lifetimes cannot express that — the borrow is inside a single value, and the struct is generated, not written. So the guarantee moves into the <b class="hl">type of the <code>poll</code> receiver</b>.</p>
+    </div>
+    <div class="card">
+      <div class="k">demo with a struct you can actually print</div>
+      <div class="memwrap" id="memwrap">
+        <div class="slot slotA">0x7ffd_e100 &nbsp;(old)</div>
+        <div class="slot slotB">0x7ffd_e200 &nbsp;(new)</div>
+        <div class="ghost" id="memGhost" style="left:20px;top:78px">…stale bytes, not yet overwritten</div>
+        <div class="struct" id="memStruct">
+          <div style="color:var(--rust2);margin-bottom:6px">SelfRef</div>
+          <div class="fld tgt" id="memValue"><span>value: u64</span><b>1</b></div>
+          <div class="fld" id="memPtr"><span>pointer</span><b id="memPtrVal">&amp;self.value</b></div>
+          <div class="fld"><span>_pin</span><b>PhantomPinned</b></div>
+        </div>
+        <svg id="memsvg"><defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0,0 L9,4.5 L0,9 z" id="ahp" fill="#3ddbd9"/></marker>
+        </defs><path id="mempath" fill="none" stroke="#3ddbd9" stroke-width="2" marker-end="url(#ah)"/></svg>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="memInit">a.init()</button>
+        <button class="btn r" id="memMove" disabled>let b = a;  <span style="opacity:.6">// memcpy</span></button>
+        <button class="btn" id="memReset">reset</button>
+      </div>
+      <div class="term" id="memTerm" style="margin-top:12px;min-height:76px"></div>
+    </div>
+  </div>
+  <div class="cols c2 r" style="margin-top:14px">
+    <div class="card"><p style="font-size:14.5px;margin:0">Rust moves are <b class="hl">memcpy of the bytes and nothing else</b>. No move constructor, no relocation hook, no way for a type to say “fix up my interior pointers”.</p></div>
+    <div class="card" style="border-color:rgba(255,203,71,.35)"><p style="font-size:14.5px;margin:0;color:#e9dcc0">Dereferencing <code>b.pointer</code> after the move would probably still print <code>1</code> — the old stack slot isn’t overwritten yet. That is the <b class="hl">worst</b> outcome: silent, intermittent UB that survives testing. Demo the boolean, never the dereference.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 11 · WHAT PIN IS ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§4.3 — everyone mis-models this at first</div>
+  <h2 class="r">What <span class="grad">Pin</span> actually is</h2>
+  <div class="card glow r" style="margin-top:14px">
+    <p style="font-size:18px;color:#e6edf8;margin:0;max-width:96ch">
+      <code style="font-size:.85em">Pin&lt;P&gt;</code> is a <b class="hl">wrapper around a pointer</b> <code>P</code> that refuses to hand out a
+      <code>&amp;mut</code> to its target, unless the target is <code>Unpin</code>. That is all. It has no runtime
+      representation and pins nothing by itself — it is a <i>promise, enforced by the absence of an API</i>,
+      that the pointee will not move before it is dropped.
+    </p>
+  </div>
+  <p class="r" style="margin-top:16px">Four myths. Click to flip.</p>
+  <div class="cols c2 r" style="margin-top:8px" id="mythGrid">
+    <div class="flip"><div class="flipin">
+      <div class="face f"><div class="tag">myth</div><p>“<code>Pin</code> pins memory to an address.”</p></div>
+      <div class="face b"><div class="tag">reality</div><p>It removes the only safe way to move the value: <code>&amp;mut T</code>. Without <code>&amp;mut T</code> there is no <code>mem::swap</code>, no <code>mem::replace</code>, no assignment.</p></div>
+    </div></div>
+    <div class="flip"><div class="flipin">
+      <div class="face f"><div class="tag">myth</div><p>“<code>Pin&lt;T&gt;</code>”</p></div>
+      <div class="face b"><div class="tag">reality</div><p>There is no such thing. It is always <code>Pin&lt;&amp;mut T&gt;</code>, <code>Pin&lt;Box&lt;T&gt;&gt;</code> — a pinned <i>pointer</i>.</p></div>
+    </div></div>
+    <div class="flip"><div class="flipin">
+      <div class="face f"><div class="tag">myth</div><p>“<code>Pin</code> costs something.”</p></div>
+      <div class="face b"><div class="tag">reality</div><p>Zero. It is a newtype over the pointer, erased at codegen.</p></div>
+    </div></div>
+    <div class="flip"><div class="flipin">
+      <div class="face f"><div class="tag">myth</div><p>“I need <code>Pin</code> for my types.”</p></div>
+      <div class="face b"><div class="tag">reality</div><p>Almost certainly not. Everything you write by hand is <code>Unpin</code> unless it contains <code>PhantomPinned</code> or a coroutine — and <code>Pin&lt;&amp;mut T&gt;</code> where <code>T: Unpin</code> is just a <code>&amp;mut T</code> with extra syntax.</p></div>
+    </div></div>
+  </div>
+  <p class="note r" style="margin-top:16px"><code>Unpin</code> is the escape hatch, and it is an <b>auto trait</b>. <code>T: Unpin</code> means “moving this is fine even after pinning” — true for <code>u64</code>, <code>String</code>, <code>Vec&lt;T&gt;</code> and every struct you have written so far. It is <i>not</i> true for <code>async fn</code> futures.</p>
+</section>
+
+<!-- ═══════════════ 12 · THE COMPILER SAYS NO ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§4.3 — the two errors that prove it</div>
+  <h2 class="r">That single <code style="font-size:.72em">Unpin</code> bound <span class="grad">is</span> the safety argument</h2>
+  <div class="cols c2 r" style="margin-top:12px">
+    <div class="card">
+      <div class="k">try to pin a future the easy way</div>
+      <pre class="sm"><code>let mut f = task();
+let p = std::pin::Pin::new(&amp;mut f);   // Pin::new requires Unpin</code></pre>
+      <button class="btn r" id="err1btn" style="margin-top:12px">cargo check</button>
+      <pre class="sm hidden" id="err1" style="margin-top:12px;border-color:rgba(255,90,106,.4)"><code>error[E0277]: `{async fn body of task()}` cannot be unpinned
+  --&gt; app/demo/examples/training_s2.rs:6:32
+   |
+ 1 | async fn task() -&gt; u32 { 1 }
+   |                    --- within this `impl Future&lt;Output = u32&gt;`
+ 6 |     let p = std::pin::Pin::new(&amp;mut f);
+   |             ------------------ ^^^^^^ the trait `Unpin` is not
+   |                                       implemented for `{async fn body of task()}`
+   |
+   = note: consider using the `pin!` macro
+           consider using `Box::pin` if you need to access the pinned
+           value outside of the current scope</code></pre>
+      <p class="tiny" style="margin-top:10px">Read the note out loud — the compiler is telling you the two ways to pin, which is the next panel.</p>
+    </div>
+    <div class="card">
+      <div class="k">and the mirror image, on a !Unpin value</div>
+      <pre class="sm"><code>let pa = pin!(SelfRef::new(1));
+let pb = pin!(SelfRef::new(2));
+std::mem::swap(pa.get_mut(), pb.get_mut());</code></pre>
+      <button class="btn r" id="err2btn" style="margin-top:12px">cargo check</button>
+      <pre class="sm hidden" id="err2" style="margin-top:12px;border-color:rgba(255,90,106,.4)"><code>error[E0277]: `PhantomPinned` cannot be unpinned
+  --&gt; app/demo/examples/training_s2.rs:16:23
+   |
+16 |     std::mem::swap(pa.get_mut(), pb.get_mut());
+   |                       ^^^^^^^ within `SelfRef`, the trait `Unpin`
+   |                               is not implemented for `PhantomPinned`
+   |
+note: required by a bound in `Pin::&lt;&amp;'a mut T&gt;::get_mut`
+   |
+1598 |         T: Unpin,
+   |            ^^^^^ required by this bound in `Pin::&lt;&amp;mut T&gt;::get_mut`</code></pre>
+      <p style="font-size:14px;margin-top:12px"><code>get_mut</code> is gated on <code>Unpin</code>; <code>mem::swap</code> needs <code>&amp;mut</code>; therefore the value <b class="hl">cannot</b> be swapped out from under its own interior pointer.</p>
+    </div>
+  </div>
+  <div class="cols c3 r" style="margin-top:16px">
+    <div class="card lift"><div class="k" style="color:var(--green)">pin!(value)</div><p style="font-size:13.5px">current stack frame · <b class="hl">free</b> · when you poll it in this scope. This is what <code>.await</code> does for you.</p></div>
+    <div class="card lift"><div class="k" style="color:var(--yellow)">Box::pin(value)</div><p style="font-size:13.5px">heap · <b class="hl">one allocation</b> · when the future must outlive the frame, live in a collection, or be type-erased as <code>Pin&lt;Box&lt;dyn Future&gt;&gt;</code>.</p></div>
+    <div class="card lift"><div class="k" style="color:var(--cyan)">Pin::new(&amp;mut value)</div><p style="font-size:13.5px">anywhere · <b class="hl">free</b> · only when <code>T: Unpin</code>. Which futures never are.</p></div>
+  </div>
+  <p class="note r" style="margin-top:14px">Where does <code>.await</code> do this? In the desugaring. <code>expr.await</code> pins <code>expr</code> in the enclosing coroutine’s frame and polls it there. <b>You have been pinning futures all along</b> — today is just the first time you had to type it.</p>
+</section>
+
+<!-- ═══════════════ 13 · ACTIONFUTURE ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">1:00 — §5 the framework exhibit</div>
+  <h2 class="r"><code style="font-size:.72em">ActionFuture</code> — everything so far was scaffolding for this</h2>
+  <p class="r"><code>lib/framework/src/log.rs:86</code> · read alongside <code>doc/action_future_design.md</code>. Click the highlighted parts.</p>
+  <div class="cols c21 r" style="margin-top:12px">
+    <div class="card">
+      <pre class="sm" id="afCode"><code>pin_project! {
+    /// Hand written so the task is stored exactly once.
+    pub struct ActionFuture&lt;F&gt; {
+        <span class="hotspot" data-a="pin">#[pin]</span>
+        inner: TaskLocalFuture&lt;RefCell&lt;Action&gt;, F&gt;,
+    }
+}
+
+<span class="hotspot" data-a="fn">pub fn action</span>&lt;F: Future&gt;(kind: &amp;'static str, ref_ids: Option&lt;Vec&lt;String&gt;&gt;, task: F)
+    -&gt; ActionFuture&lt;F&gt; {
+    let now = DateTime::now();
+    let id  = id_generator::next_id(now.unix_timestamp_millis());
+    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(Action::new(id, kind, ref_ids, now)), task) }
+}
+
+impl&lt;F, R&gt; Future for ActionFuture&lt;F&gt;
+where F: Future&lt;Output = Result&lt;R, Exception&gt;&gt; {
+    type Output = F::Output;
+
+    fn poll(self: Pin&lt;&amp;mut Self&gt;, cx: &amp;mut Context&lt;'_&gt;) -&gt; Poll&lt;Self::Output&gt; {
+        let mut this   = <span class="hotspot" data-a="proj">self.project()</span>;
+        let result     = <span class="hotspot" data-a="ready">ready!(this.inner.as_mut().poll(cx))</span>;
+
+        <span class="hotspot" data-a="once">let mut current_action = this.inner.take_value()
+            .map(RefCell::into_inner).expect("current action must be within the scope");
+
+        if let Err(e) = &amp;result { current_action.log_exception(e); }
+        current_action.finish();
+
+        if let Some(sender) = SENDER.get() {
+            let _result = sender.send(Message::Action(current_action.into()));
+        }</span>
+
+        Poll::Ready(result)
+    }
+}</code></pre>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <div class="k">what it is</div>
+      <p style="font-size:14px"><code>log::action(kind, ref_ids, task)</code> wraps any future so that an <code>Action</code> (id, kind, context, stats, log buffer) is a <b class="hl">task-local</b> for that future’s lifetime, and is emitted to the appender the moment the future resolves.</p>
+      <div class="card" id="afNote" style="background:rgba(61,219,217,.08);border-color:rgba(61,219,217,.3);min-height:150px">
+        <p style="font-size:14px;margin:0;color:#cfeef0" id="afNoteText">▸ click a highlighted region in the code.</p>
+      </div>
+      <p class="tiny">It is the framework’s centrepiece, and it is a <b class="hl">hand-written <code>Future</code></b>. Read it against §2 and §3 and every line is now familiar.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 14 · THE MULTIPLIER ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">§5.2 / §5.3 — why it is hand-written</div>
+  <h2 class="r">Each <code style="font-size:.72em">async fn</code> wrapper stores the task <span class="grad">again</span></h2>
+  <div class="cols c2 r" style="margin-top:12px">
+    <div class="card">
+      <pre class="sm"><code>async fn wrapper_1&lt;F: Future&gt;(task: F) -&gt; F::Output { task.await }
+async fn wrapper_2&lt;F: Future&gt;(task: F) -&gt; F::Output { async move { task.await }.await }
+
+async fn big_task() -&gt; u32 {
+    let buffer = [0_u8; 1024];
+    sleep(Duration::from_millis(1)).await;
+    buffer[0] as u32
+}</code></pre>
+      <div class="sz" style="margin-top:18px">
+        <div class="szrow"><span>task</span><div class="szbar"><div class="szfill" id="sz0"></div></div><span class="szval" id="szv0">—</span></div>
+        <div class="szrow"><span>1 async layer</span><div class="szbar"><div class="szfill" id="sz1"></div></div><span class="szval" id="szv1">—</span></div>
+        <div class="szrow"><span>2 async layers</span><div class="szbar"><div class="szfill" id="sz2"></div></div><span class="szval" id="szv2">—</span></div>
+        <div class="szrow"><span style="color:var(--green)">hand-written</span><div class="szbar"><div class="szfill ok" id="sz3"></div></div><span class="szval" id="szv3">—</span></div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn p" id="szRun">measure</button>
+        <button class="btn" id="szReset">reset</button>
+        <span class="pill" id="szPill">1x · 2x · 3x + 8 B discriminant per layer</span>
+      </div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <div class="k">the mechanism, from the design doc</div>
+      <p class="note" style="font-size:14.5px;margin:0">rustc keeps <b>parameters and upvars in the coroutine layout prefix — always live, never overlapped with variant fields</b>. Only ordinary locals get liveness-based slot reuse.</p>
+      <p style="font-size:14px;margin:0">So an <code>async fn log::action(.., task: F)</code> held <code>task</code> three times over:</p>
+      <div class="li"><span class="num">1</span><div><p style="font-size:13.5px;margin:0">in the outer <code>async fn</code>’s prefix, as a <b class="hl">parameter</b>;</p></div></div>
+      <div class="li"><span class="num">2</span><div><p style="font-size:13.5px;margin:0">in the inner <code>CURRENT_ACTION.scope(.., async move { .. })</code> block’s prefix, as an <b class="hl">upvar</b>;</p></div></div>
+      <div class="li"><span class="num">3</span><div><p style="font-size:13.5px;margin:0">in <code>__awaitee</code>, the <code>into_future(task)</code> temporary held across the yield.</p></div></div>
+      <div class="card" style="border-color:rgba(255,90,106,.4);background:rgba(255,90,106,.07)">
+        <p style="font-size:14px;margin:0;color:#ffd0d5">Every action future contains its caller’s future, so this is a <b>multiplier</b>, not an overhead.
+        <code>clippy::large_futures</code> denies futures over 16 KB and <code>warnings = "deny"</code> is set — a 6 KB jetstream setup task became <b>18,032 B</b> and failed the build.</p>
+      </div>
+    </div>
+  </div>
+  <div class="card glow r" style="margin-top:16px">
+    <p style="font-size:17px;margin:0;color:#ffd9c2"><b>The caller-side rule</b> — the one thing from §5 to remember when you write handlers in Phase 3:
+    never wrap <code>log::action</code> in an <code>async fn</code>. A function whose only job is to <code>.await</code> a
+    <code>log::action(..)</code> must be a plain <code>fn</code> returning <code>impl Future</code>, or it re-adds the 2x on top.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ 15 · CANCELLATION ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">1:10 — lab exercise B</div>
+  <h2 class="r">Cancellation is a <span class="grad">drop</span></h2>
+  <div class="cols c12 r" style="margin-top:12px">
+    <div class="card">
+      <pre class="sm"><code>struct Guard(&amp;'static str);
+impl Drop for Guard {
+    fn drop(&amp;mut self) { println!("  Guard({}) dropped", self.0); }
+}
+
+async fn slow() {
+    let _guard = Guard("slow");
+    println!("  slow: started");
+    sleep(Duration::from_secs(10)).await;
+    println!("  slow: finished (never printed)");
+}
+
+let result = timeout(Duration::from_millis(100), slow()).await;</code></pre>
+      <div class="row" style="margin-top:14px">
+        <button class="btn p" id="cxRun">run</button>
+        <button class="btn" id="cxReset">reset</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="tl">
+        <div class="tlrow"><span style="color:var(--dim2)">slow()</span><div class="track"><div class="bar" id="cxBar"></div></div></div>
+        <div class="tlrow"><span style="color:var(--cyan)">timeout</span><div class="track"><div class="bar b2" id="cxTo" style="width:0"></div></div></div>
+        <div class="ticks" style="margin-top:4px"><span></span><div><span>0</span><span>50</span><span>100 ms</span><span>…</span><span>10 s</span></div></div>
+      </div>
+      <div class="term" id="cxTerm" style="margin-top:14px;min-height:118px"></div>
+      <div id="cxDrop" class="card hidden" style="margin-top:12px;border-color:rgba(255,90,106,.45);background:rgba(255,90,106,.09)">
+        <p style="font-size:14px;margin:0;color:#ffd0d5"><b>Where exactly did <code>slow</code> stop?</b> At the <code>.await</code>. Nowhere else.
+        A future can only be cancelled at a suspension point, because that is the only moment control is outside <code>poll</code>.</p>
+      </div>
+    </div>
+  </div>
+  <div class="cols c2 r" style="margin-top:16px">
+    <div class="card" style="border-color:rgba(255,203,71,.35)">
+      <div class="k" style="color:var(--yellow)">the follow-up that matters for Phase 3</div>
+      <p style="font-size:14.5px;margin:0">If that had been a <b class="hl">database transaction</b> between two awaits — what state is the database in?
+      This is why <code>ActionFuture</code> deliberately does not emit an action for a cancelled task: “a dropped, incomplete action is still not emitted”.</p>
+    </div>
+    <div class="card">
+      <div class="k">select! makes the same point from the other side</div>
+      <p style="font-size:14.5px;margin:0">The losing branch’s future is dropped <b class="hl">where it stood</b>. Anything it was holding — a connection, a permit, a half-written batch — is released by <code>Drop</code>, at that exact <code>.await</code>. That is the mechanism behind the appender drain loop and every <code>CancellationToken</code> in the codebase. Session 8.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 16 · FIVE SENTENCES ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">1:25 — wrap</div>
+  <h2 class="r">The five sentences</h2>
+  <p class="r">If nothing else survives the week, these do.</p>
+  <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px">
+    <div class="card lift r" style="display:flex;gap:16px;align-items:center"><span class="num" style="width:34px;height:34px;font-size:15px">1</span>
+      <p style="margin:0;font-size:16.5px;color:#dbe4f2">An <code>async fn</code> returns an <b class="hl">inert state machine</b>; nothing runs until something polls it.</p></div>
+    <div class="card lift r" style="display:flex;gap:16px;align-items:center"><span class="num" style="width:34px;height:34px;font-size:15px">2</span>
+      <p style="margin:0;font-size:16.5px;color:#dbe4f2"><code>poll</code> returns <code>Ready</code> or <code>Pending</code>, and <code>Pending</code> is a <b class="hl">promise that the <code>Waker</code> will be called</b>.</p></div>
+    <div class="card lift r" style="display:flex;gap:16px;align-items:center"><span class="num" style="width:34px;height:34px;font-size:15px">3</span>
+      <p style="margin:0;font-size:16.5px;color:#dbe4f2">Locals that live across an <code>.await</code> become <b class="hl">fields</b> of the machine; that is where a future’s size comes from.</p></div>
+    <div class="card lift r" style="display:flex;gap:16px;align-items:center"><span class="num" style="width:34px;height:34px;font-size:15px">4</span>
+      <p style="margin:0;font-size:16.5px;color:#dbe4f2">Those fields can point at each other, so the machine <b class="hl">must not move</b> after its first poll — enforced by <code>poll</code> taking <code>Pin&lt;&amp;mut Self&gt;</code> and <code>Pin</code> withholding <code>&amp;mut</code>.</p></div>
+    <div class="card lift r" style="display:flex;gap:16px;align-items:center"><span class="num" style="width:34px;height:34px;font-size:15px">5</span>
+      <p style="margin:0;font-size:16.5px;color:#dbe4f2">A wrapper future stores its inner future in a prefix slot that is never reused, so wrapping with <code>async fn</code> <b class="hl">multiplies size</b> — which is why <code>ActionFuture</code> is hand-written.</p></div>
+  </div>
+</section>
+
+<!-- ═══════════════ 17 · PITFALLS ═══════════════ -->
+<section class="slide">
+  <div class="eyebrow r">pitfalls · error decoder · parked list</div>
+  <h2 class="r">What will actually bite you in Phase 3</h2>
+  <div class="cols c2 r" style="margin-top:14px">
+    <div class="card">
+      <div class="k" style="color:var(--red)">pitfalls to state explicitly</div>
+      <div class="li"><span class="num" style="background:linear-gradient(140deg,var(--red),#ff8a95)">!</span><div><h3 style="font-size:14.5px">Blocking in async</h3><p style="font-size:13px;margin:0">No <code>std::thread::sleep</code>, no blocking file I/O, no CPU-bound loops on a runtime thread. A worker inside <code>poll</code> cannot poll anything else. Use <code>tokio::time::sleep</code>, tokio I/O, or <code>spawn_blocking</code>.</p></div></div>
+      <div class="li"><span class="num" style="background:linear-gradient(140deg,var(--red),#ff8a95)">!</span><div><h3 style="font-size:14.5px">Holding a <code>std::sync::MutexGuard</code> across <code>.await</code></h3><p style="font-size:13px;margin:0">Doesn’t compile. The guard became a <b class="hl">field</b> of the future (§3.1’s rule) and <code>tokio::spawn</code> needs <code>Send</code>. Fix: end the borrow before the await. The rest is Session 7.</p></div></div>
+      <div class="li"><span class="num" style="background:linear-gradient(140deg,var(--red),#ff8a95)">!</span><div><h3 style="font-size:14.5px">Assuming an async block starts on creation</h3><p style="font-size:13px;margin:0">Bites hardest with metrics guards and timers, which then measure the wrong thing.</p></div></div>
+      <div class="li"><span class="num" style="background:linear-gradient(140deg,var(--red),#ff8a95)">!</span><div><h3 style="font-size:14.5px">Bare <code>tokio::spawn</code> for app work</h3><p style="font-size:13px;margin:0">Use <code>spawn_action!</code> — it registers with the <code>TaskTracker</code> and links the child action to the parent by <code>ref_id</code>. Session 8.</p></div></div>
+      <div class="li"><span class="num" style="background:linear-gradient(140deg,var(--red),#ff8a95)">!</span><div><h3 style="font-size:14.5px">Deep <code>async fn</code> wrapper chains</h3><p style="font-size:13px;margin:0">Every layer that owns a future adds a copy of it. Watch <code>large_futures</code>.</p></div></div>
+    </div>
+    <div class="card">
+      <div class="k" style="color:var(--cyan)">error decoder</div>
+      <table class="tbl">
+        <tr><th>symptom</th><th>usual fix</th></tr>
+        <tr><td><code>E0277: cannot be unpinned</code> on <code>Pin::new</code></td><td><code>pin!(..)</code> or <code>Box::pin(..)</code></td></tr>
+        <tr><td><code>E0277: cannot be unpinned</code> on <code>get_mut</code></td><td>project into the field instead, or reconsider</td></tr>
+        <tr><td><code>future cannot be sent between threads safely</code></td><td>shorten the borrow so it ends before the await</td></tr>
+        <tr><td><code>`async fn` resumed after completion</code></td><td>you’re driving <code>poll</code> by hand; stop at <code>Ready</code></td></tr>
+        <tr><td><code>large future</code> (clippy)</td><td>remove an <code>async fn</code> wrapper layer</td></tr>
+        <tr><td>future built but never awaited</td><td><code>.await</code> it, or <code>spawn_action!</code> it</td></tr>
+      </table>
+      <div class="k" style="margin-top:20px;color:var(--violet)">parked — carried forward</div>
+      <div class="parked">
+        <span>Send / Sync</span><span>Arc</span><span>Mutex</span><span>&amp;'static</span><span class="pill" style="border-style:solid;border-color:var(--violet);color:var(--violet)">Session 7</span>
+      </div>
+      <div class="parked" style="margin-top:8px">
+        <span>CancellationToken</span><span>TaskTracker</span><span>graceful shutdown</span><span>task-locals as an API</span><span class="pill" style="border-style:solid;border-color:var(--violet);color:var(--violet)">Session 8</span>
+      </div>
+      <div class="parked" style="margin-top:8px">
+        <span>what CURRENT_ACTION is actually <i>for</i></span><span class="pill" style="border-style:solid;border-color:var(--violet);color:var(--violet)">Session 10</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 18 · END ═══════════════ -->
+<section class="slide">
+  <div class="hero">
+    <div class="eyebrow r" style="justify-content:center">lab · 15 min · pairs · app/demo/examples/</div>
+    <h1 class="r" style="font-size:clamp(30px,3.8vw,52px)">Now go <span class="grad">write one</span></h1>
+    <div class="cols c3 r" style="margin-top:18px;width:100%;max-width:1060px">
+      <div class="card lift"><div class="k">Exercise A · 5 min</div><h3>Read four errors</h3><p style="font-size:13.5px">Predict the error <i>before</i> compiling. Write down the code and the one-sentence rule it enforces. Snippet 3 is the one to spend time on — it’s the only one whose message names the <b class="hl">mechanism</b>.</p></div>
+      <div class="card lift"><div class="k">Exercise B · 5 min</div><h3>Cancellation is a drop</h3><p style="font-size:13.5px">Hold a <code>Drop</code> guard across a <code>sleep</code>, wrap it in <code>timeout</code>, and answer in your pair: where exactly did it stop?</p></div>
+      <div class="card lift glow"><div class="k">Exercise C · stretch</div><h3>Write <code>Timed&lt;F&gt;</code></h3><p style="font-size:13.5px">A plain <code>fn</code>. Clock starts on <b class="hl">first poll</b>, not construction. <code>size_of_val</code> must be <code>size_of::&lt;F&gt;()</code> plus only your fields. This is <code>ActionFuture</code> with the interesting parts removed.</p></div>
+    </div>
+    <div class="card r" style="margin-top:20px;max-width:880px;border-color:rgba(167,139,250,.35)">
+      <div class="k" style="color:var(--violet)">homework</div>
+      <p style="font-size:14.5px;margin:0">Re-read <code>doc/action_future_design.md</code> §“Caller-side rule”, and find — in <code>framework_nats/src/consumer.rs</code> or <code>framework_kafka/src/consumer.rs</code> — one <code>Box::pin</code> that is <b class="hl">not</b> a size workaround. Be ready to say what boundary it is erasing.</p>
+    </div>
+    <div class="row r" style="margin-top:24px;justify-content:center">
+      <button class="btn p beat" id="finale">🎉 liftoff</button>
+      <span class="pill">Next: Session 7 — Send, Sync, Arc, Mutex, &amp;'static</span>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<button class="navarrow" id="prev">‹</button>
+<button class="navarrow" id="next">›</button>
+<div id="hud"><div id="dots"></div></div>
+<div id="counter">01 / 18</div>
+<div id="hint"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>F</kbd> full · <kbd>C</kbd> confetti</div>
+
+<script>
+/* ═══════════════════════════  helpers  ═══════════════════════════ */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ───────────────────  rust syntax highlighting  ─────────────────── */
+const KW = new Set(('as async await break const continue crate dyn else enum extern fn for if impl in let ' +
+  'loop match mod move mut pub ref return self Self static struct super trait type unsafe use where while').split(' '));
+const TY = new Set(('u8 u16 u32 u64 usize i8 i16 i32 i64 isize f32 f64 bool char str String Vec Box Option ' +
+  'Some None Result Ok Err Future Poll Pin Context Waker Duration Instant Sleep RefCell Action Exception ' +
+  'PhantomPinned TaskLocalFuture ActionFuture Countdown TwoStep TwoStepState SelfRef Guard Timed Passthrough ' +
+  'Ready Pending Start WaitingFirst WaitingOnSleep Done DateTime Message Output').split(' '));
+
+function highlight(code){
+  const re = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|(\b[a-zA-Z_][a-zA-Z0-9_]*!)|(#\[[^\]]*\])|('[a-z_]+\b)|(\b\d[\d_]*\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+  let out = '', last = 0, m;
+  while((m = re.exec(code))){
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    if (m[1])      out += `<span class="t-cm">${esc(t)}</span>`;
+    else if (m[2]) out += `<span class="t-str">${esc(t)}</span>`;
+    else if (m[3]) out += `<span class="t-mac">${esc(t)}</span>`;
+    else if (m[4]) out += `<span class="t-at">${esc(t)}</span>`;
+    else if (m[5]) out += `<span class="t-lt">${esc(t)}</span>`;
+    else if (m[6]) out += `<span class="t-num">${esc(t)}</span>`;
+    else if (KW.has(t)) out += `<span class="t-kw">${t}</span>`;
+    else if (TY.has(t)) out += `<span class="t-ty">${t}</span>`;
+    else if (code[re.lastIndex] === '(') out += `<span class="t-fn">${t}</span>`;
+    else out += esc(t);
+    last = re.lastIndex;
+  }
+  return out + esc(code.slice(last));
+}
+// highlight only leaf text nodes so hand-written <span> markup survives
+function paintCode(root){
+  $$('pre code', root).forEach(codeEl => {
+    const walk = n => {
+      [...n.childNodes].forEach(c => {
+        if (c.nodeType === 3){
+          const span = document.createElement('span');
+          span.innerHTML = highlight(c.nodeValue);
+          c.replaceWith(span);
+        } else if (c.nodeType === 1 && !c.dataset.painted){
+          c.dataset.painted = '1'; walk(c);
+        }
+      });
+    };
+    walk(codeEl);
+  });
+}
+paintCode(document);
+
+/* ─────────────────────────  terminal  ───────────────────────────── */
+function term(el){
+  return {
+    el,
+    clear(){ el.innerHTML = ''; return this; },
+    line(text, cls = '', delay = 0){
+      const d = document.createElement('div');
+      d.className = 'l ' + cls;
+      d.innerHTML = text;
+      d.style.animationDelay = delay + 'ms';
+      el.appendChild(d);
+      el.scrollTop = el.scrollHeight;
+      return this;
+    },
+    async type(text, cls = '', wait = 220){ this.line(text, cls); await sleep(wait); return this; }
+  };
+}
+
+/* ─────────────────────────  deck core  ──────────────────────────── */
+const slides = $$('.slide');
+const dots = $('#dots');
+let idx = 0;
+slides.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.className = 'dot'; b.title = 'slide ' + (i + 1);
+  b.onclick = () => go(i);
+  dots.appendChild(b);
+});
+const enterHooks = {};
+const leaveHooks = {};
+
+function go(n, dir){
+  n = Math.max(0, Math.min(slides.length - 1, n));
+  if (n === idx && slides[idx].classList.contains('active')) return;
+  const back = dir === undefined ? n < idx : dir < 0;
+  leaveHooks[idx] && leaveHooks[idx]();
+  slides[idx].classList.remove('active', 'back');
+  idx = n;
+  slides[idx].classList.toggle('back', back);
+  // force reflow so the animation replays
+  void slides[idx].offsetWidth;
+  slides[idx].classList.add('active');
+  slides[idx].scrollTop = 0;
+  $$('.dot').forEach((d, i) => d.classList.toggle('on', i === idx));
+  $('#progress').style.width = ((idx + 1) / slides.length * 100) + '%';
+  $('#counter').textContent = String(idx + 1).padStart(2, '0') + ' / ' + slides.length;
+  enterHooks[idx] && enterHooks[idx]();
+}
+$('#next').onclick = () => go(idx + 1, 1);
+$('#prev').onclick = () => go(idx - 1, -1);
+addEventListener('keydown', e => {
+  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown'){ e.preventDefault(); go(idx + 1, 1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); go(idx - 1, -1); }
+  else if (e.key === 'Home') go(0, -1);
+  else if (e.key === 'End') go(slides.length - 1, 1);
+  else if (e.key.toLowerCase() === 'f'){ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+  else if (e.key.toLowerCase() === 'c') burst(innerWidth / 2, innerHeight / 2, 90);
+});
+let tx = 0;
+addEventListener('touchstart', e => tx = e.changedTouches[0].clientX, {passive:true});
+addEventListener('touchend', e => {
+  const d = e.changedTouches[0].clientX - tx;
+  if (Math.abs(d) > 60) go(idx + (d < 0 ? 1 : -1), d < 0 ? 1 : -1);
+}, {passive:true});
+
+/* ───────────────────────  starfield + fx  ───────────────────────── */
+(function stars(){
+  const c = $('#stars'), x = c.getContext('2d');
+  let pts = [];
+  function size(){
+    c.width = innerWidth; c.height = innerHeight;
+    pts = Array.from({length: Math.min(140, (innerWidth * innerHeight) / 14000)}, () => ({
+      x: Math.random() * c.width, y: Math.random() * c.height,
+      r: Math.random() * 1.5 + .3, v: Math.random() * .22 + .04,
+      a: Math.random() * .5 + .15, p: Math.random() * 6.28
+    }));
+  }
+  size(); addEventListener('resize', size);
+  (function loop(t){
+    x.clearRect(0, 0, c.width, c.height);
+    for (const p of pts){
+      p.y -= p.v; if (p.y < -4) { p.y = c.height + 4; p.x = Math.random() * c.width; }
+      const tw = p.a * (.6 + .4 * Math.sin(t / 700 + p.p));
+      x.beginPath(); x.arc(p.x, p.y, p.r, 0, 6.29);
+      x.fillStyle = `rgba(200,220,255,${tw})`; x.fill();
+    }
+    requestAnimationFrame(loop);
+  })(0);
+})();
+
+const fx = $('#fx'), fxc = fx.getContext('2d');
+let parts = [];
+function fxSize(){ fx.width = innerWidth; fx.height = innerHeight; }
+fxSize(); addEventListener('resize', fxSize);
+function burst(x, y, n = 60){
+  const cols = ['#f74c00','#ff8a3d','#ffcb47','#3ddbd9','#a78bfa','#5ee08a','#ffffff'];
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * 6.29, s = Math.random() * 9 + 3;
+    parts.push({x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 3,
+      r: Math.random() * 4 + 2, c: cols[(Math.random() * cols.length) | 0],
+      life: 1, rot: Math.random() * 6.29, vr: (Math.random() - .5) * .3});
+  }
+}
+(function fxLoop(){
+  fxc.clearRect(0, 0, fx.width, fx.height);
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts){
+    p.x += p.vx; p.y += p.vy; p.vy += .28; p.vx *= .99; p.life -= .012; p.rot += p.vr;
+    fxc.save(); fxc.translate(p.x, p.y); fxc.rotate(p.rot);
+    fxc.globalAlpha = Math.max(0, p.life); fxc.fillStyle = p.c;
+    fxc.fillRect(-p.r, -p.r * .6, p.r * 2, p.r * 1.2);
+    fxc.restore();
+  }
+  requestAnimationFrame(fxLoop);
+})();
+function burstFrom(el, n = 46){
+  const r = el.getBoundingClientRect();
+  burst(r.left + r.width / 2, r.top + r.height / 2, n);
+}
+
+/* ═══════════════  slide 3 · pipeline  ═══════════════ */
+(function(){
+  let s = 0;
+  const stages = ['#p0','#p1','#p2'].map(s => $(s));
+  const arrows = ['#pa0','#pa1'].map(s => $(s));
+  function render(){
+    stages.forEach((e, i) => e.classList.toggle('on', i === s - 1));
+    arrows.forEach((e, i) => e.classList.toggle('on', s - 1 > i));
+    $('#pipeLabel').textContent = 'stage ' + s + ' / 3';
+    if (s === 3) burstFrom(stages[2], 34);
+  }
+  $('#pipeGo').onclick = () => { s = s >= 3 ? 1 : s + 1; render(); };
+  $('#pipeReset').onclick = () => { s = 0; render(); };
+  leaveHooks[2] = () => { s = 0; render(); };
+})();
+
+/* ═══════════════  slide 4 · laziness  ═══════════════ */
+(function(){
+  const t = term($('#lazyTerm'));
+  function reset(){
+    t.clear().line('<span class="muted">$ cargo run -p demo --example training_s2</span>');
+    $('#lazyCall').disabled = false; $('#lazyAwait').disabled = true;
+    $('#lazyState').textContent = 'no future yet'; $('#lazyState').classList.remove('on');
+    $('#lazySize').textContent = 'size_of = —';
+  }
+  $('#lazyCall').onclick = () => {
+    t.line('  future created, elapsed=<span class="hot">41ns</span>');
+    t.line('  size_of future = <span class="hot">152</span>');
+    t.line('  <span class="warn">↑ notice what did NOT print</span>');
+    $('#lazyCall').disabled = true; $('#lazyAwait').disabled = false;
+    $('#lazyState').textContent = 'future built · inert'; $('#lazyState').classList.add('on');
+    $('#lazySize').textContent = 'size_of = 152 B (stack)';
+  };
+  $('#lazyAwait').onclick = async () => {
+    $('#lazyAwait').disabled = true;
+    $('#lazyState').textContent = 'polling…';
+    t.line('  <span class="hot">[a] body started</span>'); await sleep(620);
+    t.line('  [a] body finished'); await sleep(160);
+    t.line('  awaited, value=7');
+    $('#lazyState').textContent = 'Ready(7)';
+    burstFrom($('#lazyTerm'), 30);
+  };
+  $('#lazyReset').onclick = reset;
+  enterHooks[3] = reset; reset();
+})();
+
+/* ═══════════════  slide 5 · concurrency  ═══════════════ */
+(function(){
+  const t = term($('#concTerm'));
+  const bars = id => $('#' + id);
+  const SCALE = 110;  // ms of wall clock mapped to 100% of the track
+  let running = false;
+  function clearBars(){ ['barSeq','barB','barC','barJoin','barD','barE'].forEach(i => { bars(i).style.width = '0'; bars(i).textContent = ''; }); }
+  async function grow(el, fromMs, toMs, realMs, label){
+    const s = performance.now();
+    return new Promise(res => {
+      (function step(){
+        const k = Math.min(1, (performance.now() - s) / realMs);
+        const ms = fromMs + (toMs - fromMs) * k;
+        el.style.width = (ms / SCALE * 100) + '%';
+        if (label) el.textContent = Math.round(ms) + 'ms';
+        k < 1 ? requestAnimationFrame(step) : res();
+      })();
+    });
+  }
+  async function seq(){
+    t.line('<span class="muted">// sequential</span>');
+    await Promise.all([grow(bars('barB'), 0, 50, 700), grow(bars('barSeq'), 0, 50, 700, 1)]);
+    t.line('  [b] body started → finished');
+    bars('barC').style.left = (50 / SCALE * 100) + '%';
+    await Promise.all([
+      new Promise(res => { const s = performance.now(); (function st(){ const k = Math.min(1,(performance.now()-s)/700);
+        bars('barC').style.width = (50*k/SCALE*100)+'%'; k<1?requestAnimationFrame(st):res(); })(); }),
+      grow(bars('barSeq'), 50, 104, 700, 1)]);
+    t.line('  [c] body started → finished');
+    t.line('  <span class="err">sequential elapsed=104.075042ms</span>');
+  }
+  async function join(){
+    t.line('<span class="muted">// tokio::join!(work("d"), work("e"))</span>');
+    t.line('  [d] body started'); t.line('  [e] body started');
+    await Promise.all([grow(bars('barD'), 0, 50, 700), grow(bars('barE'), 0, 50, 700),
+                       grow(bars('barJoin'), 0, 51, 700, 1)]);
+    t.line('  [e] body finished'); t.line('  [d] body finished');
+    t.line('  <span class="hot">join elapsed=51.336125ms</span>');
+    burstFrom(bars('barJoin'), 26);
+  }
+  async function run(fns){
+    if (running) return; running = true;
+    t.clear(); clearBars(); bars('barC').style.left = '0';
+    for (const f of fns) await f();
+    running = false;
+  }
+  $('#runSeq').onclick  = () => run([seq]);
+  $('#runJoin').onclick = () => run([join]);
+  $('#runBoth').onclick = () => run([seq, join]);
+  leaveHooks[4] = () => { clearBars(); t.clear().line('<span class="muted">press a button ▸</span>'); };
+})();
+
+/* ═══════════════  slide 6 · countdown  ═══════════════ */
+(function(){
+  const t = term($('#cdTerm'));
+  let rem = 2, done = false, auto = false;
+  function render(){
+    $('#cdDial').textContent = done ? '🚀' : rem;
+    $('#cdState').textContent = done ? 'Ready("liftoff")' : 'remaining = ' + rem;
+    $('#cdState').classList.toggle('on', done);
+    $('#cdPoll').disabled = done; $('#cdAuto').disabled = done;
+  }
+  function poll(){
+    if (done) return;
+    t.line('  poll, remaining=' + rem);
+    if (rem === 0){
+      done = true; t.line('  <span class="hot">got Ready(liftoff)</span>');
+      $('#cdDial').style.transform = 'scale(1.35)';
+      setTimeout(() => $('#cdDial').style.transform = '', 320);
+      burstFrom($('#cdDial'), 90);
+    } else {
+      rem--; t.line('  <span class="warn">got Pending, loop again</span> <span class="muted">// waker woken immediately</span>');
+    }
+    render();
+  }
+  $('#cdPoll').onclick = poll;
+  $('#cdAuto').onclick = async () => { auto = true; while (!done && auto){ poll(); await sleep(520); } };
+  function reset(){ rem = 2; done = false; auto = false; t.clear(); render(); }
+  $('#cdReset').onclick = reset;
+  enterHooks[5] = reset; leaveHooks[5] = () => auto = false; reset();
+})();
+
+/* ═══════════════  slide 8 · desugaring  ═══════════════ */
+(function(){
+  const notes = [
+    '<b>let total = 40;</b> — an ordinary local… <i>so far</i>. Whether it costs anything depends entirely on line 3.',
+    '<b>.await</b> — the suspension point. It becomes a <b>state</b>, and the sub-future being awaited (<code>Sleep</code>) becomes a <b>field</b> of that state.',
+    '<b>total + 2</b> — this is what makes <code>total</code> expensive. It is read <i>after</i> the await, so <code>total</code> is live across it, so it must be stored in the machine. Had line 3 not existed, <code>total</code> would be a stack variable inside <code>poll</code> and cost nothing.'
+  ];
+  const hs = $$('#desugarSrc .hotspot');
+  const ts = $$('#desugarDst [data-t]');
+  hs.forEach(h => h.onclick = () => {
+    const d = +h.dataset.d;
+    hs.forEach(x => x.classList.toggle('on', x === h));
+    ts.forEach(x => x.classList.toggle('mark', +x.dataset.t === (d === 0 ? 1 : d)));
+    $('#annotText').innerHTML = '▸ ' + notes[d];
+  });
+  leaveHooks[7] = () => { hs.forEach(x => x.classList.remove('on')); ts.forEach(x => x.classList.remove('mark'));
+    $('#annotText').innerHTML = '▸ click a highlighted line.'; };
+})();
+
+/* ═══════════════  slide 9 · state machine  ═══════════════ */
+(function(){
+  const t = term($('#smTerm'));
+  const nodes = ['#sm0','#sm1','#sm2'].map(s => $(s));
+  let state = 0, polls = 0, firstWait = true;
+  function render(){
+    nodes.forEach((n, i) => { n.classList.toggle('on', i === state); n.classList.toggle('done', i === 2 && state === 2); });
+    $('#smCount').textContent = 'polls: ' + polls;
+    $('#smTotal').textContent = state >= 1 ? '40' : '—';
+    $('#smPoll').disabled = state === 2;
+  }
+  $('#smPoll').onclick = () => {
+    polls++;
+    if (state === 0){
+      t.line('  <span class="warn">state=Start</span> -&gt; compute, then wait');
+      t.line('  <span class="muted">total = 40 saved into the variant</span>');
+      state = 1;
+      t.line('  <span class="warn">state=WaitingFirst</span> -&gt; poll inner sleep');
+      t.line('  inner Sleep = <span class="err">Pending</span> → <span class="err">return Poll::Pending</span>');
+      t.line('  <span class="muted">…timer registered with the driver, task parked…</span>');
+    } else if (state === 1){
+      t.line('  <span class="muted">timer fired → waker → tokio re-polls from the top</span>');
+      t.line('  <span class="warn">state=WaitingFirst</span> -&gt; poll inner sleep');
+      t.line('  inner Sleep = <span class="hot">Ready(())</span>');
+      t.line('  <span class="hot">answer=42</span>');
+      state = 2; burstFrom(nodes[2], 40);
+    }
+    render();
+  };
+  function reset(){ state = 0; polls = 0; firstWait = true; t.clear(); render(); }
+  $('#smReset').onclick = reset;
+  enterHooks[8] = reset; reset();
+})();
+
+/* ═══════════════  slide 10 · self-reference  ═══════════════ */
+(function(){
+  const t = term($('#memTerm'));
+  const box = $('#memStruct'), path = $('#mempath'), ghost = $('#memGhost');
+  let inited = false, moved = false, anchor = null;
+
+  function drawArrow(){
+    if (!inited){ path.setAttribute('d', ''); return; }
+    const wrap = $('#memwrap').getBoundingClientRect();
+    const p = $('#memPtr').getBoundingClientRect();
+    const target = anchor || $('#memValue').getBoundingClientRect();
+    const x1 = p.left - wrap.left + 8,  y1 = p.top - wrap.top + p.height / 2;
+    const x2 = target.left - wrap.left + 8, y2 = target.top - wrap.top + target.height / 2;
+    const bow = moved ? 52 : 26;
+    path.setAttribute('d', `M${x1},${y1} C${x1 - bow},${y1} ${x2 - bow},${y2} ${x2},${y2}`);
+    const col = moved ? '#ff5a6a' : '#3ddbd9';
+    path.setAttribute('stroke', col); $('#ahp').setAttribute('fill', col);
+  }
+  function reset(){
+    inited = moved = false; anchor = null;
+    box.style.left = '20px'; box.style.top = '52px';
+    ghost.style.opacity = 0;
+    $('#memPtrVal').textContent = '&self.value'; $('#memPtrVal').style.color = '';
+    $('#memInit').disabled = false; $('#memMove').disabled = true;
+    $('#memValue').style.borderColor = '';
+    t.clear().line('<span class="muted">$ cargo run --example selfref</span>');
+    drawArrow();
+  }
+  $('#memInit').onclick = () => {
+    inited = true; $('#memInit').disabled = true; $('#memMove').disabled = false;
+    $('#memPtrVal').textContent = '0x7ffd_e100';
+    t.line('  before move: pointer aims at own field? <span class="hot">true</span>');
+    drawArrow();
+  };
+  $('#memMove').onclick = async () => {
+    $('#memMove').disabled = true;
+    const wrap = $('#memwrap').getBoundingClientRect();
+    const v = $('#memValue').getBoundingClientRect();
+    anchor = { left: v.left, top: v.top, height: v.height };   // frozen in old memory
+    ghost.style.left = (v.left - wrap.left) + 'px';
+    ghost.style.top  = (v.top - wrap.top) + 'px';
+    moved = true;
+    box.style.left = '340px';
+    ghost.style.opacity = 1;
+    const s = performance.now();
+    (function anim(){ drawArrow(); if (performance.now() - s < 1100) requestAnimationFrame(anim); })();
+    await sleep(1000);
+    $('#memPtrVal').style.color = 'var(--red)';
+    t.line('  after&nbsp; move: pointer aims at own field? <span class="err">false</span>');
+    t.line('  <span class="warn">// the bytes moved. the pointer did not. nothing fixed it up.</span>');
+    $('#memStruct').classList.add('shake');
+    setTimeout(() => $('#memStruct').classList.remove('shake'), 500);
+  };
+  $('#memReset').onclick = reset;
+  enterHooks[9] = () => { reset(); setTimeout(drawArrow, 60); };
+  addEventListener('resize', drawArrow);
+  reset();
+})();
+
+/* ═══════════════  slide 11 · myth flip cards  ═══════════════ */
+$$('#mythGrid .flip').forEach(f => f.onclick = () => f.classList.toggle('on'));
+leaveHooks[10] = () => $$('#mythGrid .flip').forEach(f => f.classList.remove('on'));
+
+/* ═══════════════  slide 12 · compiler errors  ═══════════════ */
+(function(){
+  function wire(btn, pre){
+    $(btn).onclick = () => {
+      const p = $(pre);
+      p.classList.remove('hidden');
+      p.classList.add('shake');
+      setTimeout(() => p.classList.remove('shake'), 500);
+      $(btn).disabled = true;
+    };
+  }
+  wire('#err1btn', '#err1'); wire('#err2btn', '#err2');
+  leaveHooks[11] = () => { ['#err1','#err2'].forEach(s => $(s).classList.add('hidden'));
+    ['#err1btn','#err2btn'].forEach(s => $(s).disabled = false); };
+})();
+
+/* ═══════════════  slide 13 · ActionFuture annotations  ═══════════════ */
+(function(){
+  const notes = {
+    pin:   '<b>#[pin]</b> + <code>self.project()</code> is <b>pin projection</b>: turning <code>Pin&lt;&amp;mut ActionFuture&lt;F&gt;&gt;</code> into <code>Pin&lt;&amp;mut TaskLocalFuture&lt;..&gt;&gt;</code> for the field. This is exactly the thing §3.2 dodged with <code>Box::pin</code> — except free. <code>pin_project_lite</code> generates the <code>unsafe</code> so nobody has to review it by hand.',
+    fn:    '<b>pub fn</b>, not <b>pub async fn</b>. It builds a value and returns it; nothing runs. The whole of §5.2 is the cost of getting this one keyword wrong.',
+    proj:  '<code>self.project()</code> gives you structural access to the pinned field without writing <code>unsafe</code>. <code>this.inner</code> is a <code>Pin&lt;&amp;mut _&gt;</code>; the unpinned fields would come back as plain <code>&amp;mut</code>.',
+    ready: '<code>ready!(..)</code> is just <code>match { Pending =&gt; return Pending, Ready(v) =&gt; v }</code> — the idiom for “delegate to the inner future, and if it is not done, neither am I”.',
+    once:  'Everything after <code>ready!</code> runs <b>exactly once</b>, on the poll that resolves. That is the emit path for every action record in the system — and the reason a cancelled (dropped) action is never emitted at all.'
+  };
+  const hs = $$('#afCode .hotspot');
+  hs.forEach(h => h.onclick = () => {
+    hs.forEach(x => x.classList.toggle('on', x === h));
+    $('#afNoteText').innerHTML = '▸ ' + notes[h.dataset.a];
+  });
+  leaveHooks[12] = () => { hs.forEach(x => x.classList.remove('on'));
+    $('#afNoteText').innerHTML = '▸ click a highlighted region in the code.'; };
+})();
+
+/* ═══════════════  slide 14 · size multiplier  ═══════════════ */
+(function(){
+  const vals = [1144, 2296, 3448, 1144], max = 3448;
+  const labels = ['1144 B', '2296 B', '3448 B', '1144 B'];
+  const mult = ['1x', '2x', '3x', '1x ✓'];
+  function reset(){ for (let i = 0; i < 4; i++){ $('#sz' + i).style.width = '0'; $('#szv' + i).textContent = '—'; } }
+  $('#szRun').onclick = async () => {
+    reset();
+    for (let i = 0; i < 4; i++){
+      await sleep(260);
+      $('#sz' + i).style.width = (vals[i] / max * 100) + '%';
+      $('#szv' + i).innerHTML = labels[i] + ' <span class="mult">' + mult[i] + '</span>';
+      if (i === 3) burstFrom($('#sz3'), 40);
+    }
+  };
+  $('#szReset').onclick = reset;
+  enterHooks[13] = reset; reset();
+})();
+
+/* ═══════════════  slide 15 · cancellation  ═══════════════ */
+(function(){
+  const t = term($('#cxTerm'));
+  function reset(){ $('#cxBar').style.width = '0'; $('#cxBar').textContent = '';
+    $('#cxBar').style.background = ''; $('#cxTo').style.width = '0';
+    $('#cxDrop').classList.add('hidden'); t.clear().line('<span class="muted">$ cargo run --example cancel</span>'); }
+  $('#cxRun').onclick = async () => {
+    reset(); $('#cxRun').disabled = true;
+    t.line('  <span class="hot">slow: started</span>');
+    t.line('  <span class="muted">Guard("slow") constructed, lives in the future</span>');
+    const s = performance.now(), dur = 1400;
+    await new Promise(res => (function st(){
+      const k = Math.min(1, (performance.now() - s) / dur);
+      $('#cxBar').style.width = (k * 42) + '%';
+      $('#cxTo').style.width = (k * 42) + '%';
+      $('#cxTo').textContent = Math.round(k * 100) + 'ms';
+      k < 1 ? requestAnimationFrame(st) : res();
+    })());
+    $('#cxBar').style.background = 'linear-gradient(90deg,#8a1e29,var(--red))';
+    $('#cxBar').textContent = 'dropped';
+    t.line('  <span class="err">↯ timeout elapsed → the slow() future is DROPPED</span>');
+    await sleep(320);
+    t.line('  <span class="warn">Guard(slow) dropped</span>');
+    t.line('  timeout result is_err=<span class="hot">true</span>, elapsed=102.213709ms');
+    t.line('  <span class="muted">"slow: finished" never printed — the body stopped at the .await</span>');
+    $('#cxDrop').classList.remove('hidden');
+    $('#cxRun').disabled = false;
+  };
+  $('#cxReset').onclick = reset;
+  enterHooks[14] = reset; reset();
+})();
+
+/* ═══════════════  slide 18 · finale  ═══════════════ */
+(function(){
+  $('#finale').onclick = () => {
+    burst(innerWidth * .25, innerHeight * .65, 70);
+    setTimeout(() => burst(innerWidth * .75, innerHeight * .65, 70), 160);
+    setTimeout(() => burst(innerWidth * .5,  innerHeight * .4,  110), 320);
+  };
+  enterHooks[17] = () => setTimeout(() => burst(innerWidth / 2, innerHeight * .5, 60), 420);
+})();
+
+/* ─────────────────────────  boot  ───────────────────────────────── */
+const hash = parseInt(location.hash.slice(1), 10);
+go(Number.isFinite(hash) && hash > 0 ? hash - 1 : 0, 1);
+addEventListener('hashchange', () => { const h = parseInt(location.hash.slice(1), 10); if (Number.isFinite(h)) go(h - 1); });
+</script>
+</body>
+</html>
