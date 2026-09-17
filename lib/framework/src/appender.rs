@@ -206,3 +206,17 @@ fn write_metrics(metrics: MetricsMessage) {
 
     println!("{log}");
 }
+
+// do not log action, only print trace to stderr if error happened
+pub struct TraceAppender;
+
+impl Appender for TraceAppender {
+    #[allow(clippy::print_stderr)]
+    async fn append_action(&self, action: ActionMessage) {
+        if let Some(logs) = action.logs {
+            eprintln!("{logs}");
+        }
+    }
+
+    async fn append_metrics(&self, _metrics: MetricsMessage) {}
+}
