@@ -100,15 +100,10 @@ impl ClickHouse {
         T: RowOwned + RowWrite,
     {
         let _span = span!("clickhouse");
-        // Inserter accumulates the serialized byte count and row count, returned as Quantities by end().
-        // async_insert lets the server batch writes across requests; wait_for_async_insert=0 makes
-        // end() hand the batch over and return once buffered, without waiting for the on-disk flush.
-        // fully qualified because the hidden clickhouse::Row trait also declares a NAME const
-        let mut inserter = self
-            .client
-            .inserter::<T>(table)
-            .with_setting("async_insert", "1")
-            .with_setting("wait_for_async_insert", "0");
+        // previously it used setting .with_setting("async_insert", "1").with_setting("wait_for_async_insert", "0");
+        // but found silent data loss on clickhouse, no error on both side, no error in "system.asynchronous_insert_log"
+        // so here to use without, message handler will wait until success
+        let mut inserter = self.client.inserter::<T>(table);
         for row in rows {
             inserter
                 .write(row)
