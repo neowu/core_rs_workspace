@@ -1,0 +1,13 @@
+[package]
+name = "http_test_client"
+version.workspace = true
+edition = "2024"
+
+# only for the payload types, so request and response shapes cannot drift from the server
+[dependencies]
+http_test_server = { path = "../http_test_server" }
+
+serde_json = "*"
+tokio.workspace = true
+reqwest = "0"
+bytes = "*"

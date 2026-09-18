@@ -8,3 +8,8 @@ Application crates under (`app/`)
 
 under (`test/`), use apple container to start required services
 `container start {service}`
+
+# spec
+
+- update /spec to reflect what code changed
+- for spec doc, only keep key design decisions / behaviour / requirements, always goes to code for impl details

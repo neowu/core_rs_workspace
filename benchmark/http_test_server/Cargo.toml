@@ -1,0 +1,16 @@
+[package]
+name = "http_test_server"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+framework.workspace = true
+framework_macro.workspace = true
+
+serde.workspace = true
+tokio.workspace = true
+axum.workspace = true
+
+[features]
+# heap accounting, see src/alloc_stats.rs, off by default because it is not free
+alloc_stats = []

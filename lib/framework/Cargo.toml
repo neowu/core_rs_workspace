@@ -21,6 +21,10 @@ tower-http = {version ="*", features = ["fs"]}
 
 reqwest = { version = "0", features = ["stream"] }
 
+# dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
+tracing = { version = "*", features = ["release_max_level_off"] }
+log = { version = "*", features = ["release_max_level_off"] }
+
 futures = "*"
 pin-project-lite = "*"
 bytes = "*"

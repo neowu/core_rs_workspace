@@ -719,6 +719,7 @@ dependencies = [
  "futures",
  "http",
  "libc",
+ "log",
  "pin-project-lite",
  "rand 0.8.8",
  "reqwest",
@@ -730,6 +731,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower-http",
+ "tracing",
 ]
 
 [[package]]
@@ -968,6 +970,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hotspots"
+version = "0.8.9"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1005,6 +1014,28 @@ name = "http-range-header"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
+
+[[package]]
+name = "http_test_client"
+version = "0.8.9"
+dependencies = [
+ "bytes",
+ "http_test_server",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "http_test_server"
+version = "0.8.9"
+dependencies = [
+ "axum",
+ "framework",
+ "framework_macro",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "httparse"
