@@ -273,6 +273,64 @@ logging — the server layer formats every header and cookie into the action's b
 request, and `TraceAppender` then discards it (`core::fmt::write` and `String::write_str` are ~2%
 between them, plus the allocations behind them).
 
+## Action allocation tuning
+
+The action record now borrows what it can instead of rebuilding it: `ActionMessage` holds
+`Cow<'static, str>` for `app`, `host`, `kind` and every context/stats key, context values are a
+`SmallVec<[String; 1]>` that keeps the common single value inline, and completion **moves** the
+context and stats vectors rather than collecting new ones. The wire format did not move — context
+values are still json arrays, and gcloud still collapses a single value to a scalar at the edge. The
+design and its rationale are in [`spec/action_log.md`](../action_log.md).
+
+Measured as an A/B on 2026-09-19, same host and settings as the baseline (12 cores, h2c, 64 streams,
+`TOKIO_WORKER_THREADS=4`, client `--threads 6`, 5 s warmup + 15 s measured, `ALLOC_STATS=1`).
+Four rounds per side, run **interleaved** — after, baseline, baseline, after, then two more
+baseline/after pairs — so machine drift cannot land on one side. Both sides are commit `9610644`;
+the baseline side is that commit with the change stashed, which reproduced the 2026-09-18 numbers
+exactly (70 allocations, 9,183 B for a get) and so is directly comparable to the baseline above.
+
+| scenario | metric | baseline | after | delta |
+|---|---|---|---|---|
+| get | allocations / request | 70 | 51 | **−19 (−27%)** |
+| get | bytes / request | 9,183 | 8,896 | −287 (−3.1%) |
+| get | server cpu µs / request | 30.06 | 29.60 | −0.46 (−1.5%) |
+| post | allocations / request | 75 | 55 | **−20 (−27%)** |
+| post | bytes / request | 10,185 | 9,843 | −342 (−3.4%) |
+| post | server cpu µs / request | 41.77 | 40.64 | −1.13 (−2.7%) |
+
+Cpu is the mean of four runs. The get spread does not overlap at all — every after run (29.06–29.90)
+came in under every baseline run (30.01–30.18); post overlaps on one pair of sixteen. That is the
+only reason a sub-3% cpu claim is made at all, since the run to run spread on this host is wider
+than the effect and no single pair would have shown it.
+
+**Throughput and latency did not move**, as expected: 67.3k/s get and ~50.8k/s post on both sides,
+p50 within 0.005 ms. The single h2c connection is the ceiling, so cpu freed on a worker thread has
+nowhere to go — see the baseline section above.
+
+The profile agrees with the allocation count: the three `libsystem_malloc` frames that held 5.1% of
+on-cpu time between them on a get are down to two frames and 2.2%, with the third out of the top 15.
+The `http_server_layer` frame itself is roughly unchanged (1.58% → 1.42%), which is the expected
+shape — the work removed was in message construction, not in the layer's own body.
+
+### Where the 19 went
+
+Per action the change removes `2·(scalar contexts) + (stats keys) + 5` allocations: one vector and
+one key string per scalar context, one key string per stat, plus `app`, `host`, `kind` and the two
+rebuilt vectors. A benchmark get sets six contexts (`uri`, `method`, `client_ip`, `matched_path`,
+`fn`, `response_status`) and two stats (`elapsed`, `response_content_length`) — 2·6 + 2 + 5 = 19. A
+post adds `request_content_length` and saves 20. The counts are exact, not fitted.
+
+The remaining ~9 KB per request is still unexplained; this change moved 3% of it.
+
+### Consumer impact
+
+These are public Rust field types, so an external appender that constructs or explicitly types an
+`ActionMessage` needs updating even though nothing it writes or reads changed.
+`log_processor_rs` was updated in the same change — alert helpers take the new slice types, and row
+conversion moves owned strings out of the `Cow`s into the existing ClickHouse row types, with no
+schema change. A regression test round-trips a message through json and asserts the deserialized,
+owned form still converts.
+
 ## Known gaps
 
 - **No baseline to compare against.** A number only means something next to another number: the same

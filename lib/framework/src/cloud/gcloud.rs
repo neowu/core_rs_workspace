@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::borrow::Cow;
 use std::env;
 use std::time::Duration;
 
@@ -16,6 +17,7 @@ use crate::http::HttpClientConfig;
 use crate::http::HttpRequest;
 use crate::http::Method;
 use crate::json;
+use crate::log::ContextValues;
 use crate::network::hostname;
 use crate::system::Env;
 use crate::time::DateTime;
@@ -164,9 +166,9 @@ struct ActionEntry<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     error_message: Option<&'a str>,
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
-    context: &'a [(String, Vec<String>)],
+    context: &'a [(Cow<'static, str>, ContextValues)],
     #[serde(flatten, serialize_with = "serialize_key_value_tuple")]
-    stats: &'a [(String, u64)],
+    stats: &'a [(Cow<'static, str>, u64)],
     #[serde(rename = "logging.googleapis.com/labels")]
     label: LogLabel,
     #[serde(rename = "logging.googleapis.com/trace")]
@@ -218,7 +220,7 @@ where
     // Initialize the map serializer with the exact size
     let mut map = serializer.serialize_map(Some(vec.len()))?;
     for (k, v) in vec {
-        if let Some(values) = (v as &dyn Any).downcast_ref::<Vec<String>>()
+        if let Some(values) = (v as &dyn Any).downcast_ref::<ContextValues>()
             && values.len() == 1
             && let Some(first) = values.first()
         {
@@ -243,8 +245,12 @@ mod tests {
 
     #[test]
     fn serialize_action_entry() {
-        let context = vec![("user_id".to_owned(), vec!["u1".to_owned()])];
-        let stats = vec![("count".to_owned(), 42)];
+        let context = vec![
+            ("user_id".into(), ["u1".to_owned()].into_iter().collect()),
+            ("empty".into(), [].into_iter().collect()),
+            ("roles".into(), ["reader".to_owned(), "writer".to_owned()].into_iter().collect()),
+        ];
+        let stats = vec![("count".into(), 42)];
 
         let entry = ActionEntry {
             id: "action-1",
@@ -276,6 +282,8 @@ mod tests {
         assert_eq!(value["time"], "2023-11-14T22:13:20Z");
         // context/stats are flattened into the top-level object
         assert_eq!(value["user_id"], "u1");
+        assert_eq!(value["empty"], serde_json::json!([]));
+        assert_eq!(value["roles"], serde_json::json!(["reader", "writer"]));
         assert_eq!(value["count"], 42.0);
         assert_eq!(value["logging.googleapis.com/labels"]["log"], "action");
         assert_eq!(value["logging.googleapis.com/trace"], "action-1");

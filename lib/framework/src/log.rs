@@ -11,6 +11,7 @@ use std::time::Instant;
 use pin_project_lite::pin_project;
 use serde::Deserialize;
 use serde::Serialize;
+use smallvec::SmallVec;
 use tokio::task::futures::TaskLocalFuture;
 use tokio::task_local;
 
@@ -27,6 +28,9 @@ mod span;
 
 pub use span::__span;
 pub use span::Span;
+
+/// Context values serialize as an array, with the common single value stored inline.
+pub type ContextValues = SmallVec<[String; 1]>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Severity {
@@ -212,31 +216,31 @@ macro_rules! context {
 
 #[doc(hidden)]
 pub trait ScalarContextValue {
-    fn __into_context_value(self) -> Vec<String>;
+    fn __into_context_value(self) -> ContextValues;
 }
 
 impl<T: Into<String>> ScalarContextValue for T {
     #[inline]
-    fn __into_context_value(self) -> Vec<String> {
-        vec![self.into()]
+    fn __into_context_value(self) -> ContextValues {
+        SmallVec::from_buf([self.into()])
     }
 }
 
 #[doc(hidden)]
 pub trait VecContextValue {
-    fn __into_context_value(self) -> Vec<String>;
+    fn __into_context_value(self) -> ContextValues;
 }
 
 impl<T: Into<String>> VecContextValue for Vec<T> {
     #[inline]
-    fn __into_context_value(self) -> Vec<String> {
+    fn __into_context_value(self) -> ContextValues {
         self.into_iter().map(Into::into).collect()
     }
 }
 
 #[doc(hidden)]
 #[inline]
-pub fn __context(key: &'static str, mut values: Vec<String>, location: &'static str) {
+pub fn __context(key: &'static str, mut values: ContextValues, location: &'static str) {
     const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
     let _result = CURRENT_ACTION.try_with(|action| {
@@ -254,7 +258,7 @@ pub fn __context(key: &'static str, mut values: Vec<String>, location: &'static 
             action.log(None, None, Some(location), format_args!("[context] {key}={values:?}"));
         }
 
-        action.context.push((key, values));
+        action.context.push((key.into(), values));
     });
 }
 
@@ -303,7 +307,59 @@ fn truncate_with_marker(value: &mut String, len: usize) {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::pin::pin;
+
+    use futures::executor::block_on;
+
+    use super::CURRENT_ACTION;
+    use super::ContextValues;
+    use super::ScalarContextValue as _;
+    use super::VecContextValue as _;
     use crate::log::Severity;
+    use crate::log::action::Action;
+    use crate::time::DateTime;
+
+    #[test]
+    fn context_values_preserve_arrays() {
+        let scalar = "GET".__into_context_value();
+        assert!(!scalar.spilled());
+        let cases = [
+            (scalar, r#"["GET"]"#),
+            (Vec::<String>::new().__into_context_value(), "[]"),
+            (vec!["one"].__into_context_value(), r#"["one"]"#),
+            (vec!["one", "two"].__into_context_value(), r#"["one","two"]"#),
+        ];
+        for (values, json) in cases {
+            assert_eq!(serde_json::to_string(&values).unwrap(), json);
+            assert_eq!(serde_json::from_str::<ContextValues>(json).unwrap(), values);
+        }
+    }
+
+    #[test]
+    fn context_logs_and_truncates_inline_and_multiple_values() {
+        let mut scope = pin!(CURRENT_ACTION.scope(
+            RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())),
+            async {
+                context!(scalar = "老".repeat(334));
+                context!(empty = Vec::<String>::new());
+                context!(single = vec!["one"]);
+                context!(multiple = vec!["one".to_owned(), "老".repeat(334)]);
+            }
+        ));
+        block_on(scope.as_mut());
+        let action = scope.take_value().unwrap().into_inner();
+        let truncated = format!("{}...(truncated)", "老".repeat(333));
+        let values: Vec<_> = action.context.iter().map(|(_, values)| values.as_slice()).collect();
+        assert_eq!(
+            values,
+            vec![vec![truncated.clone()], vec![], vec!["one".to_owned()], vec!["one".to_owned(), truncated.clone()]]
+        );
+        assert!(action.logs.contains(&format!("[context] scalar={truncated}\n")));
+        assert!(action.logs.contains("[context] empty=[]\n"));
+        assert!(action.logs.contains("[context] single=one\n"));
+        assert!(action.logs.contains(&format!("[context] multiple={:?}\n", ["one", &truncated])));
+    }
 
     #[test]
     fn compare_severity() {

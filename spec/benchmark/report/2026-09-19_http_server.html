@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>http server benchmark 2026-09-19</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1a1a1a;--dim:#666;--line:#e3e3e3;--head:#f7f7f7;--accent:#b35c00;--bar:#f0c9a0}
+@media (prefers-color-scheme:dark){:root{--bg:#16181c;--fg:#e8e8e8;--dim:#9aa0a6;--line:#2c2f36;--head:#1e2126;--accent:#f0a458;--bar:#6b4520}}
+*{box-sizing:border-box}body{margin:0;padding:24px 16px;background:var(--bg);color:var(--fg);
+font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1120px;margin:0 auto}h1{font-size:20px;margin:0 0 4px}
+h2{font-size:16px;margin:28px 0 2px}p.meta{color:var(--dim);margin:0 0 14px;font-size:13px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 7px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-size:13px}
+th{background:var(--head);font-weight:600;font-size:12px;color:var(--dim)}
+th:first-child,td:first-child,td.s,td.m,th.m{text-align:left}td.s{font-weight:600}
+td.t{color:var(--dim);font-size:12px}td.na{color:var(--dim)}td.n{color:var(--accent);font-weight:600}
+td.m{font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:normal;word-break:break-word}
+td.b{width:90px}.bar{height:9px;background:var(--bar);border-radius:2px;min-width:1px}
+tbody tr:hover{background:var(--head)}.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+footer{color:var(--dim);font-size:12px;margin-top:22px}footer code{font-size:12px}
+</style></head><body><main>
+<h1>http server benchmark — 2026-09-19</h1>
+<p class="meta">16 run(s) · macbook0 · 12 cores · Darwin 27.0.0 · commit 9610644 · cargo profile release</p>
+<div class="wrap"><table><thead><tr>
+<th>time</th><th>scenario</th><th>proto</th><th>streams</th><th>client thr</th><th>server thr</th><th>dur</th>
+<th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>p99.9 ms</th>
+<th>cpu µs/req</th><th>allocs/req</th><th>bytes/req</th><th>peak rss MB</th>
+</tr></thead><tbody>
+<tr><td class="t">12:10:27</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">67288</td><td>0.939</td><td>1.466</td><td>1.660</td><td class="n">29.90</td><td>51.0</td><td>8896</td><td>8.3</td></tr>
+<tr><td class="t">12:10:54</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">51753</td><td>1.223</td><td>1.874</td><td>2.151</td><td class="n">40.22</td><td>55.0</td><td>9843</td><td>8.9</td></tr>
+<tr><td class="t">12:11:36</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">66978</td><td>0.943</td><td>1.483</td><td>1.684</td><td class="n">30.18</td><td>70.0</td><td>9183</td><td>8.4</td></tr>
+<tr><td class="t">12:12:02</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">50099</td><td>1.258</td><td>1.984</td><td>2.453</td><td class="n">42.49</td><td>75.0</td><td>10186</td><td>8.8</td></tr>
+<tr><td class="t">12:12:33</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">67255</td><td>0.938</td><td>1.484</td><td>1.726</td><td class="n">30.01</td><td>70.0</td><td>9183</td><td>8.5</td></tr>
+<tr><td class="t">12:12:53</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">50417</td><td>1.255</td><td>1.935</td><td>2.234</td><td class="n">41.78</td><td>75.0</td><td>10185</td><td>8.8</td></tr>
+<tr><td class="t">12:13:29</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">66823</td><td>0.944</td><td>1.493</td><td>2.025</td><td class="n">29.06</td><td>51.0</td><td>8896</td><td>8.4</td></tr>
+<tr><td class="t">12:13:50</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">50946</td><td>1.242</td><td>1.902</td><td>2.207</td><td class="n">41.36</td><td>55.0</td><td>9844</td><td>8.8</td></tr>
+<tr><td class="t">12:14:30</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">66605</td><td>0.948</td><td>1.492</td><td>1.695</td><td class="n">30.02</td><td>70.0</td><td>9183</td><td>8.5</td></tr>
+<tr><td class="t">12:14:51</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">51859</td><td>1.219</td><td>1.875</td><td>2.191</td><td class="n">41.61</td><td>75.0</td><td>10186</td><td>8.8</td></tr>
+<tr><td class="t">12:15:16</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">67396</td><td>0.937</td><td>1.478</td><td>1.732</td><td class="n">29.65</td><td>51.0</td><td>8896</td><td>8.4</td></tr>
+<tr><td class="t">12:15:38</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">50880</td><td>1.242</td><td>1.922</td><td>2.233</td><td class="n">40.18</td><td>55.0</td><td>9843</td><td>8.9</td></tr>
+<tr><td class="t">12:16:03</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">68229</td><td>0.926</td><td>1.454</td><td>1.662</td><td class="n">30.04</td><td>70.0</td><td>9183</td><td>8.4</td></tr>
+<tr><td class="t">12:16:24</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">50650</td><td>1.249</td><td>1.917</td><td>2.213</td><td class="n">41.20</td><td>75.0</td><td>10184</td><td>8.8</td></tr>
+<tr><td class="t">12:16:50</td><td class="s">get</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">67667</td><td>0.934</td><td>1.461</td><td>1.661</td><td class="n">29.78</td><td>51.0</td><td>8896</td><td>8.3</td></tr>
+<tr><td class="t">12:17:11</td><td class="s">post</td><td>h2c</td><td>64</td><td>6</td><td>4</td><td>15s</td><td class="n">49789</td><td>1.272</td><td>1.943</td><td>2.238</td><td class="n">40.81</td><td>55.0</td><td>9843</td><td>8.7</td></tr>
+</tbody></table></div>
+<h2>Methods taking the most time — get</h2>
+<p class="meta">self time, 32991 on-cpu samples at 1 kHz, 54.1% of samples parked (spare capacity)</p>
+<div class="wrap"><table><thead><tr><th>#</th><th>self %</th><th></th><th class="m">method</th></tr></thead><tbody>
+<tr><td class="t">1</td><td class="n">29.90</td><td class="b"><div class="bar" style="width:100%"></div></td><td class="m">kevent</td></tr>
+<tr><td class="t">2</td><td class="n">7.61</td><td class="b"><div class="bar" style="width:25%"></div></td><td class="m">__psynch_mutexdrop</td></tr>
+<tr><td class="t">3</td><td class="n">4.55</td><td class="b"><div class="bar" style="width:15%"></div></td><td class="m">mach_absolute_time</td></tr>
+<tr><td class="t">4</td><td class="n">4.48</td><td class="b"><div class="bar" style="width:15%"></div></td><td class="m">_platform_memmove</td></tr>
+<tr><td class="t">5</td><td class="n">2.72</td><td class="b"><div class="bar" style="width:9%"></div></td><td class="m">writev</td></tr>
+<tr><td class="t">6</td><td class="n">1.42</td><td class="b"><div class="bar" style="width:5%"></div></td><td class="m">&lt;axum::middleware::from_fn::FromFn&lt;framework::web::server::http_server_layer, framework::web::server::HttpServerState, axum::routing::route::Route, (axum::extract::state::State&lt;framework::web::server::HttpServerState&gt;, http::request::Request&lt;axum_core::body::Body&gt;)&gt; as tower_service::Service&lt;http::request::Request&lt;axum_core::body::Body&gt;&gt;&gt;::call::{closure#0}</td></tr>
+<tr><td class="t">7</td><td class="n">1.32</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">core::fmt::write</td></tr>
+<tr><td class="t">8</td><td class="n">1.30</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">libsystem_malloc.dylib+0x33be0</td></tr>
+<tr><td class="t">9</td><td class="n">1.05</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">__psynch_cvsignal</td></tr>
+<tr><td class="t">10</td><td class="n">1.02</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">&lt;alloc::string::String as core::fmt::Write&gt;::write_str</td></tr>
+<tr><td class="t">11</td><td class="n">0.89</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">libsystem_malloc.dylib+0x3c168</td></tr>
+<tr><td class="t">12</td><td class="n">0.85</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">&lt;hyper::proto::h2::server::H2Stream&lt;hyper_util::service::glue::TowerToHyperServiceFuture&lt;tower::util::map_request::MapRequest&lt;axum::extension::AddExtension&lt;axum::routing::Router, axum::extract::connect_info::ConnectInfo&lt;core::net::socket_addr::SocketAddr&gt;&gt;, axum::serve::handle_connection&lt;tokio::net::tcp::listener::TcpListener, axum::extract::connect_info::IntoMakeServiceWithConnectInfo&lt;axum::routing::Router, core::net::socket_addr::SocketAddr&gt;, axum::extension::AddExtension&lt;axum::routing::Router, axum::extract::connect_info::ConnectInfo&lt;core::net::socket_addr::SocketAddr&gt;&gt;&gt;::{closure#0}::{closure#2}&gt;, http::request::Request&lt;hyper::body::incoming::Incoming&gt;&gt;, axum_core::body::Body, hyper_util::rt::tokio::TokioExecutor&gt; as core::future::future::Future&gt;::poll</td></tr>
+<tr><td class="t">13</td><td class="n">0.79</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">&lt;axum::routing::path_router::PathRouter&lt;(), false&gt;&gt;::call_with_state</td></tr>
+<tr><td class="t">14</td><td class="n">0.71</td><td class="b"><div class="bar" style="width:2%"></div></td><td class="m">pthread_mutex_lock</td></tr>
+<tr><td class="t">15</td><td class="n">0.67</td><td class="b"><div class="bar" style="width:2%"></div></td><td class="m">pthread_mutex_unlock</td></tr>
+</tbody></table></div>
+<h2>Methods taking the most time — post</h2>
+<p class="meta">self time, 31888 on-cpu samples at 1 kHz, 55.7% of samples parked (spare capacity)</p>
+<div class="wrap"><table><thead><tr><th>#</th><th>self %</th><th></th><th class="m">method</th></tr></thead><tbody>
+<tr><td class="t">1</td><td class="n">30.17</td><td class="b"><div class="bar" style="width:100%"></div></td><td class="m">kevent</td></tr>
+<tr><td class="t">2</td><td class="n">9.51</td><td class="b"><div class="bar" style="width:32%"></div></td><td class="m">__psynch_mutexdrop</td></tr>
+<tr><td class="t">3</td><td class="n">4.39</td><td class="b"><div class="bar" style="width:15%"></div></td><td class="m">mach_absolute_time</td></tr>
+<tr><td class="t">4</td><td class="n">3.84</td><td class="b"><div class="bar" style="width:13%"></div></td><td class="m">_platform_memmove</td></tr>
+<tr><td class="t">5</td><td class="n">2.94</td><td class="b"><div class="bar" style="width:10%"></div></td><td class="m">writev</td></tr>
+<tr><td class="t">6</td><td class="n">1.31</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">__recvfrom</td></tr>
+<tr><td class="t">7</td><td class="n">1.29</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">core::fmt::write</td></tr>
+<tr><td class="t">8</td><td class="n">1.26</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">__psynch_cvsignal</td></tr>
+<tr><td class="t">9</td><td class="n">1.22</td><td class="b"><div class="bar" style="width:4%"></div></td><td class="m">&lt;axum::middleware::from_fn::FromFn&lt;framework::web::server::http_server_layer, framework::web::server::HttpServerState, axum::routing::route::Route, (axum::extract::state::State&lt;framework::web::server::HttpServerState&gt;, http::request::Request&lt;axum_core::body::Body&gt;)&gt; as tower_service::Service&lt;http::request::Request&lt;axum_core::body::Body&gt;&gt;&gt;::call::{closure#0}</td></tr>
+<tr><td class="t">10</td><td class="n">0.92</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">pthread_mutex_lock</td></tr>
+<tr><td class="t">11</td><td class="n">0.91</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">&lt;alloc::string::String as core::fmt::Write&gt;::write_str</td></tr>
+<tr><td class="t">12</td><td class="n">0.83</td><td class="b"><div class="bar" style="width:3%"></div></td><td class="m">pthread_mutex_unlock</td></tr>
+<tr><td class="t">13</td><td class="n">0.74</td><td class="b"><div class="bar" style="width:2%"></div></td><td class="m">libsystem_malloc.dylib+0x33be0</td></tr>
+<tr><td class="t">14</td><td class="n">0.69</td><td class="b"><div class="bar" style="width:2%"></div></td><td class="m">&lt;tokio::task::task_local::TaskLocalFuture&lt;core::cell::RefCell&lt;framework::log::action::Action&gt;, framework::web::server::http_server_layer::{closure#0}::{closure#2}&gt; as core::future::future::Future&gt;::poll</td></tr>
+<tr><td class="t">15</td><td class="n">0.63</td><td class="b"><div class="bar" style="width:2%"></div></td><td class="m">&lt;core::fmt::Formatter&gt;::pad_integral</td></tr>
+</tbody></table></div>
+<footer>
+<p><b>req/s</b> measures client and server together on one host, so it is only comparable within a run group.
+<b>cpu µs/req</b> is the server process alone, sampled from <code>ps</code>, and is the number to compare.
+<b>allocs/req</b> needs <code>ALLOC_STATS=1</code> and is deterministic, so it resolves differences cpu time cannot.</p>
+<p>Runs come from <code>benchmark/run.sh</code>, hotspots from <code>benchmark/profile.sh</code>, both rendered by
+<code>benchmark/report.sh</code> from the record file beside this one. A profiling run contributes no result row,
+the profiler skews throughput and cpu.</p>
+</footer></main></body></html>

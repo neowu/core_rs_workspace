@@ -51,7 +51,7 @@ pub(crate) async fn action_message_handler(
             traces.push(TraceRow {
                 timestamp: payload.timestamp.into(),
                 id: payload.id.clone(),
-                app: payload.app.clone(),
+                app: payload.app.as_ref().to_owned(),
                 error_code: payload.error_code.clone(),
                 content,
             });
@@ -75,9 +75,9 @@ fn to_action_row(payload: ActionMessage) -> ActionRow {
     let mut multi_context: HashMap<String, Vec<String>> = HashMap::new();
     for (key, mut values) in payload.context {
         if values.len() == 1 {
-            context.insert(key, values.swap_remove(0));
+            context.insert(key.into_owned(), values.swap_remove(0));
         } else {
-            multi_context.insert(key, values);
+            multi_context.insert(key.into_owned(), values.into_vec());
         }
     }
 
@@ -91,23 +91,24 @@ fn to_action_row(payload: ActionMessage) -> ActionRow {
     ActionRow {
         timestamp: payload.timestamp.into(),
         id: payload.id,
-        app: payload.app,
-        host: payload.host,
+        app: payload.app.into_owned(),
+        host: payload.host.into_owned(),
         severity: payload.severity.into(),
-        kind: payload.kind,
+        kind: payload.kind.into_owned(),
         ref_id,
         ref_ids,
         error_code: payload.error_code,
         error_message: payload.error_message,
         context,
         multi_context,
-        stats: payload.stats.into_iter().collect(),
+        stats: payload.stats.into_iter().map(|(key, value)| (key.into_owned(), value)).collect(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use framework::appender::ActionMessage;
+    use framework::json;
     use framework::log::Severity;
     use framework::time::DateTime;
 
@@ -117,9 +118,9 @@ mod tests {
         ActionMessage {
             id: "id".to_owned(),
             timestamp: DateTime::now(),
-            app: "app".to_owned(),
-            host: "host".to_owned(),
-            kind: "message".to_owned(),
+            app: "app".into(),
+            host: "host".into(),
+            kind: "message".into(),
             severity: Severity::Info,
             ref_ids: None,
             error_code: None,
@@ -134,9 +135,9 @@ mod tests {
     fn split_context() {
         let mut action = message();
         action.context = vec![
-            ("subject".to_owned(), vec!["log.action".to_owned()]),
-            ("client".to_owned(), vec!["a".to_owned(), "b".to_owned()]),
-            ("empty".to_owned(), vec![]),
+            ("subject".into(), vec!["log.action".to_owned()].into()),
+            ("client".into(), vec!["a".to_owned(), "b".to_owned()].into()),
+            ("empty".into(), vec![].into()),
         ];
 
         let row = to_action_row(action);
@@ -144,6 +145,23 @@ mod tests {
         assert_eq!(row.context.get("subject"), Some(&"log.action".to_owned()));
         assert_eq!(row.multi_context.get("client"), Some(&vec!["a".to_owned(), "b".to_owned()]));
         assert_eq!(row.multi_context.get("empty"), Some(&vec![]));
+    }
+
+    #[test]
+    fn deserialized_metadata_and_stats() {
+        let mut action = message();
+        action.stats.push(("elapsed".into(), 42));
+        action.context.push(("subject".into(), vec!["log.action".to_owned()].into()));
+        let encoded = json::to_json(&action).unwrap();
+        let decoded = json::from_json(&encoded).unwrap();
+
+        let row = to_action_row(decoded);
+
+        assert_eq!(row.app, "app");
+        assert_eq!(row.host, "host");
+        assert_eq!(row.kind, "message");
+        assert_eq!(row.stats.get("elapsed"), Some(&42));
+        assert_eq!(row.context.get("subject").map(String::as_str), Some("log.action"));
     }
 
     #[test]

@@ -7,6 +7,7 @@ edition = "2024"
 serde.workspace = true
 serde_json = "*"
 serde_html_form = "*"
+smallvec = { version = "1", features = ["serde"] }
 
 time = { version = "*", features = ["formatting", "parsing"] }
 

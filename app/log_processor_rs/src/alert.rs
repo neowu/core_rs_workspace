@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -6,6 +7,7 @@ use std::time::Instant;
 
 use framework::appender::ActionMessage;
 use framework::appender::MetricsMessage;
+use framework::log::ContextValues;
 use framework::log::Severity;
 use framework::spawn_action;
 use framework::write_str;
@@ -149,7 +151,7 @@ fn message(alert: &Alert<'_>, info: &str, count: u32) -> String {
     message
 }
 
-fn action_info(kind: &str, context: &[(String, Vec<String>)]) -> String {
+fn action_info(kind: &str, context: &[(Cow<'static, str>, ContextValues)]) -> String {
     let mut line = String::with_capacity(64);
     write_str!(line, "kind: {kind}");
     // the interesting field differs per kind, an action carries only the ones its own framework layer set
@@ -185,15 +187,17 @@ fn action_info(kind: &str, context: &[(String, Vec<String>)]) -> String {
     line
 }
 
-fn context_value<'a>(context: &'a [(String, Vec<String>)], key: &str) -> Option<&'a str> {
-    context.iter().find(|(name, _)| name.as_str() == key).and_then(|(_, values)| values.first()).map(String::as_str)
+fn context_value<'a>(context: &'a [(Cow<'static, str>, ContextValues)], key: &str) -> Option<&'a str> {
+    context.iter().find(|(name, _)| name.as_ref() == key).and_then(|(_, values)| values.first()).map(String::as_str)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::time::Duration;
     use std::time::Instant;
 
+    use framework::log::ContextValues;
     use framework::log::Severity;
 
     use super::AlertService;
@@ -215,8 +219,11 @@ mod tests {
         Alert { id: "id", app: "app", severity, error_code: Some("ERROR_CODE"), error_message: Some("error message") }
     }
 
-    fn context(entries: &[(&str, &str)]) -> Vec<(String, Vec<String>)> {
-        entries.iter().map(|(key, value)| ((*key).to_owned(), vec![(*value).to_owned()])).collect()
+    fn context(entries: &[(&str, &str)]) -> Vec<(Cow<'static, str>, ContextValues)> {
+        entries
+            .iter()
+            .map(|(key, value)| ((*key).to_owned().into(), [(*value).to_owned()].into_iter().collect()))
+            .collect()
     }
 
     // moves the last sent time of every entry back, to simulate the interval passing

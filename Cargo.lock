@@ -726,6 +726,7 @@ dependencies = [
  "serde",
  "serde_html_form",
  "serde_json",
+ "smallvec",
  "time",
  "tokio",
  "tokio-stream",
@@ -2385,6 +2386,9 @@ name = "smallvec"
 version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "socket2"

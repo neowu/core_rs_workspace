@@ -1,7 +1,9 @@
+use std::borrow::Cow;
 use std::fmt;
 use std::time::Instant;
 
 use crate::exception::Exception;
+use crate::log::ContextValues;
 use crate::log::Severity;
 use crate::log::elapsed;
 use crate::string::StringExt as _;
@@ -20,8 +22,8 @@ pub(crate) struct Action {
     pub ref_ids: Option<Vec<String>>,
     pub severity: Severity,
     pub error: Option<Error>,
-    pub context: Vec<(&'static str, Vec<String>)>,
-    pub stats: Vec<(&'static str, u64)>,
+    pub context: Vec<(Cow<'static, str>, ContextValues)>,
+    pub stats: Vec<(Cow<'static, str>, u64)>,
     pub logs: String, // All log lines in one buffer, separated by '\n'
     pub trace: bool,
 }
@@ -48,7 +50,7 @@ impl Action {
             // slot 0 is reserved so elapsed always leads the stats and the vec allocates exactly once
             stats: {
                 let mut stats = Vec::with_capacity(16);
-                stats.push(("elapsed", 0));
+                stats.push((Cow::Borrowed("elapsed"), 0));
                 stats
             },
             logs,
@@ -66,7 +68,7 @@ impl Action {
         if let Some(entry) = self.stats.iter_mut().find(|(existing, _)| *existing == key) {
             entry.1 += value;
         } else {
-            self.stats.push((key, value));
+            self.stats.push((Cow::Borrowed(key), value));
         }
     }
 
