@@ -1,21 +1,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use framework::exception::Exception;
 use framework::time::Date;
 use framework::time::DateTime;
-use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
 use framework_clickhouse::types::DateTime64;
-use framework_clickhouse::types::Decimal64;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::AppState;
 use crate::elasticsearch::Elasticsearch;
+use crate::kafka::OptionMap;
+use crate::kafka::Stats;
 
 // stat message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
@@ -86,16 +87,16 @@ fn index(now: Date) -> String {
 }
 
 #[derive(Row, Serialize)]
-struct StatRow {
+struct StatRow<'a> {
     pub timestamp: DateTime64,
-    pub id: String,
-    pub app: String,
-    pub host: String,
+    pub id: &'a str,
+    pub app: &'a str,
+    pub host: &'a str,
     pub result: StatResult,
-    pub error_code: Option<String>,
-    pub error_message: Option<String>,
-    pub stats: HashMap<String, Decimal64<3>>,
-    pub info: HashMap<String, String>,
+    pub error_code: Option<&'a str>,
+    pub error_message: Option<&'a str>,
+    pub stats: Stats<'a>,
+    pub info: OptionMap<'a, String>,
 }
 
 // Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)
@@ -108,23 +109,21 @@ enum StatResult {
 
 async fn insert_to_clickhouse(clickhouse: &ClickHouse, messages: &[Message<StatMessage>]) -> Result<(), Exception> {
     let stats: Vec<StatRow> = messages.iter().map(|message| to_stat_row(&message.payload)).collect();
-    clickhouse.insert("stat", &stats).await
+    clickhouse.insert_borrowed::<StatRow>("stat", &stats).await
 }
 
-fn to_stat_row(payload: &StatMessage) -> StatRow {
-    let stats: HashMap<String, Decimal64<3>> =
-        payload.stats.iter().flatten().map(|(key, value)| (key.clone(), Decimal64::from(*value))).collect();
-
+fn to_stat_row(payload: &StatMessage) -> StatRow<'_> {
     StatRow {
         timestamp: payload.date.into(),
-        id: payload.id.clone(),
-        app: payload.app.clone(),
-        host: payload.host.clone().unwrap_or_default(),
+        id: &payload.id,
+        app: &payload.app,
+        host: payload.host.as_deref().unwrap_or_default(),
         result: to_stat_result(&payload.result),
-        error_code: payload.error_code.clone(),
-        error_message: payload.error_message.clone(),
-        stats,
-        info: payload.info.clone().unwrap_or_default(),
+        error_code: payload.error_code.as_deref(),
+        error_message: payload.error_message.as_deref(),
+        // the stat table has no elapsed of its own, the message is already a bag of numbers
+        stats: Stats { elapsed: None, stats: payload.stats.as_ref() },
+        info: OptionMap(payload.info.as_ref()),
     }
 }
 

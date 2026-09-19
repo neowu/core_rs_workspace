@@ -30,7 +30,7 @@ pub(crate) fn client_info(request: &Request, max_forwarded_ips: usize) -> Client
         client_ip = Some(connect_info.0.ip().to_string());
     }
 
-    ClientInfo { client_ip: client_ip.unwrap_or("unknown".to_owned()), user_agent }
+    ClientInfo { client_ip: client_ip.unwrap_or_else(|| "unknown".to_owned()), user_agent }
 }
 
 fn extract_client_ip(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<String> {

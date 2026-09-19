@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 pub use clickhouse;
 use clickhouse::Client;
+use clickhouse::Row;
 use clickhouse::RowOwned;
 use clickhouse::RowRead;
 use clickhouse::RowWrite;
@@ -95,9 +96,22 @@ impl ClickHouse {
         Ok(rows)
     }
 
+    // a row that owns its data, which is the usual one; the row type comes from the slice
     pub async fn insert<T>(&self, table: &str, rows: &[T]) -> Result<(), Exception>
     where
         T: RowOwned + RowWrite,
+    {
+        // `RowOwned` is `for<'a> Row<Value<'a> = Self>`, so an owned slice is already the borrowed form
+        self.insert_borrowed::<T>(table, rows).await
+    }
+
+    // a row that borrows from whatever it was built from, e.g. a row pointing into the message it
+    // is written for, so a batch costs no copy of the data it already has. clickhouse takes those
+    // as `T::Value<'_>` - the same `T` with its data lifetime pinned to the slice - which no longer
+    // determines `T`, so the row type is named: `insert_borrowed::<ActionRow>("action", &rows)`.
+    pub async fn insert_borrowed<T>(&self, table: &str, rows: &[T::Value<'_>]) -> Result<(), Exception>
+    where
+        T: Row + RowWrite,
     {
         let _span = span!("clickhouse");
         // previously it used setting .with_setting("async_insert", "1").with_setting("wait_for_async_insert", "0");

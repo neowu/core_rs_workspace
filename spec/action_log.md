@@ -9,7 +9,8 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`cloud/gcloud.rs`](../lib/framework/src/cloud/gcloud.rs),
 [`framework_nats/src/appender.rs`](../lib/framework_nats/src/appender.rs),
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs) · siblings:
-[`action_future_design.md`](action_future_design.md), [`benchmark/http_server.md`](benchmark/http_server.md)
+[`action_future_design.md`](action_future_design.md), [`clickhouse.md`](clickhouse.md),
+[`benchmark/http_server.md`](benchmark/http_server.md)
 
 An **action** is one unit of work an app performs — an http request, a consumed message, a scheduled
 task — and it produces **exactly one** structured record when it finishes. That record is the app's
@@ -210,8 +211,8 @@ consumer would then have to handle — for a saving that only defers an allocati
   to the end of its scope, and an early return still records it.
 - **`/health-check` opens no action at all.** A load balancer probing every second would otherwise
   dominate the record volume with nothing to learn from.
-- **Context and stats keep insertion order** end to end. Only the final `HashMap` in ClickHouse
-  drops it.
+- **Context and stats keep insertion order** end to end, into the ClickHouse `Map` column, which
+  stores an array of tuples.
 - **The record is produced exactly once per action**, even on error — the error path adds fields, it
   does not add a second record.
 
@@ -227,6 +228,30 @@ consumer would then have to handle — for a saving that only defers an allocati
 `log_processor_rs` consumes `log.action` in batches and writes `action_rs` (one row per action) and
 `trace_rs` (one row per traced action), splitting single from multi-valued context, and single from
 multiple `ref_id`s, so the common case stays a scalar column.
+
+### The row borrows from the message, the same way the message borrows from the action
+
+`ActionRow` holds `&str` and slices into the `ActionMessage`, and the `Map` columns serialize
+straight from the message's own ordered `(key, values)` pairs rather than a `HashMap` built per row.
+So a batch costs one `Vec` of rows and nothing else — the ordered `Vec` the record has carried since
+`context!` wrote into it reaches clickhouse unchanged, order included. Why the client supports this
+and what it costs is in [`clickhouse.md`](clickhouse.md).
+
+One consequence is visible in the data: a context key an action set twice is two map entries rather
+than one, where the `HashMap` used to keep only the last.
+
+### Framework keys are reserved by convention
+
+Context and stats use flat keys shared by the framework and applications. All applications are
+under our control and must not reuse framework-generated keys: for example, `client` in context,
+`elapsed` in stats, and performance-counter keys such as `db_count` and `db_elapsed`. This also
+applies to Java core-ng messages handled by `log_processor`.
+
+Consumers rely on this convention and do not validate collisions, deduplicate entries, or preserve
+overwrite precedence between application and framework values. This deliberately trades collision
+handling for simpler serialization and lower allocation and hashing costs. A collision violates the
+producer contract; which value wins is not a supported application behavior. Repeated application
+context keys remain supported as described above.
 
 ## Cost
 

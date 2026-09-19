@@ -1,21 +1,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use framework::exception::Exception;
 use framework::time::Date;
 use framework::time::DateTime;
-use framework::exception::Exception;
 use framework_clickhouse::ClickHouse;
 use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
 use framework_clickhouse::types::DateTime64;
-use framework_clickhouse::types::Decimal64;
 use framework_kafka::consumer::Message;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::AppState;
 use crate::elasticsearch::Elasticsearch;
+use crate::kafka::OptionMap;
+use crate::kafka::Stats;
 
 // event message schema from java core-ng framework
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,18 +96,18 @@ fn index(now: Date) -> String {
 }
 
 #[derive(Row, Serialize)]
-struct EventRow {
+struct EventRow<'a> {
     pub timestamp: DateTime64,
-    pub id: String,
-    pub app: String,
+    pub id: &'a str,
+    pub app: &'a str,
     pub client_timestamp: DateTime64,
     pub result: EventResult,
-    pub action: String,
-    pub error_code: Option<String>,
-    pub error_message: Option<String>,
-    pub context: HashMap<String, String>,
-    pub stats: HashMap<String, Decimal64<3>>,
-    pub info: HashMap<String, String>,
+    pub action: &'a str,
+    pub error_code: Option<&'a str>,
+    pub error_message: Option<&'a str>,
+    pub context: &'a HashMap<String, String>,
+    pub stats: Stats<'a>,
+    pub info: OptionMap<'a, String>,
 }
 
 // Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)
@@ -119,27 +120,23 @@ enum EventResult {
 
 async fn insert_to_clickhouse(clickhouse: &ClickHouse, messages: &[Message<EventMessage>]) -> Result<(), Exception> {
     let events: Vec<EventRow> = messages.iter().map(|message| to_event_row(&message.payload)).collect();
-    clickhouse.insert("event", &events).await
+    clickhouse.insert_borrowed::<EventRow>("event", &events).await
 }
 
-fn to_event_row(payload: &EventMessage) -> EventRow {
-    // elapsed is flattened into the numeric stats map, same as the action table
-    let mut stats: HashMap<String, Decimal64<3>> =
-        payload.stats.iter().flatten().map(|(key, value)| (key.clone(), Decimal64::from(*value))).collect();
-    stats.insert("elapsed".to_owned(), Decimal64::from(payload.elapsed as f64));
-
+fn to_event_row(payload: &EventMessage) -> EventRow<'_> {
     EventRow {
         timestamp: payload.timestamp.into(),
-        id: payload.id.clone(),
-        app: payload.app.clone(),
+        id: &payload.id,
+        app: &payload.app,
         client_timestamp: payload.client_timestamp.into(),
         result: to_event_result(&payload.result),
-        action: payload.action.clone(),
-        error_code: payload.error_code.clone(),
-        error_message: payload.error_message.clone(),
-        context: payload.context.clone(),
-        stats,
-        info: payload.info.clone().unwrap_or_default(),
+        action: &payload.action,
+        error_code: payload.error_code.as_deref(),
+        error_message: payload.error_message.as_deref(),
+        context: &payload.context,
+        // elapsed is flattened into the numeric stats map, same as the action table
+        stats: Stats { elapsed: Some(payload.elapsed), stats: payload.stats.as_ref() },
+        info: OptionMap(payload.info.as_ref()),
     }
 }
 

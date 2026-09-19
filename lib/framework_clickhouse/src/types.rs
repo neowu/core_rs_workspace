@@ -1,10 +1,12 @@
 mod date;
 mod datetime;
 mod decimal;
+mod map;
 
 pub use date::Date16;
 pub use datetime::DateTime64;
 pub use decimal::Decimal64;
+pub use map::Map;
 
 // the Enum8 derive lives in framework_macro, a proc macro crate can't use its own derive,
 // so its serde behaviour is covered here
