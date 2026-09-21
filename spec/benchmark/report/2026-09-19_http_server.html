@@ -85,7 +85,7 @@ footer{color:var(--dim);font-size:12px;margin-top:22px}footer code{font-size:12p
 <p><b>req/s</b> measures client and server together on one host, so it is only comparable within a run group.
 <b>cpu µs/req</b> is the server process alone, sampled from <code>ps</code>, and is the number to compare.
 <b>allocs/req</b> needs <code>ALLOC_STATS=1</code> and is deterministic, so it resolves differences cpu time cannot.</p>
-<p>Runs come from <code>benchmark/run.sh</code>, hotspots from <code>benchmark/profile.sh</code>, both rendered by
-<code>benchmark/report.sh</code> from the record file beside this one. A profiling run contributes no result row,
-the profiler skews throughput and cpu.</p>
+<p>Runs come from <code>benchmark/run.sh</code>, hotspots from <code>benchmark/profile.sh</code>, both recorded and
+rendered by <code>benchmark/report</code> from the record file beside this one. A profiling run contributes no result
+row, the profiler skews throughput and cpu.</p>
 </footer></main></body></html>

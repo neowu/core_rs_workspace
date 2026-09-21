@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Starts the server, runs one client scenario against it, stops the server, records the result in
-# spec/benchmark/report/<date>_http_server.txt and regenerates the html report beside it.
+# Starts the server, runs one client scenario against it, stops the server, then hands the result to
+# `benchmark/report`, which records it and regenerates the html report beside the record file.
 #
 # The server binds 8080 and the client defaults to it, so a benchmark host keeps that port free.
 # Any client option passes through:
@@ -17,7 +17,8 @@ URL="http://localhost:8080"
 features=()
 [ -n "${ALLOC_STATS:-}" ] && features=(--features http_test_server/alloc_stats)
 
-cargo build --profile "$PROFILE" ${features[@]+"${features[@]}"} -p http_test_server -p http_test_client
+cargo build --profile "$PROFILE" ${features[@]+"${features[@]}"} \
+    -p http_test_server -p http_test_client -p report
 
 dir="target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")"
 server_log=$(mktemp)
@@ -72,18 +73,12 @@ fi
 echo "--- server ---"
 echo "$server_side $heap" | tr ' ' '\n' | sed 's/=/ = /'
 
-report_dir=spec/benchmark/report
-mkdir -p "$report_dir"
-records="$report_dir/$(date +%F)_http_server.txt"
-printf 'run time=%s host=%s cores=%s os=%s commit=%s profile=%s server_threads=%s alloc_stats=%s %s %s %s\n' \
+# report fills in host, cores, os and commit itself; the rest is what this run knows.
+# $data, $server_side and $heap are already key=value, so they split into arguments as they are.
+"$dir/report" run \
+    "spec/benchmark/report/$(date +%F)_http_server.txt" \
     "$(date +%Y-%m-%dT%H:%M:%S)" \
-    "$(hostname -s)" \
-    "$(sysctl -n hw.ncpu 2>/dev/null || nproc)" \
-    "$(uname -sr | tr ' ' '_')" \
-    "$(git rev-parse --short HEAD 2>/dev/null || echo none)" \
-    "$PROFILE" \
-    "${TOKIO_WORKER_THREADS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}" \
-    "$([ -n "${ALLOC_STATS:-}" ] && echo yes || echo no)" \
-    "$data" "$server_side" "$heap" >> "$records"
-
-./benchmark/report.sh "$records"
+    "profile=$PROFILE" \
+    "server_threads=${TOKIO_WORKER_THREADS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}" \
+    "alloc_stats=$([ -n "${ALLOC_STATS:-}" ] && echo yes || echo no)" \
+    $data $server_side $heap

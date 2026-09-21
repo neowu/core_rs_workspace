@@ -1,15 +1,10 @@
-//! Turns a samply profile into the hotspot records `report.sh` renders.
-//!
-//! ```text
-//! gunzip -c profile.json.gz | hotspots profile.json.syms.json <scenario> [top]
-//! ```
+//! Turns a samply profile into the hotspot records the report renders.
 //!
 //! The profile is read from stdin so nothing here has to deal with gzip. Samples whose leaf is a
 //! park are counted separately and excluded: a parked worker is not spending time, it is spare
 //! capacity, and leaving it in buries every real frame.
 
 use std::collections::HashMap;
-use std::env;
 use std::fs::read_to_string;
 use std::io::Read as _;
 use std::io::stdin;
@@ -24,17 +19,13 @@ struct Symbol {
     name: usize,
 }
 
-fn main() {
-    let mut args = env::args().skip(1);
-    let syms_path = args.next().expect("usage: hotspots <syms.json> <scenario> [top]");
-    let scenario = args.next().unwrap_or_else(|| "unknown".to_owned());
-    let top: usize = args.next().map_or(15, |value| value.parse().expect("invalid top"));
-
+/// Reads a profile from stdin and returns one `hotspot` record per top method.
+pub fn records(syms_path: &str, scenario: &str, top: usize) -> Vec<String> {
     let mut profile = String::new();
     stdin().read_to_string(&mut profile).expect("failed to read profile from stdin");
     let profile: Value = serde_json::from_str(&profile).expect("failed to parse profile");
-    let syms: Value = serde_json::from_str(&read_to_string(&syms_path).expect("failed to read syms"))
-        .expect("failed to parse syms");
+    let syms: Value =
+        serde_json::from_str(&read_to_string(syms_path).expect("failed to read syms")).expect("failed to parse syms");
 
     let strings: Vec<&str> = syms["string_table"].as_array().expect("string_table").iter().map(as_str).collect();
     let symbols = symbol_tables(&syms);
@@ -49,8 +40,7 @@ fn main() {
     let (mut on_cpu, mut parked) = (0_u64, 0_u64);
 
     for thread in profile["threads"].as_array().expect("threads") {
-        let local: Vec<&str> =
-            thread["stringArray"].as_array().expect("stringArray").iter().map(as_str).collect();
+        let local: Vec<&str> = thread["stringArray"].as_array().expect("stringArray").iter().map(as_str).collect();
         let func_name = ints(&thread["funcTable"]["name"]);
         let func_resource = &thread["funcTable"]["resource"];
         let resource_lib = ints(&thread["resourceTable"]["lib"]);
@@ -88,14 +78,19 @@ fn main() {
     let total = on_cpu + parked;
     let parked_pct = if total > 0 { 100.0 * parked as f64 / total as f64 } else { 0.0 };
     // name goes last, it is the only field that can contain spaces
-    for (rank, (name, samples)) in ranked.into_iter().take(top).enumerate() {
-        println!(
-            "hotspot scenario={scenario} rank={} self_pct={:.2} samples={samples} on_cpu={on_cpu} \
-             parked_pct={parked_pct:.1} name={name}",
-            rank + 1,
-            100.0 * samples as f64 / on_cpu as f64
-        );
-    }
+    ranked
+        .into_iter()
+        .take(top)
+        .enumerate()
+        .map(|(rank, (name, samples))| {
+            format!(
+                "hotspot scenario={scenario} rank={} self_pct={:.2} samples={samples} \
+                 on_cpu={on_cpu} parked_pct={parked_pct:.1} name={name}",
+                rank + 1,
+                100.0 * samples as f64 / on_cpu as f64
+            )
+        })
+        .collect()
 }
 
 fn as_str(value: &Value) -> &str {
@@ -103,9 +98,7 @@ fn as_str(value: &Value) -> &str {
 }
 
 fn ints(value: &Value) -> Vec<usize> {
-    value.as_array().map_or_else(Vec::new, |array| {
-        array.iter().map(|v| v.as_u64().unwrap_or(0) as usize).collect()
-    })
+    value.as_array().map_or_else(Vec::new, |array| array.iter().map(|v| v.as_u64().unwrap_or(0) as usize).collect())
 }
 
 fn symbol_tables(syms: &Value) -> HashMap<String, Vec<Symbol>> {

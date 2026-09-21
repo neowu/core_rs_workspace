@@ -3,8 +3,7 @@
 Code: [`benchmark/http_test_server`](../../benchmark/http_test_server),
 [`benchmark/http_test_client`](../../benchmark/http_test_client),
 [`benchmark/run.sh`](../../benchmark/run.sh), [`benchmark/profile.sh`](../../benchmark/profile.sh),
-[`benchmark/report.sh`](../../benchmark/report.sh), [`benchmark/hotspots`](../../benchmark/hotspots) ·
-results: [`spec/benchmark/report/`](report)
+[`benchmark/report`](../../benchmark/report) · results: [`spec/benchmark/report/`](report)
 
 A benchmark workflow to find the bottleneck or hotspot of framework code, and to compare different
 designs. **Not micro benchmarks** — the unit of measurement is a whole request crossing a real
@@ -170,11 +169,32 @@ diffable.
 
 The record comes from a single machine readable `data` line the client prints under `--record`,
 never from scraping its human output, so changing how results are displayed cannot break the
-report. `run.sh` adds what only it knows: server cpu, peak rss, heap counters, host, commit, cargo
-profile, server thread count.
+report. `run.sh` adds what only it knows: server cpu, peak rss, heap counters, cargo profile, server
+thread count.
 
 Profiling runs are deliberately not recorded — the profiler skews them, and a skewed row in the
 history is worse than a missing one.
+
+### Recording and rendering are one Rust tool
+
+[`report`](../../benchmark/report) owns everything downstream of a measurement: it writes the `run`
+record, extracts hotspots from a profile, and renders the html. The scripts start processes and
+measure; nothing formats a report in shell.
+
+The alternative was the original split — an awk script for the html and a separate `hotspots` binary
+for the profile. That put the record format in three places (`printf` in `run.sh`, `println!` in
+`hotspots`, an awk parser in `report.sh`), so adding a column meant editing all three in two
+languages and the awk had no way to fail loudly when they disagreed. There is one parser now, and it
+is in the language everything else here is written in.
+
+The tool also fills in host, core count, os and commit itself, rather than taking them from whoever
+writes the record, so every row describes its machine the same way.
+
+It runs as `report run <records> <time> <key=value>...`, `report hotspot <records> <syms> <scenario>
+[top]` and `report render <records>`; each subcommand re-renders, so the html beside the record file
+is never stale. The record file path stays an argument and the date stays in the scripts — `date`
+knows the host's timezone and std does not, and a report filed under the wrong day is worse than one
+shell expansion.
 
 ### Profiling is a separate script, not a mode
 
@@ -194,16 +214,18 @@ Two things it must get right, both learned the hard way:
 Open it with `samply load <file>`; the inverted call tree answers "where does the time go", the
 flame graph answers "who called it".
 
-### Hotspots land in the report, via a tool not a script
+### Hotspots land in the report
 
-[`hotspots`](../../benchmark/hotspots) reads the samply profile and prints the top methods by self time
-as records, which `profile.sh` appends and `report.sh` renders as a per scenario table. It exists
-because reading a flame graph is a person's job, while "which method got slower" belongs next to the
-throughput numbers.
+`report hotspot` reads the samply profile and records the top methods by self time, rendered as a
+per scenario table. It exists because reading a flame graph is a person's job, while "which method
+got slower" belongs next to the throughput numbers.
 
 It takes the profile on **stdin** (`gunzip -c` does the decompression) so it needs no gzip
 dependency, and it resolves addresses through samply's `--unstable-presymbolicate` sidecar, taking
 the **innermost inlined frame** — the one the sample is actually in.
+
+Re-profiling a scenario replaces its table rather than appending to it: the record file keeps both
+sets, and `rank=1` marks where the newer one starts.
 
 Parked samples are counted and excluded. A parked worker is not spending time, and leaving those
 samples in buries every real frame: the first http/1.1 profile was 62% `__psynch_cvwait`. The parked
@@ -215,7 +237,7 @@ share is reported alongside as the server's spare capacity.
 ./benchmark/run.sh --scenario api_post --concurrency 128 --duration 60
 ALLOC_STATS=1 ./benchmark/run.sh --scenario get          # adds allocations per request
 TOKIO_WORKER_THREADS=4 ./benchmark/profile.sh --scenario get --concurrency 64 --threads 6
-./benchmark/report.sh spec/benchmark/report/2026-09-18_http_server.txt   # re-render by hand
+cargo run -p report -- render spec/benchmark/report/2026-09-18_http_server.txt   # re-render by hand
 ```
 
 `run.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops the
