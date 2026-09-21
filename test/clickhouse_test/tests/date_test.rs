@@ -59,10 +59,9 @@ async fn date() -> Result<(), Exception> {
     // params take the human readable branch of the newtypes, so Date16 binds as 'YYYY-MM-DD' and
     // DateTime64 as RFC3339; their RowBinary forms are bare numbers, which the server either
     // rejects (Date16) or silently fails to match (DateTime64)
-    // !!! WARN clickhouse 26.8 has bug requires to add SETTINGS optimize_move_to_prewhere = 0 for now
     let entity = clickhouse
         .select_one::<DateEntity>(
-            "SELECT ?fields FROM date_entity WHERE date = ? AND time = ? AND local_time = ? SETTINGS optimize_move_to_prewhere = 0",
+            "SELECT ?fields FROM date_entity WHERE date = ? AND time = ? AND local_time = ?",
             &[&entities[0].date, &time, &time],
         )
         .await?
