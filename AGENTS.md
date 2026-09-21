@@ -9,6 +9,10 @@ Application crates under (`app/`)
 under (`test/`), use apple container to start required services
 `container start {service}`
 
+# code style
+
+only keep minimal comments
+
 # spec
 
 - update /spec to reflect what code changed

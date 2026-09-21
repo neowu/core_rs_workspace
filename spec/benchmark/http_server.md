@@ -163,11 +163,17 @@ benchmark should not ship an allocator it did not mean to measure.
 Peak live bytes is the one figure the sharded design cannot give, since it needs a global
 `fetch_max`. `run.sh` polls rss instead, which is free and answers the same question.
 
-`ACTION_ALLOC_STATS=1` is the other half of the same question and a different feature:
-`framework/alloc_stats` puts `alloc_count`/`alloc_bytes` on every action record instead of a process
-total, so the number is per endpoint rather than per process. Both install a `#[global_allocator]`,
-so `run.sh` rejects the two together rather than letting the build fail at link time. Design in
-[`action_log.md`](../action_log.md).
+`framework/alloc_stats` is the other half of the same question and a different feature: it puts
+`alloc_count`/`alloc_bytes` on every action record instead of a process total, so the number is per
+endpoint rather than per process. It is a framework **default feature**, so a plain run measures the
+server as apps ship it, and `NO_ACTION_ALLOC_STATS=1` builds the server without it — how its cost
+was bounded in the first place. Design in [`action_alloc_stats.md`](../action_alloc_stats.md).
+
+Both features install a `#[global_allocator]` and two in one crate graph is a link error, so
+`http_test_server` depends on framework with `default-features = false` and `run.sh` decides which
+of the two a run gets: `ALLOC_STATS=1` takes the process wide counter and records
+`action_alloc_stats=no`, everything else turns `framework/alloc_stats` back on. The record carries
+both flags, so no row is ambiguous about which allocator it ran under.
 
 ### Every run is recorded, the report is derived
 
@@ -244,8 +250,8 @@ share is reported alongside as the server's spare capacity.
 
 ```bash
 ./benchmark/run.sh --scenario api_post --concurrency 128 --duration 60
-ALLOC_STATS=1 ./benchmark/run.sh --scenario get          # adds allocations per request
-ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get   # per-action alloc_count/alloc_bytes instead
+ALLOC_STATS=1 ./benchmark/run.sh --scenario get             # process wide allocations per request
+NO_ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get   # without framework's per-action ones
 TOKIO_WORKER_THREADS=4 ./benchmark/profile.sh --scenario get --concurrency 64 --threads 6
 cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by hand
 ```
@@ -253,8 +259,8 @@ cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by
 `run.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops the
 server, prints the server's cpu per request and peak rss, and records the run. `profile.sh` does the
 same while recording a cpu profile, and records nothing. `--help` on the client lists its options;
-`PROFILE`, `ALLOC_STATS` and (on `profile.sh`) `OUT`, `RATE` are the env knobs, plus
-`TOKIO_WORKER_THREADS` which tokio itself reads.
+`PROFILE`, `ALLOC_STATS`, `NO_ACTION_ALLOC_STATS` and (on `profile.sh`) `OUT`, `RATE` are the env
+knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
 
 ## Baseline
 

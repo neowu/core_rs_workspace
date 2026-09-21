@@ -1,36 +1,8 @@
-//! Opt-in per-action heap accounting, built only under `--features alloc_stats`.
+//! Per-action heap accounting: `alloc_count` and `alloc_bytes` on every action record, under
+//! `--features alloc_stats`, which is a default feature. The counting `#[global_allocator]` lives
+//! here and `ActionFuture` takes the counter delta around every poll.
 //!
-//! Answers "how many allocations does this action cost" per endpoint, from the action record itself,
-//! which a cpu profile and a process wide counter can only hint at.
-//!
-//! Attribution is per **poll**: `ActionFuture` reads the current thread's counters around every
-//! `inner.poll` and accumulates the delta. A poll runs start to finish on one thread and two polls
-//! never interleave on one thread, so the delta is the action's own work even though the task
-//! migrates between workers. What falls outside that window is charged to nobody — connection setup
-//! and header parsing happen before the action opens, the `ActionMessage` conversion and the
-//! appender happen after the last poll. The number is comparable between actions, not a complete
-//! memory bill.
-//!
-//! Actions do not overlap, by convention: nothing opens a second `log::action` inside one, so a poll
-//! window belongs to exactly one action and the counter delta needs no scope stack. Nesting would
-//! double count — the inner allocations would land in both records, and the inner finalization would
-//! be charged to the outer action. Keeping the read a bare delta, rather than a guard that pauses and
-//! restores a parent scope on every poll, is the trade taken for that convention.
-//!
-//! The counters are only ever read by the thread that wrote them, which is what lets them be a plain
-//! non atomic `Cell`: no sharing, no cache line contention, no atomics at all. The process wide
-//! variant in `benchmark/http_test_server/src/alloc_stats.rs` needs 64 padded shards of `AtomicU64`
-//! for exactly the reason this does not — it sums across threads.
-//!
-//! Deallocation is deliberately not tracked. A block allocated in an action is routinely freed by
-//! another task (the `ActionMessage` is freed by the appender daemon), so per action live bytes
-//! would be meaningless and frequently negative, and stats are `u64`. Process rss is
-//! `MetricsCollector`'s job.
-//!
-//! Installing the allocator here means an app cannot enable the feature and silently record zeros.
-//! The cost is that the crate graph must then not declare a second `#[global_allocator]`, which
-//! `benchmark/http_test_server` does under its own feature of the same name — the two are mutually
-//! exclusive.
+//! Design, and what the numbers do and do not include: `spec/action_alloc_stats.md`.
 
 #[cfg(feature = "alloc_stats")]
 pub(crate) use tracking::ActionAllocs;
@@ -47,8 +19,7 @@ mod tracking {
     use crate::log::action::Action;
 
     thread_local! {
-        // `(allocations, bytes allocated)`, const initialised and with no destructor, so reading it
-        // neither allocates nor observes a half destroyed thread local
+        // `(allocations, bytes allocated)`, const init so reading it never allocates
         static COUNTERS: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
     }
 
@@ -66,8 +37,7 @@ mod tracking {
 
     struct Tracking;
 
-    // realloc and alloc_zeroed delegate to System rather than falling back to the default
-    // alloc + copy + dealloc, which would change allocator behaviour instead of only measuring it
+    // every method delegates to System, measuring must not change allocator behaviour
     unsafe impl GlobalAlloc for Tracking {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             record(layout.size() as u64);
@@ -79,7 +49,7 @@ mod tracking {
             unsafe { System.alloc_zeroed(layout) }
         }
 
-        // a pure passthrough, deallocation is not tracked, see the module comment
+        // deallocation is not tracked
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             unsafe { System.dealloc(ptr, layout) }
         }
@@ -105,7 +75,7 @@ mod tracking {
             ActionAllocs { allocs: 0, bytes: 0 }
         }
 
-        /// Wraps one poll of the action's task, the counter delta over it is that poll's own work.
+        /// Wraps one poll, the counter delta over it is that poll's own work.
         #[inline]
         pub(crate) fn poll<T>(&mut self, poll: impl FnOnce() -> T) -> T {
             let (allocs, bytes) = counters();
@@ -133,8 +103,7 @@ mod untracked {
     /// here compiles away.
     pub(crate) struct ActionAllocs;
 
-    // the signatures mirror the tracking twin, so `&mut self` stays even where the body has no use
-    // for it
+    // the signatures mirror the tracking twin, `&mut self` included
     #[allow(clippy::needless_pass_by_ref_mut, clippy::unused_self)]
     impl ActionAllocs {
         pub(crate) const fn new() -> Self {
@@ -172,8 +141,7 @@ mod tests {
         #[test]
         fn accumulates_across_polls_and_writes_both_stats() {
             let mut allocs = ActionAllocs::new();
-            // two calls stand in for two polls of the same action; only the last one would survive
-            // if ActionFuture still took its delta behind `ready!`
+            // two polls of one action, only the last would survive a delta taken behind `ready!`
             for _ in 0..2 {
                 allocs.poll(|| drop(black_box(Vec::<u8>::with_capacity(CAPACITY))));
             }

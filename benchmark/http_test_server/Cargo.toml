@@ -4,7 +4,11 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework.workspace = true
+# by path rather than workspace, because `default-features = false` cannot override an inherited
+# dependency: it keeps framework's own #[global_allocator] out so the process wide counter below
+# still links, and run.sh turns framework/alloc_stats back on for every other run, since that is
+# what apps ship
+framework = { path = "../../lib/framework", default-features = false }
 framework_macro.workspace = true
 
 serde.workspace = true
@@ -12,5 +16,6 @@ tokio.workspace = true
 axum.workspace = true
 
 [features]
-# heap accounting, see src/alloc_stats.rs, off by default because it is not free
+# process wide heap accounting, see src/alloc_stats.rs; mutually exclusive with
+# framework/alloc_stats, the two install a #[global_allocator] each
 alloc_stats = []

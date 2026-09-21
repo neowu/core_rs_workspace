@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "demo"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "axum",
  "framework",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "axum",
  "axum-extra",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "framework_clickhouse"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "clickhouse",
  "framework",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "framework_db"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "framework",
@@ -758,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "framework",
  "futures",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "async-nats",
  "framework",
@@ -1011,7 +1011,7 @@ checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "http_test_client"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "http_test_server",
@@ -1022,7 +1022,7 @@ dependencies = [
 
 [[package]]
 name = "http_test_server"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "axum",
  "framework",
@@ -1349,7 +1349,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "log_collector"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "axum",
  "framework",
@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor_rs"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1967,7 +1967,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "report"
-version = "0.8.9"
+version = "0.9.0"
 dependencies = [
  "serde_json",
 ]

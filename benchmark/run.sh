@@ -7,7 +7,7 @@
 #
 #   ./benchmark/run.sh --scenario post --concurrency 128
 #   ALLOC_STATS=1 ./benchmark/run.sh --scenario get      # process wide heap accounting, see its cost
-#   ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get  # per-action heap accounting, same
+#   NO_ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get  # without framework's per-action one
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -15,15 +15,20 @@ cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
 URL="http://localhost:8080"
 
-# both features install a #[global_allocator], and two in one crate graph is a link error
-if [ -n "${ALLOC_STATS:-}" ] && [ -n "${ACTION_ALLOC_STATS:-}" ]; then
-    echo "ALLOC_STATS and ACTION_ALLOC_STATS each install a global allocator, pick one"
-    exit 1
-fi
-
+# framework/alloc_stats is a default feature, so it is what apps ship and what a plain run has to
+# measure; http_test_server takes framework with default-features = false and run.sh turns it back
+# on here. the process wide counter installs a #[global_allocator] of its own, and two in one crate
+# graph is a link error, so ALLOC_STATS runs without the per-action one and the record says so.
 features=()
-[ -n "${ALLOC_STATS:-}" ] && features=(--features http_test_server/alloc_stats)
-[ -n "${ACTION_ALLOC_STATS:-}" ] && features=(--features framework/alloc_stats)
+action_alloc_stats=yes
+if [ -n "${ALLOC_STATS:-}" ]; then
+    features=(--features http_test_server/alloc_stats)
+    action_alloc_stats=no
+elif [ -n "${NO_ACTION_ALLOC_STATS:-}" ]; then
+    action_alloc_stats=no
+else
+    features=(--features framework/alloc_stats)
+fi
 
 cargo build --profile "$PROFILE" ${features[@]+"${features[@]}"} \
     -p http_test_server -p http_test_client -p report
@@ -89,5 +94,5 @@ echo "$server_side $heap" | tr ' ' '\n' | sed 's/=/ = /'
     "profile=$PROFILE" \
     "server_threads=${TOKIO_WORKER_THREADS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}" \
     "alloc_stats=$([ -n "${ALLOC_STATS:-}" ] && echo yes || echo no)" \
-    "action_alloc_stats=$([ -n "${ACTION_ALLOC_STATS:-}" ] && echo yes || echo no)" \
+    "action_alloc_stats=$action_alloc_stats" \
     $data $server_side $heap

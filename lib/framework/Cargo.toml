@@ -33,8 +33,11 @@ libc = "*"
 rand = "*"
 
 [features]
-# per-action heap accounting, see src/log/alloc_stats.rs, off by default because it is not free;
-# it installs a #[global_allocator], so it cannot be combined with http_test_server/alloc_stats
+default = ["alloc_stats"]
+# per-action heap accounting, see src/log/alloc_stats.rs, on by default: benchmarked at under 1% of
+# http server throughput, which is inside the run to run spread, so every app gets it.
+# it installs a #[global_allocator], so a crate graph that wants its own allocator -- an app on
+# jemalloc, or http_test_server/alloc_stats -- has to take framework with default-features = false
 alloc_stats = []
 
 [lints]
