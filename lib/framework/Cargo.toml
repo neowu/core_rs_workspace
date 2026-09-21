@@ -32,5 +32,10 @@ bytes = "*"
 libc = "*"
 rand = "*"
 
+[features]
+# per-action heap accounting, see src/log/alloc_stats.rs, off by default because it is not free;
+# it installs a #[global_allocator], so it cannot be combined with http_test_server/alloc_stats
+alloc_stats = []
+
 [lints]
 workspace = true

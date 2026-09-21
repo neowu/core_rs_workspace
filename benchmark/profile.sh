@@ -5,7 +5,7 @@
 # Needs samply (cargo install samply). Open the result with `samply load <file>`, the inverted call
 # tree is what answers "where does the time go", the flame graph is what answers "who called it".
 #
-# The top methods by self time are folded into spec/benchmark/report/<date>_http_server.html by
+# The top methods by self time are folded into report/<date>_http_server.html by
 # `benchmark/report`. A profiling run contributes no result row, the profiler skews throughput and
 # cpu, only hotspots.
 set -euo pipefail
@@ -51,5 +51,5 @@ done
 
 # gunzip does the decompression so the tool needs no gzip dependency
 gunzip -c "$OUT" | target/profiling/report hotspot \
-    "spec/benchmark/report/$(date +%F)_http_server.txt" \
+    "report/$(date +%F)_http_server.txt" \
     "${OUT%.gz}.syms.json" "$scenario" 15

@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use std::task::ready;
 use std::time::Instant;
 
 use pin_project_lite::pin_project;
@@ -18,11 +17,13 @@ use tokio::task_local;
 use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
+use crate::log::alloc_stats::ActionAllocs;
 use crate::string::StringExt as _;
 use crate::system::SENDER;
 use crate::time::DateTime;
 
 pub(crate) mod action;
+mod alloc_stats;
 pub mod id_generator;
 mod span;
 
@@ -97,6 +98,7 @@ pin_project! {
     pub struct ActionFuture<F> {
         #[pin]
         inner: TaskLocalFuture<RefCell<Action>, F>,
+        allocs: ActionAllocs,
     }
 }
 
@@ -107,7 +109,7 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(action), task) }
+    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(action), task), allocs: ActionAllocs::new() }
 }
 
 impl<F, R> Future for ActionFuture<F>
@@ -118,7 +120,12 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        let result = ready!(this.inner.as_mut().poll(cx));
+        // not `ready!`: the allocation delta has to be taken on the Pending path too, or every poll
+        // but the last is lost
+        let polled = this.allocs.poll(|| this.inner.as_mut().poll(cx));
+        let Poll::Ready(result) = polled else {
+            return Poll::Pending;
+        };
 
         // the scope has ended, so the action comes out of the slot rather than the task local
         let mut current_action =
@@ -127,6 +134,7 @@ where
         if let Err(e) = &result {
             current_action.log_exception(e);
         }
+        this.allocs.write_to(&mut current_action);
         current_action.finish();
 
         if let Some(sender) = SENDER.get() {

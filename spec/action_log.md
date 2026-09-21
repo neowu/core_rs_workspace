@@ -3,6 +3,7 @@
 Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`log/action.rs`](../lib/framework/src/log/action.rs), [`log/span.rs`](../lib/framework/src/log/span.rs),
 [`log/id_generator.rs`](../lib/framework/src/log/id_generator.rs),
+[`log/alloc_stats.rs`](../lib/framework/src/log/alloc_stats.rs),
 [`appender.rs`](../lib/framework/src/appender.rs) · producers:
 [`web/server.rs`](../lib/framework/src/web/server.rs), [`task.rs`](../lib/framework/src/task.rs),
 [`framework_nats/src/consumer.rs`](../lib/framework_nats/src/consumer.rs) · consumers:
@@ -32,7 +33,7 @@ buffer, and the whole thing leaves the request path over a channel.
 | `severity`, `error_code`, `error_message` | promoted from log lines and exceptions | see severity promotion |
 | `ref_ids` | the caller's id, off the transport header | how a call chain is reassembled |
 | `context` | `context!(key = value)` | ordered key → **list** of values, queryable dimensions |
-| `stats` | `stats!(key = value)`, `span!` | ordered key → `u64`, numbers that add up |
+| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes` only under `--features alloc_stats` |
 | `logs` | `log!`, `warn!`, `error!`, `span!` | the trace buffer, emitted only when it is worth keeping |
 
 ## Lifecycle
@@ -96,6 +97,45 @@ Numbers are aggregates; dimensions are observations.
 
 Slot 0 of `stats` is reserved for `elapsed` at construction, so it always leads the record and the
 vector allocates exactly once.
+
+### Allocation stats are opt-in, and attributed per poll
+
+`alloc_count` and `alloc_bytes` are on the record only when `framework` is built with
+`--features alloc_stats` ([`alloc_stats.rs`](../lib/framework/src/log/alloc_stats.rs)). They make "which
+endpoint allocates" a query, where the tuning described under cost below could only answer it for the
+process as a whole.
+
+`ActionFuture` reads a thread local counter around every `inner.poll` and accumulates the delta. A
+poll runs start to finish on one thread and two polls never interleave on one thread, so the delta is
+that action's own work even though the task migrates between workers. Taking it **per poll** is not
+optional — `poll` returns `Pending` on every poll but the last, and everything allocated before each
+of those would otherwise be lost, which is why the implementation cannot use `ready!`.
+
+The counter is therefore only ever read by the thread that wrote it, which is what lets it be a plain
+non-atomic `Cell`. The process wide counter in `benchmark/http_test_server` needs 64 padded shards of
+`AtomicU64` for exactly the reason this does not: it sums across threads.
+
+**Actions do not overlap, by convention.** An action is the unit of work at the top of a request and
+nothing opens a second one inside it, so a poll window belongs to exactly one action and attribution
+stays honest without a scope stack. A nested action would double-count: the inner allocations would
+appear in both records and the inner finalization would be charged to the outer action. The fix for
+that — a guard that pauses the parent scope on entry and restores it on exit — costs a branch on
+every poll and buys nothing while the convention holds, so it is deliberately absent. The convention
+is the simpler half of the trade, not an oversight.
+
+**What falls outside the window is charged to nobody.** Connection setup and header parsing happen
+before the action opens; the `ActionMessage` conversion, `log_exception`'s backtrace and the appender
+happen after the last poll. A benchmark get reports `alloc_count=30` against 51 allocations per
+request process wide. The number is comparable between actions, not a complete memory bill.
+
+**Deallocation is not tracked, and there is no per-action live or peak bytes.** A block allocated in
+an action is routinely freed by another task — the `ActionMessage` is freed by the appender daemon —
+so per-action live bytes would be meaningless and frequently negative, and stats are `u64`. Process
+rss stays `MetricsCollector`'s job.
+
+The feature installs the `#[global_allocator]` itself, so an app cannot enable it and silently record
+zeros. The cost is that it cannot be combined with `http_test_server`'s own `alloc_stats` feature,
+which installs another; `run.sh` rejects the combination rather than letting it fail at link time.
 
 ### The trace is always collected and rarely emitted
 
@@ -244,7 +284,8 @@ than one, where the `HashMap` used to keep only the last.
 
 Context and stats use flat keys shared by the framework and applications. All applications are
 under our control and must not reuse framework-generated keys: for example, `client` in context,
-`elapsed` in stats, and performance-counter keys such as `db_count` and `db_elapsed`. This also
+`elapsed`, `alloc_count` and `alloc_bytes` in stats, and performance-counter keys such as `db_count`
+and `db_elapsed`. This also
 applies to Java core-ng messages handled by `log_processor`.
 
 Consumers rely on this convention and do not validate collisions, deduplicate entries, or preserve
@@ -267,8 +308,13 @@ Measured on the http server benchmark, which exists for exactly this question; n
 
 ## Known gaps
 
-- **No regression guard on the record's cost.** Allocations per request are measurable but nothing
-  fails when they go up; noticing is still a person comparing two benchmark reports.
+- **No regression guard on the record's cost.** Allocations are now per action and per endpoint
+  under `--features alloc_stats`, but nothing fails when they go up; noticing is still a person
+  comparing two reports.
+- **The feature's own cpu cost is bounded, not measured.** Eight interleaved runs per side put a get
+  at 28.63 vs 28.52 µs/request (+0.4%) with fully overlapping ranges — under what the harness
+  resolves, which is the ~1.5% it did resolve on non-overlapping ranges. "Cheap enough for pre-prod"
+  is a bound from that, not a measurement.
 - **Per-line trace overhead is unamortized.** Every line re-reads the task local and re-formats the
   elapsed prefix. A header-block writer could share both across a block of lines, at the price of
   one timestamp per block.

@@ -6,7 +6,8 @@
 # Any client option passes through:
 #
 #   ./benchmark/run.sh --scenario post --concurrency 128
-#   ALLOC_STATS=1 ./benchmark/run.sh --scenario get      # adds heap accounting, see its cost
+#   ALLOC_STATS=1 ./benchmark/run.sh --scenario get      # process wide heap accounting, see its cost
+#   ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get  # per-action heap accounting, same
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -14,8 +15,15 @@ cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
 URL="http://localhost:8080"
 
+# both features install a #[global_allocator], and two in one crate graph is a link error
+if [ -n "${ALLOC_STATS:-}" ] && [ -n "${ACTION_ALLOC_STATS:-}" ]; then
+    echo "ALLOC_STATS and ACTION_ALLOC_STATS each install a global allocator, pick one"
+    exit 1
+fi
+
 features=()
 [ -n "${ALLOC_STATS:-}" ] && features=(--features http_test_server/alloc_stats)
+[ -n "${ACTION_ALLOC_STATS:-}" ] && features=(--features framework/alloc_stats)
 
 cargo build --profile "$PROFILE" ${features[@]+"${features[@]}"} \
     -p http_test_server -p http_test_client -p report
@@ -76,9 +84,10 @@ echo "$server_side $heap" | tr ' ' '\n' | sed 's/=/ = /'
 # report fills in host, cores, os and commit itself; the rest is what this run knows.
 # $data, $server_side and $heap are already key=value, so they split into arguments as they are.
 "$dir/report" run \
-    "spec/benchmark/report/$(date +%F)_http_server.txt" \
+    "report/$(date +%F)_http_server.txt" \
     "$(date +%Y-%m-%dT%H:%M:%S)" \
     "profile=$PROFILE" \
     "server_threads=${TOKIO_WORKER_THREADS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}" \
     "alloc_stats=$([ -n "${ALLOC_STATS:-}" ] && echo yes || echo no)" \
+    "action_alloc_stats=$([ -n "${ACTION_ALLOC_STATS:-}" ] && echo yes || echo no)" \
     $data $server_side $heap

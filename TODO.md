@@ -1,5 +1,4 @@
 - always make state with Box::leak()?
-- jemalloc
 
 TODO:
 
