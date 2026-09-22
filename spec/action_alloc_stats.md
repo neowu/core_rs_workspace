@@ -72,11 +72,17 @@ be meaningless and frequently negative, and stats are `u64`. Process rss stays
 ## The feature installs the allocator itself
 
 An app therefore cannot enable it and silently record zeros. The cost is that the crate graph must
-not declare a second `#[global_allocator]`, which `benchmark/http_test_server` does under its own
-feature of the same name. That crate takes framework with `default-features = false` and
-[`run.sh`](../benchmark/run.sh) turns the per-action one back on for every run that is not measuring
-the process wide counter, so the two stay mutually exclusive and every recorded run says which it
-ran under.
+not declare a second `#[global_allocator]`, which the benchmark servers do under a feature of the
+same name. Those crates take framework with `default-features = false` and
+[`run_http_test.sh`](../benchmark/run_http_test.sh) /
+[`run_nats_api_test.sh`](../benchmark/run_nats_api_test.sh) turn the per-action one back on for every
+run that is not measuring the process wide counter, so the two stay mutually exclusive and every
+recorded run says which it ran under.
+
+For the same reason a framework companion crate propagates the feature rather than forcing it:
+`framework_nats` takes framework with `default-features = false` and re-exports `alloc_stats` as its
+own default. Depending on it with framework's defaults on would put the allocator back into any
+graph that meant to replace it.
 
 ## Known gaps
 

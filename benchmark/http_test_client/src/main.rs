@@ -2,6 +2,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 use bytes::Bytes;
+use harness::stats;
+use harness::stats::Recorder;
+use harness::stats::Summary;
 use http_test_server::GetResponse;
 use http_test_server::PostRequest;
 use http_test_server::PostResponse;
@@ -16,11 +19,8 @@ use reqwest::header::HeaderValue;
 
 use crate::args::Args;
 use crate::args::Scenario;
-use crate::stats::Recorder;
-use crate::stats::Summary;
 
 mod args;
-mod stats;
 
 const ID: i64 = 7;
 
@@ -109,7 +109,7 @@ async fn run(args: Args) {
     let summary = load(&client, &target, args.concurrency, args.duration).await;
     stats::report(&summary);
     if args.record {
-        stats::record(&args, &summary, warmup_requests);
+        stats::record(&config(&args), &summary, warmup_requests);
     }
 }
 
@@ -185,6 +185,20 @@ async fn execute(client: &Client, request: Request, url: &str) -> (Version, Stri
     let body = response.text().await.unwrap_or_else(|err| panic!("failed to read body, url={url}, err={err}"));
     assert!(status.is_success(), "unexpected status, url={url}, status={status}, body={body}");
     (version, body)
+}
+
+/// What this client was asked to do, the prefix of the record line `run_http_test.sh` folds into
+/// the report.
+fn config(args: &Args) -> String {
+    format!(
+        "scenario={} protocol=h2c concurrency={} threads={} values={} warmup={} duration={}",
+        args.scenario.as_str(),
+        args.concurrency,
+        args.threads,
+        args.values,
+        args.warmup.as_secs(),
+        args.duration.as_secs()
+    )
 }
 
 fn url(value: &str) -> Url {

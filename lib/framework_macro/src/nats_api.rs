@@ -57,7 +57,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             use framework::context;
             use framework_nats::service::Service;
 
-            let mut nats_service = Service::new(nats_client, config);
+            let mut nats_service = Service::__new(nats_client, config);
             #(#handler_statements)*
             nats_service
         }
@@ -177,7 +177,7 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
 
     quote! {
         let svc = Arc::clone(&service);
-        nats_service.add_handler(#subject, #handler);
+        nats_service.__add_handler(#subject, #handler);
     }
 }
 
@@ -243,9 +243,9 @@ mod tests {
                         use framework::context;
                         use framework_nats::service::Service;
 
-                        let mut nats_service = Service::new(nats_client, config);
+                        let mut nats_service = Service::__new(nats_client, config);
                         let svc = Arc::clone(&service);
-                        nats_service.add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
+                        nats_service.__add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = format!("{}::get_user_by_id", std::any::type_name::<Self>()));
@@ -253,7 +253,7 @@ mod tests {
                             }
                         });
                         let svc = Arc::clone(&service);
-                        nats_service.add_handler("api.user.create_user", move |request: CreateUserRequest| {
+                        nats_service.__add_handler("api.user.create_user", move |request: CreateUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = format!("{}::create_user", std::any::type_name::<Self>()));
@@ -323,9 +323,9 @@ mod tests {
                         use framework::context;
                         use framework_nats::service::Service;
 
-                        let mut nats_service = Service::new(nats_client, config);
+                        let mut nats_service = Service::__new(nats_client, config);
                         let svc = Arc::clone(&service);
-                        nats_service.add_handler("api.user.get_all_users", move |(): ()| {
+                        nats_service.__add_handler("api.user.get_all_users", move |(): ()| {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = format!("{}::get_all_users", std::any::type_name::<Self>()));
@@ -333,7 +333,7 @@ mod tests {
                             }
                         });
                         let svc = Arc::clone(&service);
-                        nats_service.add_handler("api.user.delete_user", move |request: DeleteUserRequest| {
+                        nats_service.__add_handler("api.user.delete_user", move |request: DeleteUserRequest| {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = format!("{}::delete_user", std::any::type_name::<Self>()));

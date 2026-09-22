@@ -56,6 +56,10 @@ type RequestHandler = Box<dyn Fn(Client, Message) -> Pin<Box<dyn Future<Output =
 // core nats request/reply service. each subject is registered with its own handler; subscriptions
 // use the subject as queue group so multiple service instances load balance. requests are processed
 // in their own task (bounded by a semaphore) that publishes the reply itself.
+//
+// a service is built by #[nats_api] from a trait, never by hand: the constructor and handler
+// registration below are the macro's entry point, hidden so a call site reaches for the trait's
+// generated `service()` instead. `start` and `metrics` are the public surface.
 pub struct Service {
     client: Client,
     handlers: HashMap<&'static str, RequestHandler>,
@@ -64,11 +68,13 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(client: Client, config: ServiceConfig) -> Self {
+    #[doc(hidden)]
+    pub fn __new(client: Client, config: ServiceConfig) -> Self {
         Self { client, handlers: HashMap::new(), config, counter: Arc::default() }
     }
 
-    pub fn add_handler<H, Fut, Req, Res>(&mut self, subject: &'static str, handler: H)
+    #[doc(hidden)]
+    pub fn __add_handler<H, Fut, Req, Res>(&mut self, subject: &'static str, handler: H)
     where
         H: Fn(Req) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Res, Exception>> + Send + 'static,

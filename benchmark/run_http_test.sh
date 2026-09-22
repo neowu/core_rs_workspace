@@ -5,9 +5,9 @@
 # The server binds 8080 and the client defaults to it, so a benchmark host keeps that port free.
 # Any client option passes through:
 #
-#   ./benchmark/run.sh --scenario post --concurrency 128
-#   ALLOC_STATS=1 ./benchmark/run.sh --scenario get      # process wide heap accounting, see its cost
-#   NO_ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get  # without framework's per-action one
+#   ./benchmark/run_http_test.sh --scenario post --concurrency 128
+#   ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get      # process wide heap accounting, see its cost
+#   NO_ACTION_ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get  # without framework's per-action one
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,7 +16,7 @@ PROFILE="${PROFILE:-release}"
 URL="http://localhost:8080"
 
 # framework/alloc_stats is a default feature, so it is what apps ship and what a plain run has to
-# measure; http_test_server takes framework with default-features = false and run.sh turns it back
+# measure; http_test_server takes framework with default-features = false and run_http_test.sh turns it back
 # on here. the process wide counter installs a #[global_allocator] of its own, and two in one crate
 # graph is a link error, so ALLOC_STATS runs without the per-action one and the record says so.
 features=()

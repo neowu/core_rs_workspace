@@ -5,7 +5,7 @@
 //! Counters are **sharded per thread and padded to a cache line**. The obvious version — four
 //! shared `AtomicU64` — costs 3.6x cpu per request here, not because atomics are slow but because
 //! every allocating thread writes the same cache line. Peak live bytes is deliberately not tracked:
-//! it is the one figure that needs a global `fetch_max`, and `run.sh` samples rss from outside for
+//! it is the one figure that needs a global `fetch_max`, and `run_*.sh` samples rss from outside for
 //! free.
 
 use std::alloc::GlobalAlloc;

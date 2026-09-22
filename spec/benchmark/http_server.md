@@ -1,9 +1,14 @@
-# Benchmark
+# HTTP Server Benchmark
 
 Code: [`benchmark/http_test_server`](../../benchmark/http_test_server),
 [`benchmark/http_test_client`](../../benchmark/http_test_client),
-[`benchmark/run.sh`](../../benchmark/run.sh), [`benchmark/profile.sh`](../../benchmark/profile.sh),
-[`benchmark/report`](../../benchmark/report) · results: [`report/`](../../report)
+[`benchmark/run_http_test.sh`](../../benchmark/run_http_test.sh),
+[`benchmark/profile_http_test.sh`](../../benchmark/profile_http_test.sh),
+[`benchmark/harness`](../../benchmark/harness), [`benchmark/report`](../../benchmark/report) ·
+results: [`report/`](../../report)
+
+The shape below is the one every benchmark here follows; the nats one is in
+[`nats_api_server.md`](nats_api_server.md).
 
 A benchmark workflow to find the bottleneck or hotspot of framework code, and to compare different
 designs. **Not micro benchmarks** — the unit of measurement is a whole request crossing a real
@@ -75,6 +80,18 @@ the request and response shapes cannot drift between the two processes, which wo
 what a run measures. Everything else is a `main.rs` with plain modules, no crate is split into
 `lib.rs` + `main.rs` out of habit.
 
+### Everything protocol independent is one crate
+
+[`harness`](../../benchmark/harness) holds the two pieces no benchmark here wants a second copy of:
+the latency recorder with the machine readable `data` line every client prints, and the counting
+global allocator every server can opt into. Both are subtle enough — a sharded, cache line padded
+allocator, an exact percentile merge — that two copies would drift, and a drifted copy means two
+benchmarks whose numbers are not comparable.
+
+What stays per benchmark is what actually differs: argument parsing (scenarios and their addresses),
+the load loop, and the record line's `key=value` prefix, which `harness` takes as a string rather
+than reaching into a client's `Args`.
+
 ### Only `TraceAppender`
 
 The server always runs `TraceAppender`. Action construction and the channel send stay — that is real
@@ -141,7 +158,7 @@ with the connection pool established and the code paths hot.
 ### Cost is measured as cpu per request, not throughput
 
 Client and server share the host, so throughput measures the pair, not the server: the four
-scenarios land within 4% of each other and the ranking moves between runs. `run.sh` therefore reads
+scenarios land within 4% of each other and the ranking moves between runs. `run_http_test.sh` therefore reads
 the server's own cpu time from `ps` around the client run and divides by every request served,
 warmup included. That number is a property of the server alone. It is sampled from outside, so it
 costs the server nothing and is always on.
@@ -152,7 +169,7 @@ costs the server nothing and is always on.
 
 Allocation counts are deterministic where cpu time is noisy — they resolved the plain vs `#[api]`
 question that throughput could not (exactly one extra allocation). `--features alloc_stats` swaps in
-a counting global allocator, reported on shutdown and divided per request by `run.sh`.
+a counting global allocator, reported on shutdown and divided per request by `run_http_test.sh`.
 
 Its counters are **sharded per thread and padded to a cache line**. The obvious version — four
 shared `AtomicU64`, one of them a `fetch_max` for peak — measured 3.6x cpu per request, not because
@@ -161,7 +178,7 @@ accounting is free within noise, so the only reason it stays behind a feature fl
 benchmark should not ship an allocator it did not mean to measure.
 
 Peak live bytes is the one figure the sharded design cannot give, since it needs a global
-`fetch_max`. `run.sh` polls rss instead, which is free and answers the same question.
+`fetch_max`. The run script polls rss instead, which is free and answers the same question.
 
 `framework/alloc_stats` is the other half of the same question and a different feature: it puts
 `alloc_count`/`alloc_bytes` on every action record instead of a process total, so the number is per
@@ -170,7 +187,7 @@ server as apps ship it, and `NO_ACTION_ALLOC_STATS=1` builds the server without 
 was bounded in the first place. Design in [`action_alloc_stats.md`](../action_alloc_stats.md).
 
 Both features install a `#[global_allocator]` and two in one crate graph is a link error, so
-`http_test_server` depends on framework with `default-features = false` and `run.sh` decides which
+`http_test_server` depends on framework with `default-features = false` and the run script decides which
 of the two a run gets: `ALLOC_STATS=1` takes the process wide counter and records
 `action_alloc_stats=no`, everything else turns `framework/alloc_stats` back on. The record carries
 both flags, so no row is ambiguous about which allocator it ran under.
@@ -184,7 +201,7 @@ diffable.
 
 The record comes from a single machine readable `data` line the client prints under `--record`,
 never from scraping its human output, so changing how results are displayed cannot break the
-report. `run.sh` adds what only it knows: server cpu, peak rss, heap counters, cargo profile, server
+report. `run_http_test.sh` adds what only it knows: server cpu, peak rss, heap counters, cargo profile, server
 thread count.
 
 Profiling runs are deliberately not recorded — the profiler skews them, and a skewed row in the
@@ -197,7 +214,7 @@ record, extracts hotspots from a profile, and renders the html. The scripts star
 measure; nothing formats a report in shell.
 
 The alternative was the original split — an awk script for the html and a separate `hotspots` binary
-for the profile. That put the record format in three places (`printf` in `run.sh`, `println!` in
+for the profile. That put the record format in three places (`printf` in the run script, `println!` in
 `hotspots`, an awk parser in `report.sh`), so adding a column meant editing all three in two
 languages and the awk had no way to fail loudly when they disagreed. There is one parser now, and it
 is in the language everything else here is written in.
@@ -213,9 +230,9 @@ shell expansion.
 
 ### Profiling is a separate script, not a mode
 
-[`profile.sh`](../../benchmark/profile.sh) records the server under `samply` while the client drives
-the same load. It builds `--profile profiling` (release plus full debug info — release alone only
-carries line tables, which is not enough to attribute inlined frames).
+[`profile_http_test.sh`](../../benchmark/profile_http_test.sh) records the server under `samply`
+while the client drives the same load. It builds `--profile profiling` (release plus full debug
+info — release alone only carries line tables, which is not enough to attribute inlined frames).
 
 Two things it must get right, both learned the hard way:
 
@@ -249,18 +266,20 @@ share is reported alongside as the server's spare capacity.
 ## Running
 
 ```bash
-./benchmark/run.sh --scenario api_post --concurrency 128 --duration 60
-ALLOC_STATS=1 ./benchmark/run.sh --scenario get             # process wide allocations per request
-NO_ACTION_ALLOC_STATS=1 ./benchmark/run.sh --scenario get   # without framework's per-action ones
-TOKIO_WORKER_THREADS=4 ./benchmark/profile.sh --scenario get --concurrency 64 --threads 6
+./benchmark/run_http_test.sh --scenario api_post --concurrency 128 --duration 60
+ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get             # process wide allocations per request
+NO_ACTION_ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get   # without framework's per-action ones
+TOKIO_WORKER_THREADS=4 ./benchmark/profile_http_test.sh --scenario get --concurrency 64 --threads 6
 cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by hand
 ```
 
-`run.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops the
-server, prints the server's cpu per request and peak rss, and records the run. `profile.sh` does the
-same while recording a cpu profile, and records nothing. `--help` on the client lists its options;
-`PROFILE`, `ALLOC_STATS`, `NO_ACTION_ALLOC_STATS` and (on `profile.sh`) `OUT`, `RATE` are the env
-knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
+`run_http_test.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops
+the server, prints the server's cpu per request and peak rss, and records the run.
+`profile_http_test.sh` does the same while recording a cpu profile, and records nothing. `--help` on
+the client lists its options; `PROFILE`, `ALLOC_STATS`, `NO_ACTION_ALLOC_STATS` and (on the profile
+script) `OUT`, `RATE` are the env knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
+
+Scripts are named `<verb>_<target>.sh`, so a second benchmark adds a pair rather than a mode flag.
 
 ## Baseline
 

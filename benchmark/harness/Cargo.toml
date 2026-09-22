@@ -1,0 +1,13 @@
+[package]
+name = "harness"
+version.workspace = true
+edition = "2024"
+
+# shared between the http and the nats benchmarks, so the two measure the same way and the tricky
+# parts -- the sharded allocator, the latency merge -- exist once
+[dependencies]
+
+[features]
+# process wide heap accounting, see src/alloc_stats.rs; mutually exclusive with
+# framework/alloc_stats, the two install a #[global_allocator] each
+alloc_stats = []

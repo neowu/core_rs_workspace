@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records a cpu profile of the server while the client drives load against it.
-# Any client option can be passed through, e.g. ./benchmark/profile.sh --scenario post --duration 30
+# Any client option can be passed through, e.g. ./benchmark/profile_http_test.sh --scenario post --duration 30
 #
 # Needs samply (cargo install samply). Open the result with `samply load <file>`, the inverted call
 # tree is what answers "where does the time go", the flame graph is what answers "who called it".
@@ -17,7 +17,7 @@ OUT="${OUT:-target/profile.json.gz}"
 RATE="${RATE:-999}"
 
 # profiling = release plus full debug info, release alone only carries line tables.
-# framework/alloc_stats is a framework default that http_test_server opts out of, see run.sh, so it
+# framework/alloc_stats is a framework default that http_test_server opts out of, see run_http_test.sh, so it
 # is turned back on here too -- a profile has to show the server as apps ship it
 cargo build --profile profiling --features framework/alloc_stats \
     -p http_test_server -p http_test_client -p report

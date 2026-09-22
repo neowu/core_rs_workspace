@@ -31,9 +31,9 @@ const FOOTER: &str = r"<footer>
 <p><b>req/s</b> measures client and server together on one host, so it is only comparable within a run group.
 <b>cpu µs/req</b> is the server process alone, sampled from <code>ps</code>, and is the number to compare.
 <b>allocs/req</b> needs <code>ALLOC_STATS=1</code> and is deterministic, so it resolves differences cpu time cannot.</p>
-<p>Runs come from <code>benchmark/run.sh</code>, hotspots from <code>benchmark/profile.sh</code>, both recorded and
-rendered by <code>benchmark/report</code> from the record file beside this one. A profiling run contributes no result
-row, the profiler skews throughput and cpu.</p>
+<p>Runs come from <code>benchmark/run_*.sh</code>, hotspots from <code>benchmark/profile_*.sh</code>, both recorded
+and rendered by <code>benchmark/report</code> from the record file beside this one. A profiling run contributes no
+result row, the profiler skews throughput and cpu.</p>
 </footer></main></body></html>";
 
 /// Top methods of one scenario, in the order the profile ranked them.
@@ -45,8 +45,10 @@ struct Hotspots {
 }
 
 pub fn render(records_path: &Path, records: &[Record]) -> std::path::PathBuf {
-    let file = records_path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    // the record file is named <date>_<target>.txt, which is the whole title this report needs
+    let file = records_path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
     let date = file.get(..10).unwrap_or(&file);
+    let target = file.get(11..).map_or_else(|| "benchmark".to_owned(), |name| name.replace('_', " "));
 
     let runs: Vec<&Record> = records.iter().filter(|r| r.kind == "run").collect();
     let mut page = String::new();
@@ -55,8 +57,8 @@ pub fn render(records_path: &Path, records: &[Record]) -> std::path::PathBuf {
         page,
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <title>http server benchmark {date}</title>\n<style>{STYLE}</style></head><body><main>\n\
-         <h1>http server benchmark — {date}</h1>\n"
+         <title>{target} benchmark {date}</title>\n<style>{STYLE}</style></head><body><main>\n\
+         <h1>{target} benchmark — {date}</h1>\n"
     );
 
     // the last run describes the host, the whole file is one day on one machine
@@ -88,7 +90,7 @@ pub fn render(records_path: &Path, records: &[Record]) -> std::path::PathBuf {
 fn runs_table(page: &mut String, runs: &[&Record]) {
     page.push_str(
         "<div class=\"wrap\"><table><thead><tr>\n\
-         <th>time</th><th>scenario</th><th>proto</th><th>streams</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
+         <th>time</th><th>scenario</th><th>proto</th><th>conc</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
          <th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>p99.9 ms</th>\n\
          <th>cpu µs/req</th><th>allocs/req</th><th>bytes/req</th><th>peak rss MB</th>\n\
          </tr></thead><tbody>\n",

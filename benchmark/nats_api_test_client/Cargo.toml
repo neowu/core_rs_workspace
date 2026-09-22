@@ -1,0 +1,14 @@
+[package]
+name = "nats_api_test_client"
+version.workspace = true
+edition = "2024"
+
+# only for the payload types and subjects, so they cannot drift from the server
+[dependencies]
+nats_api_test_server = { path = "../nats_api_test_server" }
+harness = { path = "../harness" }
+
+serde_json = "*"
+tokio.workspace = true
+async-nats = "*"
+bytes = "*"

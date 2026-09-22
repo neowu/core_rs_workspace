@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use crate::args::Args;
-
 /// Per worker recording, merged once at the end so the measured loop never touches shared state.
 #[derive(Default)]
 pub struct Recorder {
@@ -76,20 +74,15 @@ pub fn report(summary: &Summary) {
     );
 }
 
-/// One machine readable line for `run.sh` to fold into the report, so the report is never built by
-/// scraping the human output above.
-pub fn record(args: &Args, summary: &Summary, warmup_requests: u64) {
+/// One machine readable line for `run_*.sh` to fold into the report, so the report is never built
+/// by scraping the human output above.
+///
+/// `config` is whatever the client was asked to do, already as `key=value` — it differs per
+/// protocol, the measurement below does not.
+pub fn record(config: &str, summary: &Summary, warmup_requests: u64) {
     println!(
-        "data scenario={} protocol=h2c concurrency={} threads={} values={} warmup={} duration={} warmup_requests={} \
-         requests={} failed={} errors={} elapsed={:.3} throughput={:.0} mean_ms={:.3} p50_ms={:.3} \
-         p90_ms={:.3} p99_ms={:.3} p999_ms={:.3} max_ms={:.3}",
-        args.scenario.as_str(),
-        args.concurrency,
-        args.threads,
-        args.values,
-        args.warmup.as_secs(),
-        args.duration.as_secs(),
-        warmup_requests,
+        "data {config} warmup_requests={warmup_requests} requests={} failed={} errors={} elapsed={:.3} \
+         throughput={:.0} mean_ms={:.3} p50_ms={:.3} p90_ms={:.3} p99_ms={:.3} p999_ms={:.3} max_ms={:.3}",
         summary.requests,
         summary.failed,
         summary.errors,
