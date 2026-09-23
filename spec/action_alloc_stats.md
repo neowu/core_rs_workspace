@@ -1,19 +1,18 @@
 # Action allocation stats design
 
 Code: [`lib/framework/src/log/alloc_stats.rs`](../lib/framework/src/log/alloc_stats.rs) · producer:
-[`log.rs`](../lib/framework/src/log.rs) (`ActionFuture`) · process wide twin:
-[`benchmark/http_test_server/src/alloc_stats.rs`](../benchmark/http_test_server/src/alloc_stats.rs) ·
+[`log.rs`](../lib/framework/src/log.rs) (`ActionFuture`) ·
 siblings: [`action_log.md`](action_log.md), [`action_future_design.md`](action_future_design.md),
 [`benchmark/http_server.md`](benchmark/http_server.md)
 
 `alloc_count` and `alloc_bytes` are stats on every action record: how many allocations that action
 cost and how many bytes they asked for. They make "which endpoint allocates" a query, where a cpu
-profile and a process wide counter can only hint at it.
+profile can only hint at it.
 
-The feature is `framework/alloc_stats`, and it is a **default feature** — every app gets the numbers
-without remembering a flag.
+It is **always on**, not a feature flag: the numbers proved useful in production and the overhead
+is minimal, so every app gets them and there is no build without them.
 
-## On by default because it measured free
+## Always on because it measured free
 
 On the http server benchmark, with the server pinned to one saturated core so requests/sec is its
 own cpu cost and nothing else, four interleaved runs per side:
@@ -26,9 +25,6 @@ own cpu cost and nothing else, four interleaved runs per side:
 The signs disagree and each build's own run to run spread is wider than the gap, so the cost is
 under what the harness resolves. An earlier pass on cpu per request agreed: 28.63 vs 28.52
 µs/request on a `get`, ranges fully overlapping.
-
-A build that wants the numbers gone, or that wants a different `#[global_allocator]` such as
-jemalloc, takes framework with `default-features = false`.
 
 ## Attribution is per poll
 
@@ -58,9 +54,7 @@ convention is the simpler half of the trade, not an oversight.
 ## The counters are thread local and non atomic
 
 They are only ever read by the thread that wrote them, which is what lets them be a plain `Cell`:
-no sharing, no cache line contention, no atomics at all. The process wide twin in
-`benchmark/http_test_server` needs 64 padded shards of `AtomicU64` for exactly the reason this does
-not — it sums across threads.
+no sharing, no cache line contention, no atomics at all.
 
 ## Deallocation is not tracked
 
@@ -69,24 +63,17 @@ another task — the `ActionMessage` is freed by the appender daemon — so per-
 be meaningless and frequently negative, and stats are `u64`. Process rss stays
 `MetricsCollector`'s job.
 
-## The feature installs the allocator itself
+## Framework owns the global allocator
 
-An app therefore cannot enable it and silently record zeros. The cost is that the crate graph must
-not declare a second `#[global_allocator]`, which the benchmark servers do under a feature of the
-same name. Those crates take framework with `default-features = false` and
-[`run_http_test.sh`](../benchmark/run_http_test.sh) /
-[`run_nats_api_test.sh`](../benchmark/run_nats_api_test.sh) turn the per-action one back on for every
-run that is not measuring the process wide counter, so the two stay mutually exclusive and every
-recorded run says which it ran under.
-
-For the same reason a framework companion crate propagates the feature rather than forcing it:
-`framework_nats` takes framework with `default-features = false` and re-exports `alloc_stats` as its
-own default. Depending on it with framework's defaults on would put the allocator back into any
-graph that meant to replace it.
+Framework installs the counting `#[global_allocator]` unconditionally, so no app can record zeros
+and no crate graph that depends on framework can declare another one — an app cannot swap in
+jemalloc, and the benchmarks dropped their own process wide counter rather than juggle the two.
+Companion crates such as `framework_nats` take framework as a plain dependency, with nothing to
+propagate.
 
 ## Known gaps
 
 - **No regression guard.** Allocations are per action and per endpoint on every build, but nothing
   fails when they go up; noticing is still a person comparing two reports.
-- **The feature's own cpu cost is bounded, not measured.** Both harnesses above put it under what
-  either resolves. It ships on by default on that bound, not on a resolved number.
+- **Its own cpu cost is bounded, not measured.** Both harnesses above put it under what either
+  resolves. It is always on by that bound, not by a resolved number.

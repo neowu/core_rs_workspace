@@ -12,10 +12,6 @@ use nats_api_test_server::GetResponse;
 use nats_api_test_server::PostRequest;
 use nats_api_test_server::PostResponse;
 
-#[cfg(feature = "alloc_stats")]
-#[global_allocator]
-static ALLOCATOR: harness::alloc_stats::Tracking = harness::alloc_stats::Tracking;
-
 const DEFAULT_URL: &str = "nats.test:4222";
 // the client's concurrency is what a run varies, so the service semaphore is set well above it --
 // otherwise a run would silently measure the semaphore instead of the framework
@@ -40,22 +36,11 @@ async fn main() {
 
     system.wait().await;
     system.shutdown_logger().await;
-
-    report_alloc_stats();
 }
 
 fn max_concurrency() -> usize {
     env::var("MAX_CONCURRENCY").map_or(DEFAULT_MAX_CONCURRENCY, |value| value.parse().expect("invalid concurrency"))
 }
-
-#[cfg(feature = "alloc_stats")]
-fn report_alloc_stats() {
-    let (allocs, bytes, live) = harness::alloc_stats::snapshot();
-    framework::console!("alloc_stats: allocs={allocs}, bytes={bytes}, live={live}");
-}
-
-#[cfg(not(feature = "alloc_stats"))]
-const fn report_alloc_stats() {}
 
 struct BenchmarkServiceImpl;
 

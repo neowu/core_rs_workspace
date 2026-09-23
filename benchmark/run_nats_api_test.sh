@@ -6,8 +6,6 @@
 # NATS_URL. Any client option passes through:
 #
 #   ./benchmark/run_nats_api_test.sh --scenario post --concurrency 128
-#   ALLOC_STATS=1 ./benchmark/run_nats_api_test.sh --scenario get      # process wide heap accounting
-#   NO_ACTION_ALLOC_STATS=1 ./benchmark/run_nats_api_test.sh --scenario get  # without the per-action one
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -15,22 +13,7 @@ cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
 URL="${NATS_URL:-nats.test:4222}"
 
-# framework/alloc_stats is a default feature, so it is what apps ship and what a plain run has to
-# measure; nats_api_test_server takes framework with default-features = false and this turns it back
-# on here. the process wide counter installs a #[global_allocator] of its own, and two in one crate
-# graph is a link error, so ALLOC_STATS runs without the per-action one and the record says so.
-features=()
-action_alloc_stats=yes
-if [ -n "${ALLOC_STATS:-}" ]; then
-    features=(--features nats_api_test_server/alloc_stats)
-    action_alloc_stats=no
-elif [ -n "${NO_ACTION_ALLOC_STATS:-}" ]; then
-    action_alloc_stats=no
-else
-    features=(--features framework/alloc_stats)
-fi
-
-cargo build --profile "$PROFILE" ${features[@]+"${features[@]}"} \
+cargo build --profile "$PROFILE" \
     -p nats_api_test_server -p nats_api_test_client -p report
 
 dir="target/$([ "$PROFILE" = "dev" ] && echo debug || echo "$PROFILE")"
@@ -78,22 +61,14 @@ peak_rss=$(cat "$rss_file" 2>/dev/null || echo 0)
 server_side=$(awk -v cpu="$cpu" -v n="$total" -v rss="$peak_rss" \
     'BEGIN { printf "served_requests=%d cpu_us_per_request=%.2f peak_rss_mb=%.1f", n, cpu*10000/n, rss/1024 }')
 
-heap=""
-if grep -q alloc_stats "$server_log"; then
-    heap=$(sed -n 's/.*alloc_stats: //p' "$server_log" | awk -v n="$total" -F'[=,]' \
-        '{ printf "allocs_per_request=%.1f bytes_per_request=%.0f total_allocs=%d", $2/n, $4/n, $2 }')
-fi
-
 echo "--- server ---"
-echo "$server_side $heap" | tr ' ' '\n' | sed 's/=/ = /'
+echo "$server_side" | tr ' ' '\n' | sed 's/=/ = /'
 
 # report fills in host, cores, os and commit itself; the rest is what this run knows.
-# $data, $server_side and $heap are already key=value, so they split into arguments as they are.
+# $data and $server_side are already key=value, so they split into arguments as they are.
 "$dir/report" run \
     "report/$(date +%F)_nats_api_server.txt" \
     "$(date +%Y-%m-%dT%H:%M:%S)" \
     "profile=$PROFILE" \
     "server_threads=${TOKIO_WORKER_THREADS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}" \
-    "alloc_stats=$([ -n "${ALLOC_STATS:-}" ] && echo yes || echo no)" \
-    "action_alloc_stats=$action_alloc_stats" \
-    $data $server_side $heap
+    $data $server_side

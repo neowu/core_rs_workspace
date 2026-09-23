@@ -83,10 +83,9 @@ what a run measures. Everything else is a `main.rs` with plain modules, no crate
 ### Everything protocol independent is one crate
 
 [`harness`](../../benchmark/harness) holds the two pieces no benchmark here wants a second copy of:
-the latency recorder with the machine readable `data` line every client prints, and the counting
-global allocator every server can opt into. Both are subtle enough — a sharded, cache line padded
-allocator, an exact percentile merge — that two copies would drift, and a drifted copy means two
-benchmarks whose numbers are not comparable.
+the latency recorder with the machine readable `data` line every client prints. An exact percentile
+merge is subtle enough that two copies would drift, and a drifted copy means two benchmarks whose
+numbers are not comparable.
 
 What stays per benchmark is what actually differs: argument parsing (scenarios and their addresses),
 the load loop, and the record line's `key=value` prefix, which `harness` takes as a string rather
@@ -165,32 +164,16 @@ costs the server nothing and is always on.
 
 `ps` resolves cpu time to 10 ms, which over a 20 s run is well under the run to run spread.
 
-### Allocations per request are the sharp instrument
+### No process wide heap accounting
 
-Allocation counts are deterministic where cpu time is noisy — they resolved the plain vs `#[api]`
-question that throughput could not (exactly one extra allocation). `--features alloc_stats` swaps in
-a counting global allocator, reported on shutdown and divided per request by `run_http_test.sh`.
+Cpu per request is the number every change is judged by, and every allocation change measured here
+showed up in it anyway. A process wide counter needs a `#[global_allocator]` of its own, which
+conflicts with framework's own, always installed one (two in one crate graph is a link error), so
+it was removed: the servers take framework as apps ship it, with no feature juggling
+in the scripts. Per-endpoint allocation counts are still on every action record as
+`alloc_count`/`alloc_bytes` — design in [`action_alloc_stats.md`](../action_alloc_stats.md).
 
-Its counters are **sharded per thread and padded to a cache line**. The obvious version — four
-shared `AtomicU64`, one of them a `fetch_max` for peak — measured 3.6x cpu per request, not because
-atomics are slow but because every allocating thread wrote the same line. Sharded, the same
-accounting is free within noise, so the only reason it stays behind a feature flag is that a
-benchmark should not ship an allocator it did not mean to measure.
-
-Peak live bytes is the one figure the sharded design cannot give, since it needs a global
-`fetch_max`. The run script polls rss instead, which is free and answers the same question.
-
-`framework/alloc_stats` is the other half of the same question and a different feature: it puts
-`alloc_count`/`alloc_bytes` on every action record instead of a process total, so the number is per
-endpoint rather than per process. It is a framework **default feature**, so a plain run measures the
-server as apps ship it, and `NO_ACTION_ALLOC_STATS=1` builds the server without it — how its cost
-was bounded in the first place. Design in [`action_alloc_stats.md`](../action_alloc_stats.md).
-
-Both features install a `#[global_allocator]` and two in one crate graph is a link error, so
-`http_test_server` depends on framework with `default-features = false` and the run script decides which
-of the two a run gets: `ALLOC_STATS=1` takes the process wide counter and records
-`action_alloc_stats=no`, everything else turns `framework/alloc_stats` back on. The record carries
-both flags, so no row is ambiguous about which allocator it ran under.
+Allocation figures in the results below were measured with that counter before it was removed.
 
 ### Every run is recorded, the report is derived
 
@@ -267,8 +250,6 @@ share is reported alongside as the server's spare capacity.
 
 ```bash
 ./benchmark/run_http_test.sh --scenario api_post --concurrency 128 --duration 60
-ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get             # process wide allocations per request
-NO_ACTION_ALLOC_STATS=1 ./benchmark/run_http_test.sh --scenario get   # without framework's per-action ones
 TOKIO_WORKER_THREADS=4 ./benchmark/profile_http_test.sh --scenario get --concurrency 64 --threads 6
 cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by hand
 ```
@@ -276,8 +257,8 @@ cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by
 `run_http_test.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops
 the server, prints the server's cpu per request and peak rss, and records the run.
 `profile_http_test.sh` does the same while recording a cpu profile, and records nothing. `--help` on
-the client lists its options; `PROFILE`, `ALLOC_STATS`, `NO_ACTION_ALLOC_STATS` and (on the profile
-script) `OUT`, `RATE` are the env knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
+the client lists its options; `PROFILE` and (on the profile script) `OUT`, `RATE`
+are the env knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
 
 Scripts are named `<verb>_<target>.sh`, so a second benchmark adds a pair rather than a mode flag.
 

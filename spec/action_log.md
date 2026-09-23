@@ -35,7 +35,7 @@ buffer, and the whole thing leaves the request path over a channel.
 | `severity`, `error_code`, `error_message` | promoted from log lines and exceptions | see severity promotion |
 | `ref_ids` | the caller's id, off the transport header | how a call chain is reassembled |
 | `context` | `context!(key = value)` | ordered key → **list** of values, queryable dimensions |
-| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes` under `--features alloc_stats`, on by default |
+| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes` always |
 | `logs` | `log!`, `warn!`, `error!`, `span!` | the trace buffer, emitted only when it is worth keeping |
 
 ## Lifecycle
@@ -100,11 +100,10 @@ Numbers are aggregates; dimensions are observations.
 Slot 0 of `stats` is reserved for `elapsed` at construction, so it always leads the record and the
 vector allocates exactly once.
 
-### Allocation stats are on by default, and attributed per poll
+### Allocation stats are always on, and attributed per poll
 
-`alloc_count` and `alloc_bytes` come from `framework/alloc_stats`, a **default feature** that
-installs a counting `#[global_allocator]` and charges each action the counter delta over its own
-polls. Design, cost and the limits of the attribution:
+`alloc_count` and `alloc_bytes` come from framework's counting `#[global_allocator]`, installed
+unconditionally, which charges each action the counter delta over its own polls. Design, cost and the limits of the attribution:
 [`action_alloc_stats.md`](action_alloc_stats.md).
 
 ### The trace is always collected and rarely emitted

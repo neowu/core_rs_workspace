@@ -1032,7 +1032,6 @@ dependencies = [
  "axum",
  "framework",
  "framework_macro",
- "harness",
  "serde",
  "tokio",
 ]
@@ -1496,7 +1495,6 @@ dependencies = [
  "framework",
  "framework_macro",
  "framework_nats",
- "harness",
  "serde",
  "tokio",
 ]

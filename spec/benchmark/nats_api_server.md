@@ -9,7 +9,7 @@ results: [`report/`](../../report)
 
 The same workflow as [`http_server.md`](http_server.md) pointed at
 [`framework_nats`](../../lib/framework_nats): a pair of processes, a closed loop client, cpu per
-request and allocations per request as the numbers that mean something, one record file per date
+request as the number that means something, one record file per date
 (`<date>_nats_api_server.txt`) rendered to html beside it. **Only what differs is written down
 here** — everything that document decides applies unchanged.
 
@@ -177,8 +177,7 @@ removed was refcount traffic on one shared cache line.
 
 Method notes worth keeping:
 
-- Hotspot percentages come from profiling runs, which are built `--profile profiling` with
-  `framework/alloc_stats` on. They are not the runs the result rows above come from, and the two
+- Hotspot percentages come from profiling runs, which are built `--profile profiling`. They are not the runs the result rows above come from, and the two
   cannot be read as one measurement.
 - `on_cpu` in the hotspot records counts samples excluding two named parks, which is not cpu time:
   `kevent` is ~46% of it and is a blocking wait. A framework change worth ~4% of those samples was

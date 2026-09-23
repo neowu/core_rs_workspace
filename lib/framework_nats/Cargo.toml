@@ -4,20 +4,13 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-# by path rather than workspace, because `default-features = false` cannot override an inherited
-# dependency: framework's allocator feature is propagated below rather than forced on, otherwise a
-# crate graph with its own #[global_allocator] cannot use framework_nats at all
-framework = { path = "../framework", default-features = false }
+framework.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tokio-util = "*"
 
 futures = "*"
 async-nats = "*"
-
-[features]
-default = ["alloc_stats"]
-alloc_stats = ["framework/alloc_stats"]
 
 [lints]
 workspace = true

@@ -29,8 +29,7 @@ footer{color:var(--dim);font-size:12px;margin-top:22px}footer code{font-size:12p
 
 const FOOTER: &str = r"<footer>
 <p><b>req/s</b> measures client and server together on one host, so it is only comparable within a run group.
-<b>cpu µs/req</b> is the server process alone, sampled from <code>ps</code>, and is the number to compare.
-<b>allocs/req</b> needs <code>ALLOC_STATS=1</code> and is deterministic, so it resolves differences cpu time cannot.</p>
+<b>cpu µs/req</b> is the server process alone, sampled from <code>ps</code>, and is the number to compare.</p>
 <p>Runs come from <code>benchmark/run_*.sh</code>, hotspots from <code>benchmark/profile_*.sh</code>, both recorded
 and rendered by <code>benchmark/report</code> from the record file beside this one. A profiling run contributes no
 result row, the profiler skews throughput and cpu.</p>
@@ -92,7 +91,7 @@ fn runs_table(page: &mut String, runs: &[&Record]) {
         "<div class=\"wrap\"><table><thead><tr>\n\
          <th>time</th><th>scenario</th><th>proto</th><th>conc</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
          <th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>p99.9 ms</th>\n\
-         <th>cpu µs/req</th><th>allocs/req</th><th>bytes/req</th><th>peak rss MB</th>\n\
+         <th>cpu µs/req</th><th>peak rss MB</th>\n\
          </tr></thead><tbody>\n",
     );
     let mut bad = 0;
@@ -112,9 +111,6 @@ fn runs_table(page: &mut String, runs: &[&Record]) {
             page.push_str(&cell(run, key, ""));
         }
         let _ = write!(page, "<td class=\"n\">{}</td>", esc(run.get("cpu_us_per_request")));
-        for key in ["allocs_per_request", "bytes_per_request"] {
-            page.push_str(&cell(run, key, ""));
-        }
         let _ = writeln!(page, "<td>{}</td></tr>", esc(run.get("peak_rss_mb")));
         if run.number("failed") + run.number("errors") > 0.0 {
             bad += 1;

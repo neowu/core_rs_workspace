@@ -19,10 +19,7 @@ OUT="${OUT:-target/nats_profile.json.gz}"
 RATE="${RATE:-999}"
 
 # profiling = release plus full debug info, release alone only carries line tables.
-# framework/alloc_stats is a framework default that nats_api_test_server opts out of, see
-# run_nats_api_test.sh, so it is turned back on here too -- a profile has to show the server as
-# apps ship it
-cargo build --profile profiling --features framework/alloc_stats \
+cargo build --profile profiling \
     -p nats_api_test_server -p nats_api_test_client -p report
 
 NATS_URL="$URL" samply record --save-only --no-open --unstable-presymbolicate -r "$RATE" -o "$OUT" \

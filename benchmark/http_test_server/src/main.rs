@@ -17,10 +17,6 @@ use http_test_server::GetResponse;
 use http_test_server::PostRequest;
 use http_test_server::PostResponse;
 
-#[cfg(feature = "alloc_stats")]
-#[global_allocator]
-static ALLOCATOR: harness::alloc_stats::Tracking = harness::alloc_stats::Tracking;
-
 /// The target under test, a framework app with nothing but the http server wired up.
 #[tokio::main]
 async fn main() {
@@ -42,18 +38,7 @@ async fn main() {
 
     system.wait().await;
     system.shutdown_logger().await;
-
-    report_alloc_stats();
 }
-
-#[cfg(feature = "alloc_stats")]
-fn report_alloc_stats() {
-    let (allocs, bytes, live) = harness::alloc_stats::snapshot();
-    framework::console!("alloc_stats: allocs={allocs}, bytes={bytes}, live={live}");
-}
-
-#[cfg(not(feature = "alloc_stats"))]
-const fn report_alloc_stats() {}
 
 // controllers do no work on purpose, what is measured is everything around them
 async fn get_benchmark(Query(request): Query<GetRequest>) -> Json<GetResponse> {
