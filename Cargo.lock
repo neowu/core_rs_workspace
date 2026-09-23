@@ -1026,6 +1026,7 @@ version = "0.9.1"
 dependencies = [
  "axum",
  "framework",
+ "framework_db",
  "framework_macro",
  "libc",
  "serde",

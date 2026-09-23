@@ -11,8 +11,6 @@ use std::fs::read_to_string;
 use serde_json::Value;
 use serde_json::json;
 
-// crate paths a method must start from to be listed in the total time table
-const OWN_CRATES: [&str; 3] = ["framework::", "http_test_server::", "nats_api_test_server::"];
 
 struct Entry {
     total: f64,
@@ -38,13 +36,19 @@ pub fn methods(self_path: &str, total_path: &str, top: usize) -> Value {
         .collect();
     let own = parse(&total_report, true)
         .into_iter()
-        .filter(|entry| OWN_CRATES.iter().any(|prefix| entry.name.trim_start_matches('<').starts_with(prefix)));
+        .filter(|entry| own(&entry.name));
     let total_rows: Vec<Value> = merge(own.collect(), true)
         .iter()
         .take(top)
         .map(|entry| json!({ "total_pct": round(entry.total), "self_pct": round(entry.self_pct), "name": entry.name }))
         .collect();
     json!({ "samples": samples, "self": self_rows, "total": total_rows })
+}
+
+/// Listed in the total time table: any framework crate or benchmark server.
+fn own(name: &str) -> bool {
+    let krate = name.trim_start_matches('<').split("::").next().unwrap_or("");
+    krate.starts_with("framework") || krate.ends_with("_test_server")
 }
 
 fn round(value: f64) -> f64 {

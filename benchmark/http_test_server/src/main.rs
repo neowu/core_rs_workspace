@@ -21,6 +21,8 @@ use http_test_server::info::MachineInfo;
 use http_test_server::info::ProcessUsage;
 use http_test_server::info::ServerInfo;
 
+mod db;
+
 /// The target under test, a framework app with nothing but the http server wired up.
 #[tokio::main]
 async fn main() {
@@ -34,6 +36,11 @@ async fn main() {
     let app = app.route("/benchmark/get", get(get_benchmark));
     let app = app.route("/benchmark/post", post(post_benchmark));
     let app = app.merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl)));
+
+    // the pool connects lazily, so the non db scenarios run without postgres
+    let database = db::database();
+    system.add_metrics(database.metrics());
+    let app = app.merge(db::route(Arc::new(database)));
 
     // the default binds 0.0.0.0:8080, a benchmark host keeps that port free
     let http_server = HttpServer::new(HttpServerConfig::default());

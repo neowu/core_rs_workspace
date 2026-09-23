@@ -49,6 +49,40 @@ impl PostResponse {
     }
 }
 
+/// Body of `PUT /benchmark/init_db`: drops and recreates the table, then seeds ids `1..=rows`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InitDbRequest {
+    pub rows: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InitDbResponse {
+    pub rows: i64,
+}
+
+/// Response of `GET /benchmark/db/select?id=`, one row by primary key.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DbSelectResponse {
+    pub id: i64,
+    pub name: String,
+    pub amount: i64,
+}
+
+/// Body of `POST /benchmark/db/insert_ignore`, the client repeats one id so only the first insert
+/// lands and the table never grows.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DbInsertRequest {
+    pub id: i64,
+    pub name: String,
+    pub amount: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DbInsertResponse {
+    pub id: i64,
+    pub inserted: bool,
+}
+
 /// Same payloads and same work as the plain controllers, on a different path. The delta between the
 /// two is the cost of the `#[api]` generated route.
 #[api]

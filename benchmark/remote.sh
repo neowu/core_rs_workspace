@@ -3,8 +3,10 @@
 # one client scenario against the server, downloads the client's result into report/<date>_<name>/
 # and renders report/<date>_<name>.html from every result of the day. Any client option passes through:
 #
-#   SERVER=35.236.186.204 CLIENT=35.229.228.183 ./benchmark/remote.sh run http --scenario post --concurrency 128
-#   SERVER=35.236.186.204 CLIENT=35.229.228.183 ./benchmark/remote.sh profile nats_api --scenario post --duration 30
+#   SERVER=<server ip> CLIENT=<client ip> ./benchmark/remote.sh run http --scenario post --concurrency 128
+#   SERVER=<server ip> CLIENT=<client ip> ./benchmark/remote.sh profile nats_api --scenario post --duration 30
+#
+# Hosts and how to find their ips (public ips are ephemeral): spec/benchmark/server.md
 #
 # `profile` also records the server with perf and puts its top methods in the report; its throughput
 # and cpu are skewed by the profiler, so it shows below the runs, never as a run row.
@@ -14,8 +16,9 @@
 # (`apt install linux-perf`) on the server. Binaries go to /opt/<binary>/, the source to
 # /opt/build/src and the build output to /opt/build/target, kept between runs so rebuilds are
 # incremental. Only `report` is built on this host, which needs rsync too. The client reaches the
-# server on its internal ip (`hostname -I`), SERVER_IP overrides. The nats broker runs on the server
-# host, from debian's nats-server package unless one is on the path already.
+# server on its internal ip (`hostname -I`), SERVER_IP overrides. The nats broker must already run on
+# the server host on port 4222 (provisioned as a systemd service), the run aborts otherwise. The http
+# db_* scenarios need postgres on the server host on port 5432 (trust auth, user postgres).
 set -euo pipefail
 
 usage="usage: remote.sh <run|profile> <http|nats_api> [client options]"
@@ -69,10 +72,12 @@ deploy() {
 # anchored, so the pattern never matches the remote shell running pkill itself
 stop_server() { ssh "$SERVER" "pkill -f '^$server_bin' || true"; }
 
-# left running between runs, it is the server host's infrastructure rather than part of a run
-start_nats() {
-    ssh "$SERVER" "command -v nats-server > /dev/null || sudo apt-get install -y -qq nats-server > /dev/null"
-    ssh "$SERVER" "pgrep -x nats-server > /dev/null || nohup nats-server -p 4222 > ~/nats-server.log 2>&1 < /dev/null &"
+# the broker is the server host's infrastructure, provisioned outside of a run
+check_nats() {
+    if ! ssh "$SERVER" "pgrep -x nats-server > /dev/null"; then
+        echo "nats-server not running on $SERVER" >&2
+        exit 1
+    fi
 }
 
 # deploys both sides and starts the server, sets url once the client host can reach it
@@ -83,7 +88,7 @@ start() {
     local server_ip="${SERVER_IP:-$(ssh "$SERVER" "hostname -I | awk '{print \$1}'")}"
     local server_env=""
     if [ "$name" = "nats_api" ]; then
-        start_nats
+        check_nats
         url="$server_ip:4222"
         server_env="NATS_URL=localhost:4222"
     else

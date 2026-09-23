@@ -7,7 +7,8 @@ Code: [`benchmark/nats_api_test_server`](../../benchmark/nats_api_test_server),
 results: [`report/`](../../report)
 
 The workflow of [`http_server.md`](http_server.md) pointed at [`framework_nats`](../../lib/framework_nats)
-(`remote.sh <run|profile> nats_api`). **Only what differs is written here.**
+(`remote.sh <run|profile> nats_api`), on the hosts in [`server.md`](server.md). **Only what differs
+is written here.**
 
 A run measures the path a nats request crosses: queue subscription, semaphore and task spawn,
 action log, header linkage (`ref_id`, `client`), payload decode, handler, reply publish.
@@ -29,9 +30,9 @@ only way a service is built, so there is no hand registered variant to compare a
 
 ## Requirements
 
-- A broker sits in the middle. It runs on the server host (`nats-server`, installed and started by
-  `remote.sh` if missing, left running). The server reaches it on `localhost`, the client on the
-  server's internal ip. The result records broker url and version.
+- A broker sits in the middle. It runs on the server host (`nats-server`, provisioned as a
+  systemd service; `remote.sh` aborts if it is not running). The server reaches it on
+  `localhost`, the client on the server's internal ip. The result records broker url and version.
 - Subjects and payload types live in the server's lib target, which the client depends on.
 - The server wires nothing but `BenchmarkService::service(...)`.
 

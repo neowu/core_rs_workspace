@@ -25,6 +25,39 @@ layer, action log, routing, extractor, controller, serialization).
 | `post` | `/benchmark/post` | plain controller, `Json` |
 | `api_get` | `/benchmark/api/get` | `#[api]` generated, `Query` |
 | `api_post` | `/benchmark/api/post` | `#[api]` generated, `Json` |
+| `db_select` | `GET /benchmark/db/select` | plain controller, `repository::select_one` by primary key |
+| `db_insert_ignore` | `POST /benchmark/db/insert_ignore` | plain controller, `repository::insert_ignore` |
+
+### DB scenarios
+
+Postgres runs on the server host (trust auth, user `postgres`, empty password), the server
+connects to `DB_URL` (default `postgres://localhost:5432/postgres`). The pool connects lazily, so
+non-db scenarios need no postgres.
+
+Before `verify`, the client calls `PUT /benchmark/init_db`, which drops and recreates the table and
+seeds ids `1..=rows` (`--rows`, default 1000) through `repository::insert`, so every run starts
+from the same state.
+
+```sql
+CREATE TABLE "benchmark_entity" (
+    id      BIGINT PRIMARY KEY,
+    name    TEXT NOT NULL,
+    amount  BIGINT NOT NULL
+)
+```
+
+| endpoint | request | response |
+|---|---|---|
+| `PUT /benchmark/init_db` | `{"rows":1000}` | `{"rows":1000}` |
+| `GET /benchmark/db/select?id=7` | | `{"id":7,"name":"name-7","amount":700}` |
+| `POST /benchmark/db/insert_ignore` | `{"id":1001,"name":"benchmark","amount":100}` | `{"id":1001,"inserted":true}` |
+
+- `db_select` reads one fixed seeded id, a hot row: it measures the framework db path plus a round
+  trip, not postgres disk reads.
+- `db_insert_ignore` always sends id `rows + 1`: `verify` asserts the first insert lands, every
+  later one conflicts (`inserted: false`), so the measured phase is the conflict path and the
+  table never grows.
+- A missing row is `NOT_FOUND` (404), which the measured loop counts as failed.
 
 ## Requirements
 
@@ -77,7 +110,7 @@ layer, action log, routing, extractor, controller, serialization).
 ## Remote workflow
 
 `benchmark/remote.sh <run|profile> <http|nats_api> [client options]` with `SERVER` and `CLIENT` ssh
-hosts:
+hosts (which hosts and what runs on them: [`server.md`](server.md)):
 
 1. rsync the working tree to `/opt/build/src` on the server host and build both binaries there
    (native build, no cross toolchain; target dir kept for incremental builds)
@@ -94,8 +127,8 @@ the server for the client run, runs `perf report` twice on the server (self time
 children) and `report profile` stores the top methods under `profile` in the result file.
 
 - perf, not samply: it samples only on-cpu threads, so parked workers never appear.
-- Self time covers everything (libc, kernel); total time only `framework::` and benchmark server
-  methods, otherwise runtime and hyper frames take every row.
+- Self time covers everything (libc, kernel); total time only methods of `framework*` crates and
+  `*_test_server`, otherwise runtime and hyper frames take every row.
 - Symbols are demangled with `rustc-demangle` and generic arguments stripped, so monomorphizations
   merge: self time sums, total time takes the largest.
 - A profile renders below the runs, never as a run row, since the profiler skews throughput and cpu.
@@ -105,3 +138,6 @@ children) and `report profile` stores the top methods under `profile` in the res
 - No bare-axum baseline to separate framework cost from axum/hyper.
 - Nothing compares runs automatically.
 - One connection, one client process: the server's real ceiling is unknown.
+- DB scenarios: the framework pool holds at most 50 connections, a higher `--concurrency` queues
+  on checkout. Postgres shares the server host, its cpu is not in the server's `cpu_us_per_request`
+  but does compete for the same cores.
