@@ -11,7 +11,8 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`framework_nats/src/appender.rs`](../lib/framework_nats/src/appender.rs),
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs) · siblings:
 [`action_future_design.md`](action_future_design.md),
-[`action_alloc_stats.md`](action_alloc_stats.md), [`clickhouse.md`](clickhouse.md),
+[`action_alloc_stats.md`](action_alloc_stats.md), [`task_executor.md`](task_executor.md),
+[`clickhouse.md`](clickhouse.md),
 [`benchmark/http_server.md`](benchmark/http_server.md)
 
 An **action** is one unit of work an app performs — an http request, a consumed message, a scheduled
@@ -130,6 +131,17 @@ allocations. Consumers that want lines back split on `'\n'` —
 `clear()` truncates back to it, so a long loop can keep the last iteration's trace without letting
 the buffer grow without bound. It is guarded on a char boundary — a crossed (non-nested) span can
 hold a stale offset, and truncating mid-char would panic.
+
+### The fixed parts of a line are written as bytes, not formatted
+
+Every line carries the same `MM:SS.NNNNNNNNN ` elapsed prefix, and an action's header carries an
+rfc3339 timestamp. Both are built into fixed byte buffers and pushed in one go, the same trade the
+action id makes: `core::fmt`'s padding path is a measurable share of the profile at one action's
+line rate, and the rfc3339 form no longer needs the temporary `String` `to_rfc3339` returns.
+
+The output is unchanged, and both are pinned by a test that compares against the `format!` they
+replaced. `DateTime::write_rfc3339` takes the written length from what its cursor consumed rather
+than from the count `time`'s `format_into` returns, which leaves out the subsecond digits.
 
 ### Every limit truncates in place and says so
 
@@ -271,6 +283,9 @@ Measured on the http server benchmark, which exists for exactly this question; n
 - Action logging is the framework's largest own share of a request. The header and cookie lines are
   formatted into the buffer on every request, and `core::fmt::write` plus `String::write_str` are
   ~2% of on-cpu time between them even when `TraceAppender` then discards the result.
+- Writing the fixed parts of a line as bytes cut `log_line` and its callees from 4.34% to 2.96% of
+  non-parked samples on the nats benchmark; method and the rest of that change in
+  [`benchmark/nats_api_server.md`](benchmark/nats_api_server.md).
 - The allocation tuning above removed 19–20 allocations per request, about 27% of the total, for
   ~1.5% (get) to ~2.7% (post) less server cpu per request. Allocation counts are deterministic and
   settled it; cpu time alone could not have.
@@ -280,9 +295,9 @@ Measured on the http server benchmark, which exists for exactly this question; n
 - **No regression guard on the record's cost.** Every action carries its own allocation counts,
   but nothing fails when they go up; noticing is still a person comparing two reports. The counts
   and what they cost: [`action_alloc_stats.md`](action_alloc_stats.md).
-- **Per-line trace overhead is unamortized.** Every line re-reads the task local and re-formats the
-  elapsed prefix. A header-block writer could share both across a block of lines, at the price of
-  one timestamp per block.
+- **Per-line trace overhead is unamortized.** Every line re-reads the task local and re-reads the
+  clock for its elapsed prefix. A header-block writer could share both across a block of lines, at
+  the price of one timestamp per block, which would change what a trace shows.
 - **The trace is collected even when no appender could ever emit it.** There is no way for an
   appender to declare that it never wants traces, and `flush_trace` is decided after the fact.
 - **Context values are capped per value, not per action.** An action setting many large values can

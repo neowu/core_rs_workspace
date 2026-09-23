@@ -109,10 +109,7 @@ where
                         }
                         () = time::sleep(Duration::from_secs(waiting_time.as_secs() as u64)) => {
                             let state = state.clone();
-                            executor.spawn(
-                                format!("job:{name}@{scheduled_time}"),
-                                (schedule.job)(state, context),
-                            );
+                            executor.spawn(schedule.name, (schedule.job)(state, context));
                         }
                     }
                 }

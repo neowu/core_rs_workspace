@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use std::time::Instant;
 
 use pin_project_lite::pin_project;
 use serde::Deserialize;
@@ -291,15 +290,6 @@ pub fn __stats(key: &'static str, value: u64, location: &'static str) {
         action.log(None, None, Some(location), format_args!("[stats] {key}={value}"));
         action.add_stat(key, value);
     });
-}
-
-fn elapsed(start: Instant) -> (u64, u64, u32) {
-    let elapsed = start.elapsed();
-    let total_seconds = elapsed.as_secs();
-    let minutes = total_seconds / 60;
-    let seconds = total_seconds % 60;
-    let nanos = elapsed.subsec_nanos();
-    (minutes, seconds, nanos)
 }
 
 /// Truncates in place on a char boundary, appending the marker only when something was cut.

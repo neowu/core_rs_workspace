@@ -130,3 +130,56 @@ What it shows:
   is left, `kevent` alone is ~46% and `writev` another ~7%, so the top of both tables is the
   connection being driven from four worker threads rather than anything the framework does.
 - **Peak rss 8.9 MB**, in line with the http server.
+
+## Request path tuning
+
+2026-09-22, same host and shape as the first run, but measured properly: three interleaved
+before/after pairs per scenario, 15 s measured after a 3 s warmup, one prebuilt binary per side so
+neither rebuilds between runs, and the same client binary driving both.
+
+| scenario | cpu µs / request | throughput / s | allocations / request | bytes / request |
+|---|---|---|---|---|
+| `get` before | 18.9 | 72,400 | 33 | 5,177 |
+| `get` after | 15.8 | 74,500 | 28 | 4,928 |
+| `post` before | 19.7 | 71,700 | 35 | 5,276 |
+| `post` after | 16.6 | 74,000 | 30 | 5,027 |
+
+Three changes, each of which the profile had pointed at:
+
+- **Per-subject metadata is built at registration, not per request.** The task name and the `fn`
+  context the generated handler sets are fixed once a handler is registered. `TaskExecutor::spawn`
+  takes `&'static str` and the task name is the subject itself, so nothing builds one per request —
+  see [`task_executor.md`](../task_executor.md); the `fn` context still owns its
+  `String`, so it is cloned, but nothing formats `type_name` again.
+- **One `Arc<Client>` shared by every handler**, instead of cloning `async_nats::Client` per
+  request. A `Client` clone carries two `watch::Receiver`s, an `mpsc::Sender`, a `PollSender` and
+  five `Arc`s; dropping the receivers alone was 163 samples, all of them under request handling.
+  After the change that frame does not appear at all.
+- **The fixed parts of a log line are written as bytes.** Seven trace lines per successful request
+  each formatted an elapsed prefix, and action construction formatted an rfc3339 timestamp into a
+  temporary `String`. See [`action_log.md`](../action_log.md).
+
+What it shows:
+
+- **~16% less server cpu per request** on both scenarios, against ~3% more throughput. The gap is
+  the single connection ceiling: the benchmark cannot spend the cpu it frees, so cpu per request is
+  the number that moved and throughput is the number that mostly could not.
+- **Five fewer allocations per request** on both scenarios, deterministic across repeats, which is
+  what identified the change as real before the cpu numbers were trusted.
+- **`log_line` and its callees fell from 4.34% to 2.96% of non-parked samples.** Still the
+  framework's largest own share, and still well under `kevent` and `writev`.
+
+A follow-up moved task names from `Arc<str>` to `&'static str` (see
+[`task_executor.md`](../task_executor.md)): five more interleaved `get` pairs, same shape, put cpu
+per request at 15.4 µs against 15.8, with four of five runs below the whole before range.
+Allocations per request are unchanged at 28 and 30 — the allocation was already gone; what this
+removed was refcount traffic on one shared cache line.
+
+Method notes worth keeping:
+
+- Hotspot percentages come from profiling runs, which are built `--profile profiling` with
+  `framework/alloc_stats` on. They are not the runs the result rows above come from, and the two
+  cannot be read as one measurement.
+- `on_cpu` in the hotspot records counts samples excluding two named parks, which is not cpu time:
+  `kevent` is ~46% of it and is a blocking wait. A framework change worth ~4% of those samples was
+  worth ~16% of measured cpu per request, and the difference is that denominator.

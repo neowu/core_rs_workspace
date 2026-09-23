@@ -51,7 +51,7 @@ impl Default for ServiceConfig {
     }
 }
 
-type RequestHandler = Box<dyn Fn(Client, Message) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type RequestHandler = Box<dyn Fn(Arc<Client>, Message) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 // core nats request/reply service. each subject is registered with its own handler; subscriptions
 // use the subject as queue group so multiple service instances load balance. requests are processed
@@ -61,7 +61,7 @@ type RequestHandler = Box<dyn Fn(Client, Message) -> Pin<Box<dyn Future<Output =
 // registration below are the macro's entry point, hidden so a call site reaches for the trait's
 // generated `service()` instead. `start` and `metrics` are the public surface.
 pub struct Service {
-    client: Client,
+    client: Arc<Client>,
     handlers: HashMap<&'static str, RequestHandler>,
     config: ServiceConfig,
     counter: Arc<Counter>,
@@ -70,7 +70,7 @@ pub struct Service {
 impl Service {
     #[doc(hidden)]
     pub fn __new(client: Client, config: ServiceConfig) -> Self {
-        Self { client, handlers: HashMap::new(), config, counter: Arc::default() }
+        Self { client: Arc::new(client), handlers: HashMap::new(), config, counter: Arc::default() }
     }
 
     #[doc(hidden)]
@@ -118,15 +118,14 @@ impl Service {
                 () = shutdown_signal.cancelled() => break,
                 message = requests.next() => {
                     let Some(message) = message else { break };
-                    let Some(handler) = handlers.get(message.subject.as_str()) else {
+                    let Some((subject, handler)) = handlers.get_key_value(message.subject.as_str()) else {
                         console!("WARN no handler registered, subject={}", message.subject);
                         continue;
                     };
                     let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
-                    let name = format!("request:{}", message.subject);
-                    let task = handler(client.clone(), message);
+                    let task = handler(Arc::clone(&client), message);
                     let counter = Arc::clone(&counter);
-                    executor.spawn(name, async move {
+                    executor.spawn(subject, async move {
                         let _permit = permit; // held until the handler (and its reply) completes
                         let _counter = counter.increase();
                         task.await;
@@ -147,7 +146,7 @@ impl Service {
 }
 
 fn handle_request<H, Fut, Req, Res>(
-    client: Client,
+    client: Arc<Client>,
     message: Message,
     handler: Arc<H>,
 ) -> impl Future<Output = ()> + Send

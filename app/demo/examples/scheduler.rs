@@ -4,7 +4,6 @@ use std::time::Duration;
 use axum::Router;
 use framework::appender::ConsoleAppender;
 use framework::exception::Exception;
-use framework::log;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
 use framework::system::DefaultEnv;
@@ -45,9 +44,9 @@ pub async fn main() {
 }
 
 async fn job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
-    log::trace();
+    // log::trace();
     println!("Job executed: {}", context.name);
-    sleep(Duration::from_secs(20)).await;
+    sleep(Duration::from_secs(10)).await;
     Ok(())
 }
 

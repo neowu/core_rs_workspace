@@ -1,11 +1,12 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::str::from_utf8;
+use std::time::Duration;
 use std::time::Instant;
 
 use crate::exception::Exception;
 use crate::log::ContextValues;
 use crate::log::Severity;
-use crate::log::elapsed;
 use crate::string::StringExt as _;
 use crate::time::DateTime;
 use crate::write_str;
@@ -36,7 +37,9 @@ pub(crate) struct Error {
 impl Action {
     pub(crate) fn new(id: String, kind: &'static str, ref_ids: Option<Vec<String>>, timestamp: DateTime) -> Self {
         let mut logs = String::with_capacity(1024);
-        write_str!(logs, "# [action] id={id}, kind={kind}, date={}, ref_id={ref_ids:?}\n", timestamp.to_rfc3339());
+        write_str!(logs, "# [action] id={id}, kind={kind}, date=");
+        timestamp.write_rfc3339(&mut logs);
+        write_str!(logs, ", ref_id={ref_ids:?}\n");
 
         Action {
             start_time: Instant::now(),
@@ -127,9 +130,8 @@ impl Action {
             return;
         }
 
-        let (minutes, seconds, nanos) = elapsed(self.start_time);
+        write_elapsed(&mut self.logs, self.start_time.elapsed());
         let logs = &mut self.logs;
-        write_str!(logs, "{minutes:02}:{seconds:02}.{nanos:09} ");
         if let Some(location) = location {
             write_str!(logs, "{location} ");
         }
@@ -164,8 +166,39 @@ impl Action {
     }
 }
 
+/// Appends the `MM:SS.NNNNNNNNN ` prefix every log line carries. Hand rolled because at this call
+/// rate core::fmt's padding path is a measurable share of the profile.
+fn write_elapsed(out: &mut String, elapsed: Duration) {
+    let total_seconds = elapsed.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    let nanos = elapsed.subsec_nanos();
+
+    if minutes > 99 {
+        crate::write_str!(out, "{minutes:02}:{seconds:02}.{nanos:09} ");
+        return;
+    }
+
+    let mut buf = [b' '; 16]; // MM:SS.NNNNNNNNN and the trailing space
+    write_digits(&mut buf[0..2], minutes as u32);
+    buf[2] = b':';
+    write_digits(&mut buf[3..5], seconds as u32);
+    buf[5] = b'.';
+    write_digits(&mut buf[6..15], nanos);
+    out.push_str(from_utf8(&buf).expect("digits are ascii"));
+}
+
+fn write_digits(out: &mut [u8], mut value: u32) {
+    for slot in out.iter_mut().rev() {
+        *slot = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::Action;
     use super::MAX_LOG_BYTES;
     use crate::log::Severity;
@@ -234,5 +267,24 @@ mod tests {
 
         assert_eq!(action.severity, Severity::Error);
         assert_eq!(action.error.as_ref().and_then(|error| error.code), Some("FIRST"));
+    }
+
+    #[test]
+    fn write_elapsed_matches_the_format() {
+        let cases = [
+            Duration::ZERO,
+            Duration::from_nanos(1),
+            Duration::new(9, 87_654_321),
+            Duration::new(59, 999_999_999),
+            Duration::new(605, 100_000_000),
+            Duration::new(6000, 0), // 100 minutes, past the two digit fast path
+        ];
+
+        for elapsed in cases {
+            let (minutes, seconds, nanos) = (elapsed.as_secs() / 60, elapsed.as_secs() % 60, elapsed.subsec_nanos());
+            let mut out = String::new();
+            super::write_elapsed(&mut out, elapsed);
+            assert_eq!(out, format!("{minutes:02}:{seconds:02}.{nanos:09} "));
+        }
     }
 }

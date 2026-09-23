@@ -149,18 +149,16 @@ where
                             }
                         };
 
-                        let subject = raw.subject.as_str();
-                        let Some(handler) = handlers.get(subject) else {
-                            console!("WARN no handler registered, subject={subject}");
+                        let Some((subject, handler)) = handlers.get_key_value(raw.subject.as_str()) else {
+                            console!("WARN no handler registered, subject={}", raw.subject);
                             if let Err(e) = raw.ack_with(AckKind::Nak(Some(Duration::from_mins(1)))).await {
                                 console!("ERROR failed to ack message, error={e:?}");
                             }
                             continue;
                         };
                         let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
-                        let name = format!("message:{subject}");
                         let task = handler(raw, state.clone());
-                        executor.spawn(name, async move {
+                        executor.spawn(subject, async move {
                             let _permit = permit; // held until the handler (and its ack) completes
                             task.await;
                         });

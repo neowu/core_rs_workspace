@@ -3,6 +3,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::ops::Sub;
+use std::str::from_utf8;
 
 use serde::Deserialize;
 use serde::Deserializer;
@@ -91,6 +92,20 @@ impl DateTime {
 
     pub fn to_rfc3339(&self) -> String {
         self.0.format(&Rfc3339).expect("format cannot fail")
+    }
+
+    /// Appends the rfc3339 form, without the temporary `String` `to_rfc3339` allocates.
+    pub fn write_rfc3339(&self, out: &mut String) {
+        const CAPACITY: usize = 48; // rfc3339 with nanos and offset needs 35
+
+        let mut buf = [0_u8; CAPACITY];
+        let mut cursor = buf.as_mut_slice();
+        self.0.format_into(&mut cursor, &Rfc3339).expect("format cannot fail");
+        // the count format_into returns leaves out the subsecond digits, so the written length is
+        // taken from what the cursor consumed instead
+        let written = CAPACITY - cursor.len();
+        let text = buf.get(..written).and_then(|bytes| from_utf8(bytes).ok()).expect("rfc3339 is ascii");
+        out.push_str(text);
     }
 }
 
@@ -186,5 +201,17 @@ mod tests {
         assert_eq!((date2 - date1).as_millis(), 1500);
         assert_eq!((date1 - date2).as_millis(), -1500);
         assert_eq!((date2 - date1).as_secs(), 1);
+    }
+
+    #[test]
+    fn write_rfc3339_matches_to_rfc3339() {
+        let date = DateTime::parse("2023-11-14T22:13:20.123456789Z").unwrap();
+        let cases = [date, date.with_timezone(Offset::new(8, 0)), DateTime::parse("2023-11-14T22:13:20Z").unwrap()];
+
+        for case in cases {
+            let mut out = String::from("date=");
+            case.write_rfc3339(&mut out);
+            assert_eq!(out, format!("date={}", case.to_rfc3339()));
+        }
     }
 }

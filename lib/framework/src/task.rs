@@ -21,24 +21,29 @@ pub fn start_executor() -> &'static Executor {
     EXECUTOR.get_or_init(Executor::default)
 }
 
+#[macro_export]
+macro_rules! spawn_action {
+    ($name:literal, $task:expr) => {
+        $crate::task::__spawn_action(
+            $name,
+            concat!(file!(), ":", line!()),
+            concat!("task:", $name, "@", file!(), ":", line!()),
+            $task,
+        )
+    };
+}
+
 #[doc(hidden)]
-pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task: T)
+pub fn __spawn_action<T, R>(name: &'static str, location: &'static str, task_name: &'static str, task: T)
 where
     T: Future<Output = Result<R, Exception>> + Send + 'static,
     R: Send + Sync + 'static,
 {
     if let Some(executor) = EXECUTOR.get() {
-        executor.spawn(name, location, task);
+        executor.spawn(name, location, task_name, task);
     } else {
         panic!("executor not initialized");
     }
-}
-
-#[macro_export]
-macro_rules! spawn_action {
-    ($name:expr, $task:expr) => {
-        $crate::task::__spawn_action($name, concat!(file!(), ":", line!()), $task)
-    };
 }
 
 #[derive(Default)]
@@ -48,12 +53,11 @@ pub struct Executor {
 }
 
 impl Executor {
-    fn spawn<T, R>(&self, name: &'static str, location: &'static str, task: T)
+    fn spawn<T, R>(&self, name: &'static str, location: &'static str, task_name: &'static str, task: T)
     where
         T: Future<Output = Result<R, Exception>> + Send + 'static,
         R: Send + Sync + 'static,
     {
-        let task_name = format!("task:{name}@{location}");
         let ref_ids = log::current_action_id().map(|id| vec![id]);
 
         let counter = Arc::clone(&self.counter);
@@ -86,12 +90,12 @@ impl Executor {
 #[derive(Default)]
 pub struct TaskExecutor {
     tracker: TaskTracker,
-    tasks: Arc<Mutex<HashMap<u64, String>>>,
+    tasks: Arc<Mutex<HashMap<u64, &'static str>>>,
     next_id: Arc<AtomicU64>,
 }
 
 struct TaskGuard {
-    tasks: Arc<Mutex<HashMap<u64, String>>>,
+    tasks: Arc<Mutex<HashMap<u64, &'static str>>>,
     id: u64,
 }
 
@@ -102,7 +106,9 @@ impl Drop for TaskGuard {
 }
 
 impl TaskExecutor {
-    pub fn spawn<F>(&self, name: String, task: F)
+    // names come from a fixed set per app: a literal, or interned once at registration. nothing
+    // builds one per spawn, which is what the &'static str bound is here to enforce.
+    pub fn spawn<F>(&self, name: &'static str, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
@@ -115,12 +121,12 @@ impl TaskExecutor {
         });
     }
 
-    pub async fn shutdown(&self, timeout: Duration) -> Option<Vec<String>> {
+    pub async fn shutdown(&self, timeout: Duration) -> Option<Vec<&'static str>> {
         self.tracker.close();
         if time::timeout(timeout, self.tracker.wait()).await.is_ok() {
             return None;
         }
-        let aborted: Vec<String> = self.tasks.lock().unwrap().values().cloned().collect();
+        let aborted: Vec<&'static str> = self.tasks.lock().unwrap().values().copied().collect();
         (!aborted.is_empty()).then_some(aborted)
     }
 }

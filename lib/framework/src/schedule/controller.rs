@@ -33,10 +33,7 @@ where
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
     let context = JobContext { name: schedule.name, scheduled_time: DateTime::now().with_timezone(state.timezone) };
-    state.executor.spawn(
-        format!("job:{job}@{}", context.scheduled_time.to_rfc3339()),
-        (schedule.job)(state.state.clone(), context),
-    );
+    state.executor.spawn(schedule.name, (schedule.job)(state.state.clone(), context));
     Ok(StatusCode::ACCEPTED)
 }
 
