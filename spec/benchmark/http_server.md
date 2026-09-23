@@ -2,414 +2,106 @@
 
 Code: [`benchmark/http_test_server`](../../benchmark/http_test_server),
 [`benchmark/http_test_client`](../../benchmark/http_test_client),
-[`benchmark/run_http_test.sh`](../../benchmark/run_http_test.sh),
-[`benchmark/profile_http_test.sh`](../../benchmark/profile_http_test.sh),
-[`benchmark/harness`](../../benchmark/harness), [`benchmark/report`](../../benchmark/report) ·
+[`benchmark/remote.sh`](../../benchmark/remote.sh),
+[`benchmark/report`](../../benchmark/report) ·
 results: [`report/`](../../report)
 
-The shape below is the one every benchmark here follows; the nats one is in
-[`nats_api_server.md`](nats_api_server.md).
+The workflow here is shared by every benchmark; the nats one is in [`nats_api_server.md`](nats_api_server.md).
 
-A benchmark workflow to find the bottleneck or hotspot of framework code, and to compare different
-designs. **Not micro benchmarks** — the unit of measurement is a whole request crossing a real
-socket, so what a run measures is the framework path as an app actually pays for it: accept, the
-http server layer (action log, context, client info, header/cookie logging), routing, extractor,
-controller, response serialization.
-
-A benchmark is a pair of processes, started separately so each can be profiled, pinned or replaced
-on its own:
+Finds framework bottlenecks and compares designs. **Not micro benchmarks**: the unit is a whole
+request over a real socket, so a run measures the framework path an app pays for (accept, http
+layer, action log, routing, extractor, controller, serialization).
 
 | process | role |
 |---|---|
-| `http_test_server` | the target under test — a framework app with nothing wired but the http server |
-| `http_test_client` | the measuring instrument — a closed loop load generator |
+| `http_test_server` | target under test, a framework app with only the http server wired |
+| `http_test_client` | measuring instrument, a closed loop load generator |
 
-## Endpoints
-
-The same payloads and the same work reached two ways, so a run can price one route style against
-the other:
+## Scenarios
 
 | scenario | path | route |
 |---|---|---|
-| `get` | `/benchmark/get` | plain controller, `web::route::get` + `Query` |
-| `post` | `/benchmark/post` | plain controller, `web::route::post` + `Json` |
-| `api_get` | `/benchmark/api/get` | `#[api]` generated, `MethodFilter::GET` + `Query` |
-| `api_post` | `/benchmark/api/post` | `#[api]` generated, `MethodFilter::POST` + `Json` |
+| `get` | `/benchmark/get` | plain controller, `Query` |
+| `post` | `/benchmark/post` | plain controller, `Json` |
+| `api_get` | `/benchmark/api/get` | `#[api]` generated, `Query` |
+| `api_post` | `/benchmark/api/post` | `#[api]` generated, `Json` |
 
 ## Requirements
 
-- Controllers do no work of their own. A get echoes a query scalar, a post sums a body array.
-  Anything a controller does is noise added to what is being measured, so the only work in a run
-  belongs to the framework.
-- The plain and `#[api]` endpoints build their responses through the same `GetResponse::new` /
-  `PostResponse::new`. A comparison is only meaningful while the two differ solely in the framework
-  code between the socket and the call.
-- The server is a normal framework app. It goes through `System::init` / `start_logger` /
-  `start_service` exactly as a real app does — a benchmark that bypasses the framework's own setup
-  measures nothing useful.
-- Both sides are stateless and hold no external service. A run needs no container, unlike `test/`.
-- The server binds `0.0.0.0:8080` with no override, and the client defaults to it. A benchmark host
-  keeps that port free; a bind address knob is one more thing that can differ between two runs being
-  compared.
+- Controllers do no work; plain and `#[api]` routes build responses through the same
+  `GetResponse::new` / `PostResponse::new`, so they differ only in framework code.
+- The server is a normal framework app (`System::init` / `start_logger` / `start_service`).
+- Server and client run on two separate remote hosts (debian, over ssh), the local host only
+  builds `report`, deploys and renders.
+- The server exposes `GET /benchmark/info`: machine (host, ip, cpu, cores, memory, os), tokio
+  workers, its own cpu time and peak rss at the moment of the call.
+- The server binds `0.0.0.0:8080`, no override.
 
 ## Design decisions
 
-### The crates live outside `default-members`
-
-`benchmark/*` is a workspace member but not a default member, same as `test/*`: `cargo build` and
-`cargo clippy` at the workspace root stay fast, and a benchmark is built only when it is run. They
-do not opt into `[lints] workspace = true` either — these are tools, not shipped code, and the
-restriction lints (`print_stdout`, `unwrap_used`, `indexing_slicing`) fight a load generator.
-
-### Everything under `benchmark/` is a crate
-
-This document lives in `spec/benchmark/` and the results in `report/`, neither beside the code
-they describe. The workspace takes members by glob (`benchmark/*`), so a non-crate directory under
-`benchmark/` is picked up as a member and every `cargo` command fails until it is named in
-`exclude`. Keeping `benchmark/` to crates and scripts only means the glob needs no exception list,
-and it puts the spec where the other specs are. The results sit in the top level `report/`, the one
-place anything generated by a run is written, because they are output rather than specification —
-the spec describes the workflow, the reports are what it emitted. Each file carries what produced it
-in its name (`<date>_http_server`), so a second benchmark needs no subdirectory.
-
-### One lib target, for the shared contract only
-
-`http_test_server/src/lib.rs` holds the payload types and the `#[api]` trait, nothing else;
-`main.rs` holds the app. The lib exists for exactly one reason — `http_test_client` depends on it so
-the request and response shapes cannot drift between the two processes, which would silently change
-what a run measures. Everything else is a `main.rs` with plain modules, no crate is split into
-`lib.rs` + `main.rs` out of habit.
-
-### Everything protocol independent is one crate
-
-[`harness`](../../benchmark/harness) holds the two pieces no benchmark here wants a second copy of:
-the latency recorder with the machine readable `data` line every client prints. An exact percentile
-merge is subtle enough that two copies would drift, and a drifted copy means two benchmarks whose
-numbers are not comparable.
-
-What stays per benchmark is what actually differs: argument parsing (scenarios and their addresses),
-the load loop, and the record line's `key=value` prefix, which `harness` takes as a string rather
-than reaching into a client's `Args`.
-
-### Only `TraceAppender`
-
-The server always runs `TraceAppender`. Action construction and the channel send stay — that is real
-framework cost every app pays — but nothing is written per request, so appender output can never
-become the bottleneck or make a run depend on how fast the terminal drains. `ConsoleAppender` would
-measure `println!`.
-
-### h2c only, over one shared connection
-
-The client speaks **h2c** — cleartext http/2 with prior knowledge — because that is what
-[`framework::http::HttpClient`](../../lib/framework/src/http.rs) does for internal calls:
-`HttpClientConfig::internal_only()` sets `prefer_http2`, which becomes
-`reqwest::ClientBuilder::http2_prior_knowledge()`. One connection is opened, kept alive, and every
-request rides it as a multiplexed stream. Benchmarking http/1.1 would measure a protocol no internal
-caller uses.
-
-`verify` asserts the response came back as `HTTP/2`. A silent fallback to http/1.1 — a server
-without the `http2` feature, a proxy in between — would otherwise quietly benchmark the wrong thing.
-
-`--concurrency` is therefore open streams on one connection, not connections. That is the shape
-being measured, and it has a cost: see the baseline.
-
-### The client is not built on framework `HttpClient`
-
-`HttpClient` opens an action per request and logs request, response, every header and the body. As a
-measuring instrument that makes the client the bottleneck and puts framework work on both sides of
-the wire, so the numbers no longer isolate the server. The client uses `reqwest` directly.
-
-Benchmarking `HttpClient`, or the `#[api]` generated `BenchmarkServiceClient` built on it, is a
-separate and legitimate target — it needs its own client side scenario, not a change to this one.
-
-### The measured loop never parses a response
-
-Deserializing on the client burns client CPU and does not exercise the server. So the loop reads the
-body to completion (required, or the connection is not returned to the pool) and checks only the
-status. Correctness is established once at startup: `verify` sends one request of the selected
-scenario, parses the response and asserts on it, so a wrong url or a broken server fails fast
-instead of producing a fast benchmark of 404s.
-
-Everything else per-request is also hoisted out of the loop — the url is parsed once, the post body
-serialized once into `Bytes` whose clone is a refcount bump.
-
-### Closed loop, fixed concurrency
-
-Each of `--concurrency` workers holds exactly one request in flight and sends the next as soon as
-the previous resolves. Concurrency is the control, the server's own pace sets the rate. This is what
-answers "how much can it do and where does the time go", which is the question here.
-
-It does **not** answer "how does it behave at a rate above its capacity" — a closed loop cannot
-overload the target, and its latency numbers are subject to coordinated omission. An open loop mode
-(fixed request rate, backlog allowed to grow) is future work.
-
-### Every latency sample is kept
-
-A worker pushes nanos into its own `Vec` and the vectors are merged and sorted once at the end, so
-percentiles are exact rather than estimated and the measured loop touches no shared state. A run of
-a few million requests costs tens of MB, which is cheaper than a histogram dependency.
-
-### Warmup is a discarded run of the same loop
-
-`--warmup` runs the identical load phase and throws the result away, so the measured phase starts
-with the connection pool established and the code paths hot.
-
-### Cost is measured as cpu per request, not throughput
-
-Client and server share the host, so throughput measures the pair, not the server: the four
-scenarios land within 4% of each other and the ranking moves between runs. `run_http_test.sh` therefore reads
-the server's own cpu time from `ps` around the client run and divides by every request served,
-warmup included. That number is a property of the server alone. It is sampled from outside, so it
-costs the server nothing and is always on.
-
-`ps` resolves cpu time to 10 ms, which over a 20 s run is well under the run to run spread.
-
-### No process wide heap accounting
-
-Cpu per request is the number every change is judged by, and every allocation change measured here
-showed up in it anyway. A process wide counter needs a `#[global_allocator]` of its own, which
-conflicts with framework's own, always installed one (two in one crate graph is a link error), so
-it was removed: the servers take framework as apps ship it, with no feature juggling
-in the scripts. Per-endpoint allocation counts are still on every action record as
-`alloc_count`/`alloc_bytes` — design in [`action_alloc_stats.md`](../action_alloc_stats.md).
-
-Allocation figures in the results below were measured with that counter before it was removed.
-
-### Every run is recorded, the report is derived
-
-A run appends one `key=value` record to `report/<date>_http_server.txt` and
-regenerates `<date>_http_server.html` from every record in that file. The text file is the data, the
-html is a view of it — regenerating never loses anything, and the records stay greppable and
-diffable.
-
-The record comes from a single machine readable `data` line the client prints under `--record`,
-never from scraping its human output, so changing how results are displayed cannot break the
-report. `run_http_test.sh` adds what only it knows: server cpu, peak rss, heap counters, cargo profile, server
-thread count.
-
-Profiling runs are deliberately not recorded — the profiler skews them, and a skewed row in the
-history is worse than a missing one.
-
-### Recording and rendering are one Rust tool
-
-[`report`](../../benchmark/report) owns everything downstream of a measurement: it writes the `run`
-record, extracts hotspots from a profile, and renders the html. The scripts start processes and
-measure; nothing formats a report in shell.
-
-The alternative was the original split — an awk script for the html and a separate `hotspots` binary
-for the profile. That put the record format in three places (`printf` in the run script, `println!` in
-`hotspots`, an awk parser in `report.sh`), so adding a column meant editing all three in two
-languages and the awk had no way to fail loudly when they disagreed. There is one parser now, and it
-is in the language everything else here is written in.
-
-The tool also fills in host, core count, os and commit itself, rather than taking them from whoever
-writes the record, so every row describes its machine the same way.
-
-It runs as `report run <records> <time> <key=value>...`, `report hotspot <records> <syms> <scenario>
-[top]` and `report render <records>`; each subcommand re-renders, so the html beside the record file
-is never stale. The record file path stays an argument and the date stays in the scripts — `date`
-knows the host's timezone and std does not, and a report filed under the wrong day is worse than one
-shell expansion.
-
-### Profiling is a separate script, not a mode
-
-[`profile_http_test.sh`](../../benchmark/profile_http_test.sh) records the server under `samply`
-while the client drives the same load. It builds `--profile profiling` (release plus full debug
-info — release alone only carries line tables, which is not enough to attribute inlined frames).
-
-Two things it must get right, both learned the hard way:
-
-- **Kill the server, not samply.** `pkill -f` on the binary path matches samply's own command line
-  too, and killing samply discards the recorded profile.
-- **Saturate the server.** With the default 12 workers on a 12 core host the server parks between
-  requests and two thirds of the profile is `__psynch_cvwait`. `TOKIO_WORKER_THREADS=4` gives the
-  same throughput with the workers actually busy. The parked share is itself the useful reading:
-  it is the server's spare capacity.
-
-Open it with `samply load <file>`; the inverted call tree answers "where does the time go", the
-flame graph answers "who called it".
-
-### Hotspots land in the report
-
-`report hotspot` reads the samply profile and records the top methods by self time, rendered as a
-per scenario table. It exists because reading a flame graph is a person's job, while "which method
-got slower" belongs next to the throughput numbers.
-
-It takes the profile on **stdin** (`gunzip -c` does the decompression) so it needs no gzip
-dependency, and it resolves addresses through samply's `--unstable-presymbolicate` sidecar, taking
-the **innermost inlined frame** — the one the sample is actually in.
-
-Re-profiling a scenario replaces its table rather than appending to it: the record file keeps both
-sets, and `rank=1` marks where the newer one starts.
-
-Parked samples are counted and excluded. A parked worker is not spending time, and leaving those
-samples in buries every real frame: the first http/1.1 profile was 62% `__psynch_cvwait`. The parked
-share is reported alongside as the server's spare capacity.
-
-## Running
-
-```bash
-./benchmark/run_http_test.sh --scenario api_post --concurrency 128 --duration 60
-TOKIO_WORKER_THREADS=4 ./benchmark/profile_http_test.sh --scenario get --concurrency 64 --threads 6
-cargo run -p report -- render report/2026-09-18_http_server.txt   # re-render by hand
-```
-
-`run_http_test.sh` builds both, starts the server, waits on `/health-check`, runs the client, stops
-the server, prints the server's cpu per request and peak rss, and records the run.
-`profile_http_test.sh` does the same while recording a cpu profile, and records nothing. `--help` on
-the client lists its options; `PROFILE` and (on the profile script) `OUT`, `RATE`
-are the env knobs, plus `TOKIO_WORKER_THREADS` which tokio itself reads.
-
-Scripts are named `<verb>_<target>.sh`, so a second benchmark adds a pair rather than a mode flag.
-
-## Baseline
-
-Runs live in [`report/`](../../report), one html report per date. The first is
-2026-09-18: apple silicon, 12 cores, client and server on the same host, h2c, 64 concurrent streams,
-server `TOKIO_WORKER_THREADS=4`, client `--threads 6`.
-
-What it showed:
-
-- **`#[api]` costs one allocation** over a plain controller and no measurable cpu. Allocation counts
-  settled this; throughput could not, it moves by more than the difference between runs.
-- **A post costs ~12 µs and 5 allocations more than a get**, for reading and parsing the body, and
-  its throughput is a third lower.
-- **Heap accounting is free** as sharded counters — tracked and untracked runs are
-  indistinguishable — against 3.6x for the shared-atomics version.
-- **Peak rss 8.5–9.1 MB, flat** across every run and scenario.
-- **70 allocations and ~9 KB per request** on a get, unchanged by disabling tracing — the
-  instrumentation never reached the point of formatting anything, so it cost instructions, not heap.
-- **Third party `tracing` was ~8% of server cpu**, 32.7 µs → 29.5–30.4 µs per get request and
-  44.7 µs → 41.3 µs per post, with throughput up ~7% on a post.
-
-### The single h2c connection is the ceiling
-
-Over half the server's samples are parked (51%) while throughput sits at 63-68k/s for a get — the
-server has idle capacity it cannot reach. The profile says why: `kevent` is 28% of on-cpu time and
-`__psynch_mutexdrop` another 7%, both of them the one h2 connection being driven from four worker
-threads. Everything on a connection — framing, flow control, the write buffer — serializes behind
-its lock, so worker threads queue instead of working.
-
-For comparison, the same server on http/1.1 with 64 separate connections reached 70k/s for a get and
-70k/s for a post, against 63k/s and 47k/s on h2c. h2c costs *less* cpu per request (32.7 µs vs
-34.5 µs for a get, fewer syscalls thanks to multiplexing) and still delivers less, because that cpu
-cannot be spread across cores.
-
-**This is the shape of a real internal call path**, since `HttpClientConfig::internal_only()` gives
-each caller one shared connection. It means a single client process cannot saturate a server no
-matter how many requests it has in flight; scaling comes from more client processes, or from more
-than one connection per peer.
-
-The first run also showed `tracing::span::Span::log` and `record_all` at ~2% of on-cpu time, from
-`h2`'s own instrumentation, which nothing in the framework reads. Compiling it out of release builds
-took **~8% off server cpu per request** and removed both frames from the table — see
-[`spec/third_party_instrumentation.md`](../third_party_instrumentation.md). The numbers below
-are post-change; the pre-change run is still in the record file.
-
-The per scenario method tables are in the report. The framework's own share is dominated by action
-logging — the server layer formats every header and cookie into the action's buffer on every
-request, and `TraceAppender` then discards it (`core::fmt::write` and `String::write_str` are ~2%
-between them, plus the allocations behind them).
-
-## Action allocation tuning
-
-The action record now borrows what it can instead of rebuilding it: `ActionMessage` holds
-`Cow<'static, str>` for `app`, `host`, `kind` and every context/stats key, context values are a
-`SmallVec<[String; 1]>` that keeps the common single value inline, and completion **moves** the
-context and stats vectors rather than collecting new ones. The wire format did not move — context
-values are still json arrays, and gcloud still collapses a single value to a scalar at the edge. The
-design and its rationale are in [`spec/action_log.md`](../action_log.md).
-
-Measured as an A/B on 2026-09-19, same host and settings as the baseline (12 cores, h2c, 64 streams,
-`TOKIO_WORKER_THREADS=4`, client `--threads 6`, 5 s warmup + 15 s measured, `ALLOC_STATS=1`).
-Four rounds per side, run **interleaved** — after, baseline, baseline, after, then two more
-baseline/after pairs — so machine drift cannot land on one side. Both sides are commit `9610644`;
-the baseline side is that commit with the change stashed, which reproduced the 2026-09-18 numbers
-exactly (70 allocations, 9,183 B for a get) and so is directly comparable to the baseline above.
-
-| scenario | metric | baseline | after | delta |
-|---|---|---|---|---|
-| get | allocations / request | 70 | 51 | **−19 (−27%)** |
-| get | bytes / request | 9,183 | 8,896 | −287 (−3.1%) |
-| get | server cpu µs / request | 30.06 | 29.60 | −0.46 (−1.5%) |
-| post | allocations / request | 75 | 55 | **−20 (−27%)** |
-| post | bytes / request | 10,185 | 9,843 | −342 (−3.4%) |
-| post | server cpu µs / request | 41.77 | 40.64 | −1.13 (−2.7%) |
-
-Cpu is the mean of four runs. The get spread does not overlap at all — every after run (29.06–29.90)
-came in under every baseline run (30.01–30.18); post overlaps on one pair of sixteen. That is the
-only reason a sub-3% cpu claim is made at all, since the run to run spread on this host is wider
-than the effect and no single pair would have shown it.
-
-**Throughput and latency did not move**, as expected: 67.3k/s get and ~50.8k/s post on both sides,
-p50 within 0.005 ms. The single h2c connection is the ceiling, so cpu freed on a worker thread has
-nowhere to go — see the baseline section above.
-
-The profile agrees with the allocation count: the three `libsystem_malloc` frames that held 5.1% of
-on-cpu time between them on a get are down to two frames and 2.2%, with the third out of the top 15.
-The `http_server_layer` frame itself is roughly unchanged (1.58% → 1.42%), which is the expected
-shape — the work removed was in message construction, not in the layer's own body.
-
-### Where the 19 went
-
-Per action the change removes `2·(scalar contexts) + (stats keys) + 5` allocations: one vector and
-one key string per scalar context, one key string per stat, plus `app`, `host`, `kind` and the two
-rebuilt vectors. A benchmark get sets six contexts (`uri`, `method`, `client_ip`, `matched_path`,
-`fn`, `response_status`) and two stats (`elapsed`, `response_content_length`) — 2·6 + 2 + 5 = 19. A
-post adds `request_content_length` and saves 20. The counts are exact, not fitted.
-
-The remaining ~9 KB per request is still unexplained; this change moved 3% of it.
-
-### Consumer impact
-
-These are public Rust field types, so an external appender that constructs or explicitly types an
-`ActionMessage` needs updating even though nothing it writes or reads changed.
-`log_processor_rs` was updated in the same change — alert helpers take the new slice types, and row
-conversion moves owned strings out of the `Cow`s into the existing ClickHouse row types, with no
-schema change. A regression test round-trips a message through json and asserts the deserialized,
-owned form still converts.
+- **Only `TraceAppender`**: action construction and channel send stay (real cost), nothing is
+  written per request, so output never becomes the bottleneck.
+- **h2c over one shared connection**, matching `framework::http::HttpClient` for internal calls.
+  `verify` asserts HTTP/2. `--concurrency` is streams on one connection, which is also the ceiling.
+- **Client uses `reqwest` directly, not `HttpClient`**, which logs every request and would make the
+  instrument the bottleneck.
+- **The measured loop never parses a response**; one `verify` request at startup parses and
+  asserts, so a wrong url fails fast. Urls and bodies are prepared once.
+- **Closed loop, fixed concurrency**: answers capacity and cost, not overload behaviour; latencies
+  are subject to coordinated omission.
+- **Every latency sample is kept** per worker, merged and sorted once: exact percentiles.
+- **Warmup** is the same loop with the result discarded.
+- **Cost is cpu per request**: the client calls `/benchmark/info` before and after the measured
+  phase and divides the server's `getrusage` delta by requests. Throughput measures client and
+  server together; cpu µs/req is the server alone.
+- **Saturation is reported**: `cpu_pct` of both sides over the measured phase as a share of the
+  host's cores, the side near 100 sets the rate.
+- **No process wide heap accounting**: it would need its own `#[global_allocator]`, which
+  conflicts with framework's. Per-action counts are in [`action_alloc_stats.md`](../action_alloc_stats.md).
+- **Payload and info types live in the server's lib target**, which the client depends on, so
+  shapes cannot drift. Machine info uses `std::process::Command` (`hostname`, `lscpu`,
+  `/proc/meminfo`, `uname`), collected once before serving.
+- **Crates are workspace members but not default members** and skip workspace lints.
+
+## Results and report
+
+- The client always writes one json result (`--output`, default `result.json`): `config`,
+  `result`, `server`, `client` (and `broker` for nats). Console output is progress only.
+- A day of one benchmark is a directory `report/<date>_<name>/` holding one result file per run,
+  named by time (`HHMMSS.json`, `HHMMSS_profile.json`). The html `report/<date>_<name>.html` is
+  derived from every file in it, so regenerating never loses anything.
+- `report run <result.json> [key=value]...` adds what only the building host knows (`time`,
+  `commit`, cargo `profile`) under `run`, then renders; `report render <dir>` re-renders by hand.
+- The report shows one machine line per distinct server/client/build combination in the day.
+
+## Remote workflow
+
+`benchmark/remote.sh <run|profile> <http|nats_api> [client options]` with `SERVER` and `CLIENT` ssh
+hosts:
+
+1. rsync the working tree to `/opt/build/src` on the server host and build both binaries there
+   (native build, no cross toolchain; target dir kept for incremental builds)
+2. copy each binary to `/opt/<binary>/`, the client via the local host (`scp -3`), so the two
+   hosts need no ssh trust
+3. start the server, wait until it is ready (http: `/health-check` from the client host)
+4. run the client against the server's internal ip (`SERVER_IP` overrides)
+5. download the result into the day's directory, stop the server, `report run` it
+
+## Profiling
+
+`remote.sh profile` builds `--profile profiling` with frame pointers, attaches `perf record -g` to
+the server for the client run, runs `perf report` twice on the server (self time; total time with
+children) and `report profile` stores the top methods under `profile` in the result file.
+
+- perf, not samply: it samples only on-cpu threads, so parked workers never appear.
+- Self time covers everything (libc, kernel); total time only `framework::` and benchmark server
+  methods, otherwise runtime and hyper frames take every row.
+- Symbols are demangled with `rustc-demangle` and generic arguments stripped, so monomorphizations
+  merge: self time sums, total time takes the largest.
+- A profile renders below the runs, never as a run row, since the profiler skews throughput and cpu.
 
 ## Known gaps
 
-- **No baseline to compare against.** A number only means something next to another number: the same
-  scenario on bare axum (no framework layer) would separate framework cost from axum and hyper cost.
-  Plain vs `#[api]` is the only comparison the structure currently supports.
-- **Client and server share the machine.** They compete for cores, so absolute throughput is
-  understated and the client may become the limit. Fine for A/B comparisons on one host, not for
-  absolute capacity.
-- **Nothing compares runs automatically.** Results accumulate per date, but noticing a regression is
-  still a human reading two reports.
-- **~9 KB allocated per request is unexplained.** The count is solid, the composition is not — no
-  allocation size histogram exists, so whether it is one big buffer or a long tail is a guess.
-- **One connection, one client process.** Every measurement is 64 streams on a single h2c
-  connection, which is what caps throughput. Nothing measures the server against several connections
-  or several client processes, so its actual ceiling is unknown.
-
-## Cost of per-action allocation stats
-
-Measured on 2026-09-21, same protocol as the tuning A/B above (12 cores, h2c, 64 streams,
-`TOKIO_WORKER_THREADS=4`, client `--threads 6`, 5 s warmup + 15 s measured), **eight runs per side**
-interleaved on/off/off/on so drift cannot land on one side. Baseline is the same commit with the
-feature off, not a different build of the app.
-
-| scenario | metric | off | on | delta |
-|---|---|---|---|---|
-| get | server cpu µs / request | 28.52 | 28.63 | +0.11 (+0.4%) |
-
-**The ranges overlap completely** — off 28.08–29.03, on 27.88–29.22 — so unlike the tuning A/B this
-is not a result, it is a bound: the cost is under what this harness resolves, and the harness
-resolved 1.5% only because those ranges did not overlap at all. An earlier four-run pass on the same
-data pointed at +1.4%; doubling the runs moved it to +0.4%, which is the shape of noise, not of an
-effect. A first attempt with the harness defaults (12 workers, 30 s, client unconstrained) was
-useless — ±6 µs within a condition — and is why the tuning A/B pins the worker and client thread
-counts.
-
-What the feature does give, deterministically, is the per-action count. A benchmark get reports
-`alloc_count=30`, `alloc_bytes=3049`, identical across repeated requests, against the 51 allocations
-per request this document measures process wide. The gap is everything outside the action's own
-polls: connection setup and header parsing before it opens, `ActionMessage` conversion and the
-appender after its last poll. The two numbers measure different windows and are not meant to agree.
-
-> Read with care: the per-action figures above come from single HTTP/1.1 `curl` requests against a
-> `ConsoleAppender` build, not from the h2c benchmark client, so their composition is not comparable
-> to the per-request totals in the tables above — only the order of magnitude is.
+- No bare-axum baseline to separate framework cost from axum/hyper.
+- Nothing compares runs automatically.
+- One connection, one client process: the server's real ceiling is unknown.

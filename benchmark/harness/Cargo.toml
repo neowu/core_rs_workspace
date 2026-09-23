@@ -1,8 +1,0 @@
-[package]
-name = "harness"
-version.workspace = true
-edition = "2024"
-
-# shared between the http and the nats benchmarks, so the two measure the same way and the tricky
-# part -- the latency merge -- exists once
-[dependencies]

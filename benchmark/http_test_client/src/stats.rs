@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use serde_json::Value;
+use serde_json::json;
+
 /// Per worker recording, merged once at the end so the measured loop never touches shared state.
 #[derive(Default)]
 pub struct Recorder {
@@ -58,43 +61,26 @@ impl Summary {
     }
 }
 
-pub fn report(summary: &Summary) {
-    println!("--- result ---");
-    println!("elapsed={:.1}s", summary.elapsed.as_secs_f64());
-    println!("requests={}, failed={}, errors={}", summary.requests, summary.failed, summary.errors);
-    println!("throughput={:.0}/s", summary.throughput());
-    println!(
-        "latency(ms): mean={:.3}, p50={:.3}, p90={:.3}, p99={:.3}, p99.9={:.3}, max={:.3}",
-        millis(summary.mean()),
-        millis(summary.percentile(50.0) as f64),
-        millis(summary.percentile(90.0) as f64),
-        millis(summary.percentile(99.0) as f64),
-        millis(summary.percentile(99.9) as f64),
-        millis(summary.percentile(100.0) as f64)
-    );
+/// The measurement as it goes into the result file the client writes under `--output`.
+pub fn result(summary: &Summary) -> Value {
+    json!({
+        "requests": summary.requests,
+        "failed": summary.failed,
+        "errors": summary.errors,
+        "elapsed": round(summary.elapsed.as_secs_f64(), 3),
+        "throughput": summary.throughput().round() as u64,
+        "mean_ms": round(millis(summary.mean()), 3),
+        "p50_ms": round(millis(summary.percentile(50.0) as f64), 3),
+        "p90_ms": round(millis(summary.percentile(90.0) as f64), 3),
+        "p99_ms": round(millis(summary.percentile(99.0) as f64), 3),
+        "p999_ms": round(millis(summary.percentile(99.9) as f64), 3),
+        "max_ms": round(millis(summary.percentile(100.0) as f64), 3),
+    })
 }
 
-/// One machine readable line for `run_*.sh` to fold into the report, so the report is never built
-/// by scraping the human output above.
-///
-/// `config` is whatever the client was asked to do, already as `key=value` — it differs per
-/// protocol, the measurement below does not.
-pub fn record(config: &str, summary: &Summary, warmup_requests: u64) {
-    println!(
-        "data {config} warmup_requests={warmup_requests} requests={} failed={} errors={} elapsed={:.3} \
-         throughput={:.0} mean_ms={:.3} p50_ms={:.3} p90_ms={:.3} p99_ms={:.3} p999_ms={:.3} max_ms={:.3}",
-        summary.requests,
-        summary.failed,
-        summary.errors,
-        summary.elapsed.as_secs_f64(),
-        summary.throughput(),
-        millis(summary.mean()),
-        millis(summary.percentile(50.0) as f64),
-        millis(summary.percentile(90.0) as f64),
-        millis(summary.percentile(99.0) as f64),
-        millis(summary.percentile(99.9) as f64),
-        millis(summary.percentile(100.0) as f64)
-    );
+pub fn round(value: f64, digits: i32) -> f64 {
+    let scale = 10_f64.powi(digits);
+    (value * scale).round() / scale
 }
 
 fn millis(nanos: f64) -> f64 {

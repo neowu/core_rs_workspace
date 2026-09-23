@@ -10,3 +10,4 @@ framework_macro.workspace = true
 
 serde.workspace = true
 tokio.workspace = true
+libc = "*"

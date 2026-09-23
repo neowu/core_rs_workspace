@@ -58,13 +58,13 @@ static ALLOCATOR: Tracking = Tracking;
 
 /// What one action allocated, accumulated across its polls and written into its stats.
 pub(crate) struct ActionAllocs {
-    allocs: u64,
+    count: u64,
     bytes: u64,
 }
 
 impl ActionAllocs {
     pub(crate) const fn new() -> Self {
-        ActionAllocs { allocs: 0, bytes: 0 }
+        ActionAllocs { count: 0, bytes: 0 }
     }
 
     /// Wraps one poll, the counter delta over it is that poll's own work.
@@ -74,14 +74,14 @@ impl ActionAllocs {
         let result = poll();
         let (polled_allocs, polled_bytes) = counters();
 
-        self.allocs += polled_allocs.wrapping_sub(allocs);
+        self.count += polled_allocs.wrapping_sub(allocs);
         self.bytes += polled_bytes.wrapping_sub(bytes);
 
         result
     }
 
     pub(crate) fn write_to(&self, action: &mut Action) {
-        action.add_stat("alloc_count", self.allocs);
+        action.add_stat("alloc_count", self.count);
         action.add_stat("alloc_bytes", self.bytes);
     }
 }

@@ -13,7 +13,7 @@ usage: nats_api_test_client [options]
   --warmup      <secs>  discarded phase before the measured one, default 5
   --values      <n>     number of values in the post payload, default 10
   --threads     <n>     client runtime worker threads, default available parallelism
-  --record              also print the machine readable result line run_nats_api_test.sh records
+  --output      <file>  where the result, with server and client info, is written as json, default result.json
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +52,7 @@ pub struct Args {
     pub warmup: Duration,
     pub values: usize,
     pub threads: usize,
-    pub record: bool,
+    pub output: String,
 }
 
 impl Default for Args {
@@ -65,7 +65,7 @@ impl Default for Args {
             warmup: Duration::from_secs(5),
             values: 10,
             threads: available_parallelism().map_or(4, |value| value.get()),
-            record: false,
+            output: "result.json".to_owned(),
         }
     }
 }
@@ -82,10 +82,6 @@ impl Args {
                 print!("{USAGE}");
                 exit(0);
             }
-            if key == "--record" {
-                args.record = true;
-                continue;
-            }
             let value = iter.next().unwrap_or_else(|| fail(&format!("missing value, option={key}")));
             match key.as_str() {
                 "--url" => args.url = value,
@@ -101,6 +97,7 @@ impl Args {
                 "--warmup" => args.warmup = Duration::from_secs(number(&key, &value) as u64),
                 "--values" => args.values = number(&key, &value),
                 "--threads" => args.threads = number(&key, &value),
+                "--output" => args.output = value,
                 _ => fail(&format!("unknown option, option={key}")),
             }
         }

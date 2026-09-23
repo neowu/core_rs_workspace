@@ -208,7 +208,7 @@ what `log_processor_rs` receives off nats.
 Per action this removes `2·(scalar contexts) + (stats keys) + 5` allocations — one vector and one
 key string per scalar context, one key string per stat, plus `app`, `host`, `kind` and the two
 rebuilt vectors. For a benchmark get (6 contexts, 2 stats) that is 19; a post adds
-`request_content_length` and saves 20. Measured numbers are in
+`request_content_length` and saves 20, measured with
 [`benchmark/http_server.md`](benchmark/http_server.md).
 
 ### The wire format is fixed: a context value is always an array
@@ -276,7 +276,7 @@ context keys remain supported as described above.
 
 ## Cost
 
-Measured on the http server benchmark, which exists for exactly this question; numbers and method in
+Measured on the http server benchmark, which exists for exactly this question; method in
 [`benchmark/http_server.md`](benchmark/http_server.md). Two things are worth carrying here:
 
 - Action logging is the framework's largest own share of a request. The header and cookie lines are

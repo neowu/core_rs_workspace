@@ -721,7 +721,7 @@ dependencies = [
  "libc",
  "log",
  "pin-project-lite",
- "rand 0.8.8",
+ "rand 0.10.2",
  "reqwest",
  "serde",
  "serde_html_form",
@@ -774,7 +774,7 @@ version = "0.9.1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -951,10 +951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harness"
-version = "0.9.1"
-
-[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1018,7 +1014,6 @@ name = "http_test_client"
 version = "0.9.1"
 dependencies = [
  "bytes",
- "harness",
  "http_test_server",
  "reqwest",
  "serde_json",
@@ -1032,6 +1027,7 @@ dependencies = [
  "axum",
  "framework",
  "framework_macro",
+ "libc",
  "serde",
  "tokio",
 ]
@@ -1482,7 +1478,6 @@ version = "0.9.1"
 dependencies = [
  "async-nats",
  "bytes",
- "harness",
  "nats_api_test_server",
  "serde_json",
  "tokio",
@@ -1495,6 +1490,7 @@ dependencies = [
  "framework",
  "framework_macro",
  "framework_nats",
+ "libc",
  "serde",
  "tokio",
 ]
@@ -1997,6 +1993,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "report"
 version = "0.9.1"
 dependencies = [
+ "rustc-demangle",
  "serde_json",
 ]
 
@@ -2054,6 +2051,12 @@ dependencies = [
  "untrusted",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "rustc-demangle"
+version = "0.1.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b74b56ffa8bb2830709a538c2cbcae9aa062db0d2a42563bfb09bdaae44020eb"
 
 [[package]]
 name = "rustc-hash"

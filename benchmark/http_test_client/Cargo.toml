@@ -6,7 +6,6 @@ edition = "2024"
 # only for the payload types, so request and response shapes cannot drift from the server
 [dependencies]
 http_test_server = { path = "../http_test_server" }
-harness = { path = "../harness" }
 
 serde_json = "*"
 tokio.workspace = true

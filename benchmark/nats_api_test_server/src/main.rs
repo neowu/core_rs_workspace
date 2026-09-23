@@ -1,5 +1,6 @@
 use std::env;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use framework::appender::TraceAppender;
 use framework::exception::Exception;
@@ -11,6 +12,9 @@ use nats_api_test_server::GetRequest;
 use nats_api_test_server::GetResponse;
 use nats_api_test_server::PostRequest;
 use nats_api_test_server::PostResponse;
+use nats_api_test_server::info::MachineInfo;
+use nats_api_test_server::info::ProcessUsage;
+use nats_api_test_server::info::ServerInfo;
 
 const DEFAULT_URL: &str = "nats.test:4222";
 // the client's concurrency is what a run varies, so the service semaphore is set well above it --
@@ -21,6 +25,9 @@ const DEFAULT_MAX_CONCURRENCY: usize = 4096;
 #[tokio::main]
 async fn main() {
     let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
+
+    // collected before serving, so the shell commands behind it never run during a measured phase
+    LazyLock::force(&MACHINE);
 
     let url = env::var("NATS_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     let nats_client = framework_nats::connect(&url).await;
@@ -38,6 +45,8 @@ async fn main() {
     system.shutdown_logger().await;
 }
 
+static MACHINE: LazyLock<MachineInfo> = LazyLock::new(MachineInfo::collect);
+
 fn max_concurrency() -> usize {
     env::var("MAX_CONCURRENCY").map_or(DEFAULT_MAX_CONCURRENCY, |value| value.parse().expect("invalid concurrency"))
 }
@@ -52,5 +61,13 @@ impl BenchmarkService for BenchmarkServiceImpl {
 
     async fn post(&self, request: PostRequest) -> Result<PostResponse, Exception> {
         Ok(PostResponse::new(&request))
+    }
+
+    async fn info(&self) -> Result<ServerInfo, Exception> {
+        Ok(ServerInfo {
+            machine: MACHINE.clone(),
+            threads: tokio::runtime::Handle::current().metrics().num_workers(),
+            usage: ProcessUsage::current(),
+        })
     }
 }

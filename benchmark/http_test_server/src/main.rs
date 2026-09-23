@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use axum::Router;
 use framework::appender::TraceAppender;
@@ -16,13 +17,20 @@ use http_test_server::GetRequest;
 use http_test_server::GetResponse;
 use http_test_server::PostRequest;
 use http_test_server::PostResponse;
+use http_test_server::info::MachineInfo;
+use http_test_server::info::ProcessUsage;
+use http_test_server::info::ServerInfo;
 
 /// The target under test, a framework app with nothing but the http server wired up.
 #[tokio::main]
 async fn main() {
     let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
 
+    // collected before serving, so the shell commands behind it never run during a measured phase
+    LazyLock::force(&MACHINE);
+
     let app = Router::new();
+    let app = app.route("/benchmark/info", get(info));
     let app = app.route("/benchmark/get", get(get_benchmark));
     let app = app.route("/benchmark/post", post(post_benchmark));
     let app = app.merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl)));
@@ -38,6 +46,18 @@ async fn main() {
 
     system.wait().await;
     system.shutdown_logger().await;
+}
+
+static MACHINE: LazyLock<MachineInfo> = LazyLock::new(MachineInfo::collect);
+
+/// Lets a client on another host report where it ran, and take server cpu and rss around its
+/// measured phase without anything sampling the process from outside.
+async fn info() -> Json<ServerInfo> {
+    Json(ServerInfo {
+        machine: MACHINE.clone(),
+        threads: tokio::runtime::Handle::current().metrics().num_workers(),
+        usage: ProcessUsage::current(),
+    })
 }
 
 // controllers do no work on purpose, what is measured is everything around them

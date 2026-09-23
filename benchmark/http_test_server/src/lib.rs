@@ -1,10 +1,12 @@
 //! The contract, and the only reason this crate has a lib target: `http_test_client` shares these
-//! payload types so request and response shapes cannot drift between the two processes.
+//! payload types and the info endpoint's shape so they cannot drift between the two processes.
 
 use framework::exception::Exception;
 use framework_macro::api;
 use serde::Deserialize;
 use serde::Serialize;
+
+pub mod info;
 
 /// Query of the get endpoints, one scalar so query parsing is not the subject.
 #[derive(Debug, Serialize, Deserialize)]

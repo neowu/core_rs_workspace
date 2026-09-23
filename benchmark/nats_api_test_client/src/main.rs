@@ -1,3 +1,4 @@
+use std::fs::write;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -5,17 +6,21 @@ use async_nats::Client;
 use async_nats::HeaderMap;
 use async_nats::Message;
 use bytes::Bytes;
-use harness::stats;
-use harness::stats::Recorder;
-use harness::stats::Summary;
 use nats_api_test_server::GetResponse;
 use nats_api_test_server::PostRequest;
 use nats_api_test_server::PostResponse;
+use nats_api_test_server::info::MachineInfo;
+use nats_api_test_server::info::ProcessUsage;
+use nats_api_test_server::info::ServerInfo;
+use serde_json::json;
 
 use crate::args::Args;
 use crate::args::Scenario;
+use crate::stats::Recorder;
+use crate::stats::Summary;
 
 mod args;
+mod stats;
 
 const ID: i64 = 7;
 const CLIENT: &str = "client";
@@ -74,29 +79,61 @@ async fn run(args: Args) {
     let target = Target::new(&args);
     verify(&client, &target, args.values).await;
 
-    println!(
-        "scenario={}, subject={}, url={}, concurrency={}, threads={}, warmup={}s, duration={}s",
-        args.scenario.as_str(),
-        target.subject,
-        args.url,
-        args.concurrency,
-        args.threads,
-        args.warmup.as_secs(),
-        args.duration.as_secs()
-    );
-
-    let mut warmup_requests = 0;
     if !args.warmup.is_zero() {
-        let summary = load(&client, &target, args.concurrency, args.warmup).await;
-        warmup_requests = summary.requests;
-        println!("warmup done, requests={warmup_requests}");
+        load(&client, &target, args.concurrency, args.warmup).await;
+        println!("warmup done");
     }
 
+    // sampled around the measured phase only, so server cpu per request excludes the warmup
+    let before = server_info(&client).await;
+    let client_before = ProcessUsage::current();
     let summary = load(&client, &target, args.concurrency, args.duration).await;
-    stats::report(&summary);
-    if args.record {
-        stats::record(&config(&args), &summary, warmup_requests);
-    }
+    let client_after = ProcessUsage::current();
+    let after = server_info(&client).await;
+
+    let cpu_us = after.usage.cpu_us.saturating_sub(before.usage.cpu_us);
+    let cpu_us_per_request = if summary.requests > 0 { cpu_us as f64 / summary.requests as f64 } else { 0.0 };
+    let peak_rss_mb = after.usage.peak_rss_kb as f64 / 1024.0;
+    // share of all the host's cores, a side near 100 is the one holding the rate down
+    let server_cpu_pct = cpu_pct(cpu_us, summary.elapsed, after.machine.cores);
+    let client_machine = MachineInfo::collect();
+    let client_cpu_pct =
+        cpu_pct(client_after.cpu_us.saturating_sub(client_before.cpu_us), summary.elapsed, client_machine.cores);
+
+    let path = &args.output;
+    let result = json!({
+        "config": config(&args),
+        "result": stats::result(&summary),
+        "server": {
+            "machine": after.machine,
+            "threads": after.threads,
+            "cpu_us_per_request": stats::round(cpu_us_per_request, 2),
+            "cpu_pct": stats::round(server_cpu_pct, 1),
+            "peak_rss_mb": stats::round(peak_rss_mb, 1),
+        },
+        "client": {
+            "machine": client_machine,
+            "cpu_pct": stats::round(client_cpu_pct, 1),
+        },
+        "broker": {
+            "url": args.url,
+            "version": client.server_info().version,
+        },
+    });
+    let text = serde_json::to_string_pretty(&result).expect("failed to serialize result");
+    write(path, text).unwrap_or_else(|err| panic!("failed to write result, path={path}, err={err}"));
+    println!("result written to {path}");
+}
+
+async fn server_info(client: &Client) -> ServerInfo {
+    let subject = nats_api_test_server::INFO;
+    let reply = client
+        .request(subject, Bytes::from_static(b"null"))
+        .await
+        .unwrap_or_else(|err| panic!("failed to call, subject={subject}, err={err}"));
+    assert!(!is_error(&reply), "unexpected error reply, subject={subject}");
+    serde_json::from_slice(&reply.payload)
+        .unwrap_or_else(|err| panic!("failed to parse server info, subject={subject}, err={err}"))
 }
 
 /// Closed loop: every worker holds one in flight request and sends the next as soon as the reply
@@ -188,16 +225,21 @@ async fn verify(client: &Client, target: &Target, values: usize) {
     println!("verified, subject={subject}");
 }
 
-/// What this client was asked to do, the prefix of the record line `run_nats_api_test.sh` folds
-/// into the report.
-fn config(args: &Args) -> String {
-    format!(
-        "scenario={} protocol=nats concurrency={} threads={} values={} warmup={} duration={}",
-        args.scenario.as_str(),
-        args.concurrency,
-        args.threads,
-        args.values,
-        args.warmup.as_secs(),
-        args.duration.as_secs()
-    )
+/// What this client was asked to do, the `config` part of the result file.
+fn config(args: &Args) -> serde_json::Value {
+    json!({
+        "scenario": args.scenario.as_str(),
+        "protocol": "nats",
+        "url": args.url,
+        "concurrency": args.concurrency,
+        "threads": args.threads,
+        "values": args.values,
+        "warmup": args.warmup.as_secs(),
+        "duration": args.duration.as_secs(),
+    })
+}
+
+fn cpu_pct(cpu_us: u64, elapsed: Duration, cores: usize) -> f64 {
+    let available = elapsed.as_secs_f64() * 1_000_000.0 * cores.max(1) as f64;
+    if available > 0.0 { cpu_us as f64 * 100.0 / available } else { 0.0 }
 }
