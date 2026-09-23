@@ -9,10 +9,6 @@ pub(crate) mod action_log_handler;
 pub(crate) mod event_handler;
 pub(crate) mod stat_handler;
 
-// every row here borrows from the kafka message it is built from, and the elasticsearch path that
-// follows still owns it, so these serialize a clickhouse Map column straight from the message's own
-// map instead of the row carrying a cloned or converted copy.
-
 // a clickhouse Map column is not nullable, so a map java core-ng left out serializes as empty
 pub(crate) struct OptionMap<'a, V>(pub(crate) Option<&'a HashMap<String, V>>);
 

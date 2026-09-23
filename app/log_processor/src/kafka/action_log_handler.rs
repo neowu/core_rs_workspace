@@ -77,87 +77,91 @@ pub(crate) async fn action_log_message_handler(
         insert_to_clickhouse(clickhouse, &messages).await?;
     }
 
-    index_to_elasticsearch(&state.elasticsearch, messages).await?;
+    index_to_elasticsearch(&state.elasticsearch, &messages).await?;
     Ok(())
 }
 
 #[derive(Debug, Serialize)]
-struct ActionLogDocument {
+struct ActionLogDocument<'a> {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime,
-    app: String,
-    host: String,
-    result: String,
-    action: String,
+    app: &'a str,
+    host: &'a str,
+    result: &'a str,
+    action: &'a str,
     #[serde(rename = "correlation_id")]
-    correlation_ids: Option<Vec<String>>,
+    correlation_ids: Option<&'a [String]>,
     #[serde(rename = "client")]
-    clients: Option<Vec<String>>,
+    clients: Option<&'a [String]>,
     #[serde(rename = "ref_id")]
-    ref_ids: Option<Vec<String>>,
-    error_code: Option<String>,
-    error_message: Option<String>,
+    ref_ids: Option<&'a [String]>,
+    error_code: Option<&'a str>,
+    error_message: Option<&'a str>,
     elapsed: i64,
-    context: HashMap<String, Vec<Option<String>>>,
-    stats: Option<HashMap<String, f64>>,
-    perf_stats: Option<HashMap<String, PerformanceStatMessage>>,
+    context: &'a HashMap<String, Vec<Option<String>>>,
+    stats: Option<&'a HashMap<String, f64>>,
+    perf_stats: Option<&'a HashMap<String, PerformanceStatMessage>>,
 }
 
 #[derive(Debug, Serialize)]
-struct TraceDocument {
+struct TraceDocument<'a> {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime,
-    app: String,
-    result: String,
-    action: String,
-    error_code: Option<String>,
-    content: String,
+    app: &'a str,
+    result: &'a str,
+    action: &'a str,
+    error_code: Option<&'a str>,
+    content: &'a str,
 }
 
 async fn index_to_elasticsearch(
     elasticsearch: &Elasticsearch,
-    messages: Vec<Message<ActionLogMessage>>,
+    messages: &[Message<ActionLogMessage>],
 ) -> Result<(), Exception> {
-    let mut documents: Vec<(String, ActionLogDocument)> = Vec::with_capacity(messages.len());
-    let mut traces: Vec<(String, TraceDocument)> = vec![];
-    for message in messages {
-        let payload = message.payload;
-        let doc = ActionLogDocument {
-            timestamp: payload.date,
-            app: payload.app.clone(),
-            host: payload.host,
-            result: payload.result.clone(),
-            action: payload.action.clone(),
-            correlation_ids: payload.correlation_ids,
-            clients: payload.clients,
-            ref_ids: payload.ref_ids,
-            error_code: payload.error_code.clone(),
-            error_message: payload.error_message,
-            elapsed: payload.elapsed,
-            context: payload.context,
-            stats: payload.stats,
-            perf_stats: payload.perf_stats,
-        };
-        documents.push((payload.id.clone(), doc));
-
-        if let Some(content) = payload.trace_log {
-            let trace_doc = TraceDocument {
-                timestamp: payload.date,
-                app: payload.app,
-                result: payload.result,
-                action: payload.action,
-                error_code: payload.error_code,
-                content,
-            };
-            traces.push((payload.id, trace_doc));
-        }
-    }
+    let documents = messages.iter().map(|message| {
+        let payload = &message.payload;
+        (payload.id.as_str(), to_action_document(payload))
+    });
     let now = DateTime::now().date();
     elasticsearch.bulk_index(&action_index(now), documents).await?;
-    if !traces.is_empty() {
+    if messages.iter().any(|message| message.payload.trace_log.is_some()) {
+        let traces = messages.iter().filter_map(|message| {
+            let payload = &message.payload;
+            to_trace_document(payload).map(|document| (payload.id.as_str(), document))
+        });
         elasticsearch.bulk_index(&trace_index(now), traces).await?;
     }
     Ok(())
+}
+
+fn to_action_document(payload: &ActionLogMessage) -> ActionLogDocument<'_> {
+    ActionLogDocument {
+        timestamp: payload.date,
+        app: &payload.app,
+        host: &payload.host,
+        result: &payload.result,
+        action: &payload.action,
+        correlation_ids: payload.correlation_ids.as_deref(),
+        clients: payload.clients.as_deref(),
+        ref_ids: payload.ref_ids.as_deref(),
+        error_code: payload.error_code.as_deref(),
+        error_message: payload.error_message.as_deref(),
+        elapsed: payload.elapsed,
+        context: &payload.context,
+        stats: payload.stats.as_ref(),
+        perf_stats: payload.perf_stats.as_ref(),
+    }
+}
+
+fn to_trace_document(payload: &ActionLogMessage) -> Option<TraceDocument<'_>> {
+    payload.trace_log.as_deref().map(|content| TraceDocument {
+        timestamp: payload.date,
+        app: &payload.app,
+        result: &payload.result,
+        action: &payload.action,
+        error_code: payload.error_code.as_deref(),
+        content,
+    })
 }
 
 fn action_index(now: Date) -> String {
@@ -360,7 +364,42 @@ fn to_action_result(result: &str) -> ActionResult {
 
 #[cfg(test)]
 mod tests {
+    use framework::json;
     use framework::time::Date;
+
+    #[test]
+    fn borrowed_documents_preserve_json() {
+        let payload = json::from_json::<super::ActionLogMessage>(
+            r#"{"id":"a1","date":"2026-08-12T01:02:03Z","app":"app","host":"host",
+                "result":"ERROR","action":"test","correlation_ids":["c1"],"clients":[],
+                "error_code":"FAILED","error_message":"failure","elapsed":12,
+                "context":{"key":["value",null]},"stats":{"size":1.5},
+                "perf_stats":{"db":{"total_elapsed":2,"count":1,"read_entries":3}},
+                "trace_log":"line 1\nline 2"}"#,
+        )
+        .expect("valid action message");
+        assert_eq!(
+            json::to_json(&super::to_action_document(&payload)).expect("serialize action"),
+            concat!(
+                r#"{"@timestamp":"2026-08-12T01:02:03Z","app":"app","host":"host","result":"ERROR","action":"test","#,
+                r#""correlation_id":["c1"],"client":[],"ref_id":null,"error_code":"FAILED","error_message":"failure","#,
+                r#""elapsed":12,"context":{"key":["value",null]},"stats":{"size":1.5},"#,
+                r#""perf_stats":{"db":{"total_elapsed":2,"count":1,"read_entries":3,"write_entries":null,"read_bytes":null,"write_bytes":null}}}"#,
+            ),
+        );
+        assert_eq!(
+            json::to_json(&super::to_trace_document(&payload).expect("trace present")).expect("serialize trace"),
+            concat!(
+                r#"{"@timestamp":"2026-08-12T01:02:03Z","app":"app","result":"ERROR","action":"test","#,
+                r#""error_code":"FAILED","content":"line 1\nline 2"}"#,
+            ),
+        );
+        let mut payload = payload;
+        payload.trace_log = Some(String::new());
+        assert_eq!(super::to_trace_document(&payload).expect("empty trace present").content, "");
+        payload.trace_log = None;
+        assert!(super::to_trace_document(&payload).is_none(), "absent trace is skipped");
+    }
 
     #[test]
     fn action_index() {

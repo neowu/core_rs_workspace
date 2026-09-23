@@ -38,7 +38,11 @@ impl Elasticsearch {
         Ok(())
     }
 
-    pub(crate) async fn bulk_index<T>(&self, index: &str, documents: Vec<(String, T)>) -> Result<(), Exception>
+    pub(crate) async fn bulk_index<'a, T>(
+        &self,
+        index: &str,
+        documents: impl IntoIterator<Item = (&'a str, T)>,
+    ) -> Result<(), Exception>
     where
         T: Serialize + Debug,
     {
@@ -48,13 +52,15 @@ impl Elasticsearch {
         let mut request = HttpRequest::new(Method::POST, format!("{uri}/_bulk"));
 
         let mut body = String::new();
-        for (id, doc) in &documents {
+        let mut count: usize = 0;
+        for (id, doc) in documents {
             write_str!(body, r#"{{"index":{{"_index":"{index}","_id":"{id}"}}}}"#);
             body.push('\n');
             body.push_str(&json::to_json(&doc)?);
             body.push('\n');
+            count += 1;
         }
-        stats!(es_write_docs = documents.len(), es_write_bytes = body.len());
+        stats!(es_write_docs = count, es_write_bytes = body.len());
         request.body(body, "application/json");
 
         let response = self.client.execute(request).await?;

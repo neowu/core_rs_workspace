@@ -33,16 +33,16 @@ pub(crate) struct StatMessage {
 }
 
 #[derive(Debug, Serialize)]
-struct StatDocument {
+struct StatDocument<'a> {
     #[serde(rename = "@timestamp")]
     timestamp: DateTime,
-    app: String,
-    host: Option<String>,
-    result: String,
-    error_code: Option<String>,
-    error_message: Option<String>,
-    stats: Option<HashMap<String, f64>>,
-    info: Option<HashMap<String, String>>,
+    app: &'a str,
+    host: Option<&'a str>,
+    result: &'a str,
+    error_code: Option<&'a str>,
+    error_message: Option<&'a str>,
+    stats: Option<&'a HashMap<String, f64>>,
+    info: Option<&'a HashMap<String, String>>,
 }
 
 pub(crate) async fn stat_message_handler(
@@ -53,32 +53,34 @@ pub(crate) async fn stat_message_handler(
         insert_to_clickhouse(clickhouse, &messages).await?;
     }
 
-    index_to_elasticsearch(&state.elasticsearch, messages).await?;
+    index_to_elasticsearch(&state.elasticsearch, &messages).await?;
     Ok(())
 }
 
 async fn index_to_elasticsearch(
     elasticsearch: &Elasticsearch,
-    messages: Vec<Message<StatMessage>>,
+    messages: &[Message<StatMessage>],
 ) -> Result<(), Exception> {
-    let mut documents: Vec<(String, StatDocument)> = Vec::with_capacity(messages.len());
-    for message in messages {
-        let payload = message.payload;
-        let doc = StatDocument {
-            timestamp: payload.date,
-            app: payload.app,
-            host: payload.host,
-            result: payload.result,
-            error_code: payload.error_code,
-            error_message: payload.error_message,
-            stats: payload.stats,
-            info: payload.info,
-        };
-        documents.push((payload.id, doc));
-    }
+    let documents = messages.iter().map(|message| {
+        let payload = &message.payload;
+        (payload.id.as_str(), to_stat_document(payload))
+    });
     let now = DateTime::now().date();
     elasticsearch.bulk_index(&index(now), documents).await?;
     Ok(())
+}
+
+fn to_stat_document(payload: &StatMessage) -> StatDocument<'_> {
+    StatDocument {
+        timestamp: payload.date,
+        app: &payload.app,
+        host: payload.host.as_deref(),
+        result: &payload.result,
+        error_code: payload.error_code.as_deref(),
+        error_message: payload.error_message.as_deref(),
+        stats: payload.stats.as_ref(),
+        info: payload.info.as_ref(),
+    }
 }
 
 fn index(now: Date) -> String {
@@ -137,7 +139,23 @@ fn to_stat_result(result: &str) -> StatResult {
 
 #[cfg(test)]
 mod tests {
+    use framework::json;
     use framework::time::Date;
+
+    #[test]
+    fn borrowed_document_preserves_json() {
+        let payload = json::from_json::<super::StatMessage>(
+            r#"{"id":"s1","date":"2026-08-12T01:02:03Z","app":"app","result":"OK","stats":{},"info":{"key":"value"}}"#,
+        )
+        .expect("valid stat message");
+        assert_eq!(
+            json::to_json(&super::to_stat_document(&payload)).expect("serialize stat"),
+            concat!(
+                r#"{"@timestamp":"2026-08-12T01:02:03Z","app":"app","host":null,"result":"OK","#,
+                r#""error_code":null,"error_message":null,"stats":{},"info":{"key":"value"}}"#,
+            ),
+        );
+    }
 
     #[test]
     fn index() {

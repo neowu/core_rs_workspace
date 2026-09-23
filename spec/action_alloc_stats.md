@@ -14,17 +14,22 @@ is minimal, so every app gets them and there is no build without them.
 
 ## Always on because it measured free
 
-On the http server benchmark, with the server pinned to one saturated core so requests/sec is its
-own cpu cost and nothing else, four interleaved runs per side:
+On the http server benchmark, counting allocator on vs off (no `#[global_allocator]`, `poll` a
+plain call), every scenario, 3 interleaved 20s rounds per side, server cpu µs per request (commit
+097a106, 2 core hosts; the client saturates first, so throughput cannot show it):
 
-| scenario | without | with | delta |
+| scenario | on | off | delta |
 |---|---|---|---|
-| `get` | 130,955 req/s | 129,630 req/s | −1.0% |
-| `post` | 108,541 req/s | 108,976 req/s | +0.4% |
+| `get` | 30.06 | 29.78 | +0.9% |
+| `post` | 38.91 | 38.26 | +1.7% |
+| `api_get` | 29.44 | 29.37 | +0.2% |
+| `api_post` | 36.77 | 37.37 | −1.6% |
+| `db_select` | 83.64 | 83.24 | +0.5% |
+| `db_insert_ignore` | 87.0 | 87.5 | −0.6% |
 
-The signs disagree and each build's own run to run spread is wider than the gap, so the cost is
-under what the harness resolves. An earlier pass on cpu per request agreed: 28.63 vs 28.52
-µs/request on a `get`, ranges fully overlapping.
+`db_insert_ignore` "on" excludes one outlier run (98 µs, p99 twice the others). The signs disagree
+and every scenario's on/off ranges overlap: the cost is under the harness's ~±2% resolution. The
+estimate agrees — one thread local add per allocation, ~50 allocations on a 30 µs `get`, ~0.3%.
 
 ## Attribution is per poll
 
@@ -75,5 +80,5 @@ propagate.
 
 - **No regression guard.** Allocations are per action and per endpoint on every build, but nothing
   fails when they go up; noticing is still a person comparing two reports.
-- **Its own cpu cost is bounded, not measured.** Both harnesses above put it under what either
-  resolves. It is always on by that bound, not by a resolved number.
+- **Its own cpu cost is bounded, not measured.** The benchmark above puts it under what the
+  harness resolves. It is always on by that bound, not by a resolved number.

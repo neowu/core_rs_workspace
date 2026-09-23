@@ -16,3 +16,17 @@ Provisioned on the server host, outside of a run:
 |---|---|---|
 | `nats-server` | 4222 | systemd service |
 | postgres | 5432 | user `postgres`, no password (trust auth), database `postgres` |
+
+## A/B builds
+
+To compare code variants, build each once on the server host, keep the binaries side by side and
+alternate them per round, rather than letting `remote.sh` rebuild between runs.
+
+- **Touch the changed file before every build.** rsync (`-a`) and scp restore a file with its
+  original mtime, which is older than the last build output, so cargo sees it as fresh: it ships the
+  previous variant's binary, or replays that build's cached warnings as errors (`build.warnings =
+  "deny"`). Verify the variant binaries differ (`cmp`, or `nm` for a symbol only one has).
+- `cargo build ... | tail` hides cargo's exit code, use `set -o pipefail`.
+- A variant that removes code needs `#![allow(dead_code)]`, warnings are denied.
+- Leave the server tree at the committed source afterwards (rsync + touch + build), or the next
+  `remote.sh` run inherits the last variant.

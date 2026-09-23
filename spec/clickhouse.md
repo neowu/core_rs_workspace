@@ -104,8 +104,8 @@ outlive `'a`.
 The consumers here turn a batch of messages into a batch of rows and write it immediately. An owned
 row forces a copy of every string out of the message, for a row that dies at the end of the call.
 [`log_processor`](../app/log_processor/src/kafka) is the clear case: it builds a clickhouse row
-*and* an elasticsearch document from the same message, so everything the row used to clone was
-already owned by the document that follows it.
+*and* an elasticsearch document from the same message. Both now borrow from the original batch;
+see [log processor](log_processor.md).
 
 ### `Map` columns serialize from an ordered slice
 
