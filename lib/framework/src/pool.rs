@@ -72,35 +72,36 @@ where
         };
         let counter = self.counter.increase();
 
-        let item = loop {
+        let resource = loop {
             let candidate = {
                 let mut storage = self.storage.lock().unwrap();
                 storage.pop_front()
             };
 
             match candidate {
-                None => break self.manager.create().await?,
+                None => {
+                    let item = self.manager.create().await?;
+                    let now = Instant::now();
+                    break Resource { item, created_time: now, return_time: now };
+                }
                 Some(res) => {
+                    if res.created_time.elapsed() >= self.max_life_time {
+                        continue;
+                    }
                     if res.return_time.elapsed() < self.max_valid_window {
-                        break res.item;
+                        break res;
                     }
 
                     let is_valid = R::is_valid(&res.item).await;
                     if is_valid {
-                        break res.item;
+                        break res;
                     }
                     warn!(error_code = "POOL_INVALID_RESOURCE", "resource is not valid, try next");
                 }
             }
         };
 
-        let now = Instant::now();
-        Ok(ResourceGuard {
-            resource: Some(Resource { item, created_time: now, return_time: now }),
-            pool: self,
-            _permit: permit,
-            _counter: counter,
-        })
+        Ok(ResourceGuard { resource: Some(resource), pool: self, _permit: permit, _counter: counter })
     }
 
     pub fn active_count(&self) -> u32 {

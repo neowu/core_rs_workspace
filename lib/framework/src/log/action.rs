@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::fmt::Write as _;
 use std::str::from_utf8;
 use std::time::Duration;
 use std::time::Instant;
@@ -133,17 +134,22 @@ impl Action {
         write_elapsed(&mut self.logs, self.start_time.elapsed());
         let logs = &mut self.logs;
         if let Some(location) = location {
-            write_str!(logs, "{location} ");
+            logs.push_str(location);
+            logs.push(' ');
         }
         if let Some(severity) = severity {
-            write_str!(logs, "{severity} ");
+            logs.push_str(severity.as_str());
+            logs.push(' ');
         }
         if let Some(error_code) = error_code {
-            write_str!(logs, "[{error_code}] ");
+            logs.push('[');
+            logs.push_str(error_code);
+            logs.push_str("] ");
         }
 
         let start = logs.len();
-        write_str!(logs, "{message}\n");
+        logs.write_fmt(message).expect("writing to a String cannot fail");
+        logs.push('\n');
         if logs.len() - start > max_message_len {
             let end = start + logs[start..].truncate_to_max(max_message_len).len();
             logs.truncate(end); // end is a char boundary by construction

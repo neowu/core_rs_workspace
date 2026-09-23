@@ -108,10 +108,7 @@ where
                 (
                     [
                         (header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-                        (
-                            header::CONTENT_LENGTH,
-                            HeaderValue::from_str(&format!("{length}")).expect("value cannot be invalid"),
-                        ),
+                        (header::CONTENT_LENGTH, HeaderValue::from(length)),
                     ],
                     body,
                 )

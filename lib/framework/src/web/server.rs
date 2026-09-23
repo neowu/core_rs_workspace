@@ -177,7 +177,14 @@ fn request_url<T>(request: &http::Request<T>) -> String {
     let path_and_query = uri.path_and_query().map_or("/", PathAndQuery::as_str);
 
     match host {
-        Some(host) => format!("{scheme}://{host}{path_and_query}"),
+        Some(host) => {
+            let mut url = String::with_capacity(scheme.len() + 3 + host.len() + path_and_query.len());
+            url.push_str(scheme);
+            url.push_str("://");
+            url.push_str(host);
+            url.push_str(path_and_query);
+            url
+        }
         None => path_and_query.to_owned(),
     }
 }
