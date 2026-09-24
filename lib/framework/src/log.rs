@@ -24,8 +24,10 @@ use crate::time::DateTime;
 pub(crate) mod action;
 mod alloc_stats;
 pub mod id_generator;
+mod mask;
 mod span;
 
+pub use mask::LogValue;
 pub use span::__span;
 pub use span::Span;
 

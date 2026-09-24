@@ -159,6 +159,17 @@ written once, and after that **`Severity::Error` lines still go in** while every
 dropped. An action that produced a megabyte of trace and then failed is the case where the trace
 matters most, and a hard cap would drop precisely the line that explains it.
 
+### Sensitive fields are masked by naming convention
+
+`LogValue::new(key, value)` formats only the value, or `**masked**` when the key contains (ascii
+case-insensitive) one of a hard-coded list in `log/mask.rs`: `authorization`, `cookie`, `password`,
+`secret`, `token`, `session`, `api-key`/`api_key`/`apikey`. The http client and server wrap every
+header and cookie value with it, so call sites keep the readable `key={}` form.
+
+The list is fixed in the framework rather than configured at startup: a new sensitive field must be
+named to match it. A substring scan over a handful of short literals costs nothing next to the
+formatting it guards, and there is no config to forget.
+
 ### Severity is promoted, the highest one wins and keeps its error
 
 An action starts at `Info`. A `warn!`, `error!` or logged exception promotes the action's severity

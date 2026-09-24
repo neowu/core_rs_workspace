@@ -25,6 +25,7 @@ pub use tokio_stream::StreamExt;
 
 use crate::exception::Exception;
 use crate::log;
+use crate::log::LogValue;
 use crate::log::Severity;
 use crate::span;
 use crate::stats;
@@ -220,7 +221,7 @@ fn parse_headers(response: &Response) -> Result<HashMap<HeaderName, String>, Exc
     let mut headers = HashMap::new();
     for (key, value) in response.headers() {
         let value = value.to_str()?;
-        log!("[header] {key}={value}");
+        log!("[header] {key}={}", LogValue::new(key.as_str(), value));
         headers.insert(key.to_owned(), value.to_owned());
     }
     Ok(headers)
@@ -233,7 +234,7 @@ fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
     let mut http_request = Request::new(request.method.clone(), url);
     http_request.headers_mut().extend(request.headers.clone());
     for (key, value) in http_request.headers() {
-        log!("[header] {key}={}", value.to_str()?);
+        log!("[header] {key}={}", LogValue::new(key.as_str(), value.to_str()?));
     }
     if let Some(ref body) = request.body {
         log!("[request] body={body}");
