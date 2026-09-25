@@ -72,7 +72,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
         impl #client_ident {
             #trait_vis fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                Self { client: ::framework_nats::service::ServiceClient::new(client) }
+                Self { client: ::framework_nats::service::ServiceClient::__new(client) }
             }
         }
 
@@ -192,14 +192,14 @@ fn build_client_method(client_ident: &Ident, model: &MethodModel) -> TokenStream
         quote! {
             async fn #method_ident(&self, request: #request_type) -> #response_type {
                 ::framework::log!(concat!("call nats api, fn=", module_path!(), #fn_suffix));
-                self.client.request(#subject, &request).await
+                self.client.__request(#subject, &request).await
             }
         }
     } else {
         quote! {
             async fn #method_ident(&self) -> #response_type {
                 ::framework::log!(concat!("call nats api, fn=", module_path!(), #fn_suffix));
-                self.client.request(#subject, &()).await
+                self.client.__request(#subject, &()).await
             }
         }
     }
@@ -276,18 +276,18 @@ mod tests {
 
                 impl UserServiceClient {
                     pub fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                        Self { client: ::framework_nats::service::ServiceClient::new(client) }
+                        Self { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
 
                 impl UserService for UserServiceClient {
                     async fn get_user_by_id(&self, request: GetUserRequest) -> Result<GetUserResponse, Exception> {
                         ::framework::log!(concat!("call nats api, fn=", module_path!(), "::UserServiceClient::get_user_by_id"));
-                        self.client.request("api.user.get_user_by_id", &request).await
+                        self.client.__request("api.user.get_user_by_id", &request).await
                     }
                     async fn create_user(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
                         ::framework::log!(concat!("call nats api, fn=", module_path!(), "::UserServiceClient::create_user"));
-                        self.client.request("api.user.create_user", &request).await
+                        self.client.__request("api.user.create_user", &request).await
                     }
                 }
             }
@@ -360,18 +360,18 @@ mod tests {
 
                 impl UserServiceClient {
                     pub fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                        Self { client: ::framework_nats::service::ServiceClient::new(client) }
+                        Self { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
 
                 impl UserService for UserServiceClient {
                     async fn get_all_users(&self) -> Result<GetAllUsersResponse, Exception> {
                         ::framework::log!(concat!("call nats api, fn=", module_path!(), "::UserServiceClient::get_all_users"));
-                        self.client.request("api.user.get_all_users", &()).await
+                        self.client.__request("api.user.get_all_users", &()).await
                     }
                     async fn delete_user(&self, request: DeleteUserRequest) -> Result<(), Exception> {
                         ::framework::log!(concat!("call nats api, fn=", module_path!(), "::UserServiceClient::delete_user"));
-                        self.client.request("api.user.delete_user", &request).await
+                        self.client.__request("api.user.delete_user", &request).await
                     }
                 }
             }

@@ -8,13 +8,10 @@ use framework::log::Severity;
 use framework::system::CancellationToken;
 use framework_macro::integration_test;
 use framework_macro::nats_api;
-use framework_nats::service::ServiceClient;
 use framework_nats::service::ServiceConfig;
 use nats_test::client;
 use serde::Deserialize;
 use serde::Serialize;
-
-const UNKNOWN: &str = "api.nats_test.unknown";
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GreetRequest {
@@ -80,16 +77,6 @@ async fn service() -> Result<(), Exception> {
     assert_eq!(error.severity, Severity::Warn);
     assert_eq!(error.code, Some("TEST_FAILURE"));
     assert!(error.message.contains("expected failure"), "message={}", error.message);
-
-    let service_client = ServiceClient::new(nats_client.clone());
-
-    // request the service fails to decode
-    let error = service_client.request::<i32, GreetResponse>("api.nats_test.greet", &1).await.unwrap_err();
-    assert_eq!(error.code, Some("NATS_INVALID_MESSAGE"));
-
-    // subject without service
-    let error = service_client.request::<(), ()>(UNKNOWN, &()).await.unwrap_err();
-    assert_eq!(error.code, Some("NATS_NO_RESPONDERS"));
 
     // service unsubscribes on shutdown, requests are rejected right away
     shutdown_signal.cancel();

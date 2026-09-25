@@ -203,12 +203,13 @@ pub struct ServiceClient {
 }
 
 impl ServiceClient {
-    // client usually be env!("CARGO_BIN_NAME")
-    pub const fn new(client: Client) -> Self {
+    #[doc(hidden)]
+    pub const fn __new(client: Client) -> Self {
         Self { client }
     }
 
-    pub async fn request<Req, Res>(&self, subject: &'static str, request: &Req) -> Result<Res, Exception>
+    #[doc(hidden)]
+    pub async fn __request<Req, Res>(&self, subject: &'static str, request: &Req) -> Result<Res, Exception>
     where
         Req: Serialize + Debug + 'static,
         Res: DeserializeOwned + 'static,
