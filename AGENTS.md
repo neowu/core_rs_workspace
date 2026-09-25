@@ -11,9 +11,10 @@ under (`test/`), use apple container to start required services
 
 # code style
 
-only keep minimal comments
+- only keep minimal comments
+- use `cargo +nightly fmt` to format code
 
 # spec
 
-- update /spec to reflect what code changed
+- update /spec to reflect what code and design changed
 - for spec doc, only keep key design decisions / behaviour / requirements, always goes to code for impl details

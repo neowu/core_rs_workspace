@@ -21,7 +21,7 @@ use framework_nats::async_nats::Client;
 use framework_nats::async_nats::jetstream;
 use framework_nats::async_nats::jetstream::stream::Config;
 use framework_nats::consumer::BatchConsumer;
-use framework_nats::consumer::ConsumerConfig;
+use framework_nats::consumer::BatchConsumerConfig;
 use framework_nats::consumer::consumer_metrics;
 use serde::Deserialize;
 
@@ -85,8 +85,7 @@ async fn main() -> Result<(), Exception> {
     });
 
     // one batch per consumer becomes one clickhouse insert, so favor larger batches over latency
-    let consumer_config =
-        ConsumerConfig { batch_max_messages: 5_000, batch_max_wait: Duration::from_secs(3), ..Default::default() };
+    let consumer_config = BatchConsumerConfig { batch_max_messages: 5_000, batch_max_wait: Duration::from_secs(3) };
 
     let action_consumer = BatchConsumer::new(
         client.clone(),

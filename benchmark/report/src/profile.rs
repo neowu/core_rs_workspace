@@ -11,7 +11,6 @@ use std::fs::read_to_string;
 use serde_json::Value;
 use serde_json::json;
 
-
 struct Entry {
     total: f64,
     self_pct: f64,
@@ -34,9 +33,7 @@ pub fn methods(self_path: &str, total_path: &str, top: usize) -> Value {
         .take(top)
         .map(|entry| json!({ "pct": round(entry.self_pct), "dso": entry.dso, "name": entry.name }))
         .collect();
-    let own = parse(&total_report, true)
-        .into_iter()
-        .filter(|entry| own(&entry.name));
+    let own = parse(&total_report, true).into_iter().filter(|entry| own(&entry.name));
     let total_rows: Vec<Value> = merge(own.collect(), true)
         .iter()
         .take(top)

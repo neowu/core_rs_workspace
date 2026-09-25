@@ -198,7 +198,8 @@ fn profile_section(page: &mut String, result: &Value) {
     page.push_str("</tbody></table></div>\n");
 
     let total_rows = rows(result, "/profile/total");
-    let _ = writeln!(page, "<h3>Total time including callees, framework and app methods, top {}</h3>", total_rows.len());
+    let _ =
+        writeln!(page, "<h3>Total time including callees, framework and app methods, top {}</h3>", total_rows.len());
     page.push_str(
         "<div class=\"wrap\"><table><thead><tr><th>#</th><th>total %</th><th>self %</th><th></th>\
          <th class=\"m\">method</th></tr></thead><tbody>\n",

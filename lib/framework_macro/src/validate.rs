@@ -93,11 +93,7 @@ fn build_range_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Ve
 fn build_length_validator(field: &FieldModel, attr: &AttributeModel) -> Result<Vec<TokenStream>> {
     let field_ident = &field.ident;
     // str::len() returns byte length, which is not char count for non-ascii utf-8
-    let length = if field.is_string_type() {
-        quote!(chars().count())
-    } else {
-        quote!(len())
-    };
+    let length = if field.is_string_type() { quote!(chars().count()) } else { quote!(len()) };
     let mut body = vec![];
 
     if let Some(max) = attr.optional_int_meta_value("max")? {

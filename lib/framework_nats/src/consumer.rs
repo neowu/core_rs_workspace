@@ -46,7 +46,7 @@ pub struct Message<T> {
 
 #[derive(Clone, Copy)]
 pub struct ConsumerConfig {
-    // max in-flight message handlers for MessageConsumer (semaphore size); ignored by BatchConsumer.
+    // max in-flight message handlers (semaphore size).
     pub max_concurrency: usize,
     pub batch_max_messages: usize,
     pub batch_max_wait: Duration,
@@ -55,6 +55,18 @@ pub struct ConsumerConfig {
 impl Default for ConsumerConfig {
     fn default() -> Self {
         Self { max_concurrency: 100, batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BatchConsumerConfig {
+    pub batch_max_messages: usize,
+    pub batch_max_wait: Duration,
+}
+
+impl Default for BatchConsumerConfig {
+    fn default() -> Self {
+        Self { batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
     }
 }
 
@@ -239,7 +251,7 @@ pub struct BatchConsumer<S, M, H> {
     durable: &'static str,
     subject: &'static str,
     handler: H,
-    config: ConsumerConfig,
+    config: BatchConsumerConfig,
     _marker: PhantomData<fn(S, M)>,
 }
 
@@ -256,7 +268,7 @@ where
         durable: &'static str,
         subject: &Subject<M>,
         handler: H,
-        config: ConsumerConfig,
+        config: BatchConsumerConfig,
     ) -> Self {
         Self {
             context: jetstream::new(client),

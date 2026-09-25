@@ -65,7 +65,8 @@ fn parse_discriminant(expr: &Expr) -> Result<Literal> {
     } else {
         return Err(Error::new_spanned(expr, "enum discriminant must be an integer literal"));
     };
-    let value = i8::try_from(value).map_err(|_err| Error::new_spanned(expr, "enum discriminant must be within Enum8 range (-128..=127)"))?;
+    let value = i8::try_from(value)
+        .map_err(|_err| Error::new_spanned(expr, "enum discriminant must be within Enum8 range (-128..=127)"))?;
     Ok(Literal::i8_unsuffixed(value))
 }
 

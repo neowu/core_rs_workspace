@@ -3,7 +3,8 @@
 // both crates here only to turn on their `release_max_level_off` features, which compiles that
 // instrumentation out of release builds. Cargo features are additive, so this applies to every
 // crate in the graph. `::log` must stay absolute — a bare `log` resolves to the module below.
-use {::log as _, tracing as _};
+use ::log as _;
+use tracing as _;
 
 pub mod api;
 pub mod appender;

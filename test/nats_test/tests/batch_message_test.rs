@@ -7,7 +7,7 @@ use framework::system::CancellationToken;
 use framework_macro::integration_test;
 use framework_nats::Subject;
 use framework_nats::consumer::BatchConsumer;
-use framework_nats::consumer::ConsumerConfig;
+use framework_nats::consumer::BatchConsumerConfig;
 use framework_nats::consumer::Message;
 use framework_nats::producer::Producer;
 use nats_test::AppState;
@@ -42,7 +42,7 @@ async fn batch_message() -> Result<(), Exception> {
         durable,
         &subject_3,
         test_batch_message_handler,
-        ConsumerConfig::default(),
+        BatchConsumerConfig::default(),
     );
     let batch_consumer =
         tokio::spawn(batch_consumer.start(AppState { semaphore: Arc::clone(&semaphore) }, shutdown_signal.clone()));
