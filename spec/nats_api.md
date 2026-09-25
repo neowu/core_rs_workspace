@@ -36,6 +36,9 @@ cost is the same either way: one exact-size allocation, because `ContextValues` 
 The leak keeps the generated code the same as `#[api]` and drops the per-request clone. The leak is
 bounded: one small string per handler per `service()` call, normally once at startup.
 
+The client side emits `log!("call nats api, fn={module_path}::{Trait}Client::{method}")`, not
+`context!`, for the same reason as `#[api]`: one action can make many calls.
+
 ### handler is `Fn(Req) -> Fut`, not an async closure
 
 `__add_handler` stores the handler in an `Arc` and needs a `'static` future, so the generated closure

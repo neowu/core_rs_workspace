@@ -45,3 +45,12 @@ stable, so it can't be a compile-time literal.
 
 One allocation per request remains because `ContextValues` stores `String`; removing it means
 changing `ContextValues` to `Cow<'static, str>`, not a macro change.
+
+The client side emits `log!("call http api, fn={module_path}::{Trait}Client::{method}")` instead of `context!`: one
+action can make many api calls, so per-call names would pollute the caller's action context. The
+client type is generated, so the name is a compile-time `concat!(module_path!(), ...)` literal.
+
+### `ApiClient` methods are macro-only
+
+`__new` / `__get` / `__post` / `__put` are `#[doc(hidden)]` and `__`-prefixed: they only exist to back the
+generated `{Trait}Client`, so they stay out of auto-complete and aren't a public calling convention.

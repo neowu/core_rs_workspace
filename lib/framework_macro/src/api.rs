@@ -38,7 +38,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         let new_return: Type = parse_quote!(impl ::core::future::Future<Output = #response_type> + Send);
         method.sig.output = ReturnType::Type(RArrow::default(), Box::new(new_return));
         route_statements.push(build_route_statement(&model));
-        client_methods.push(build_client_method(&model));
+        client_methods.push(build_client_method(&client_ident, &model));
     }
 
     trait_def.items.push(TraitItem::Fn(parse_quote! {
@@ -71,7 +71,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
         impl #client_ident {
             #trait_vis fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
-                Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
+                Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
             }
         }
 
@@ -109,11 +109,11 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     for attr in &method.attrs {
         let attr_path = attr.path();
         if attr_path.is_ident("get") {
-            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("get")));
+            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("__get")));
         } else if attr_path.is_ident("post") {
-            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("post")));
+            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("__post")));
         } else if attr_path.is_ident("put") {
-            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("put")));
+            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("__put")));
         } else if attr_path.is_ident("path") {
             path = Some(attr.parse_args::<LitStr>()?);
         }
@@ -185,21 +185,24 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     }
 }
 
-fn build_client_method(model: &MethodModel) -> TokenStream {
+fn build_client_method(client_ident: &Ident, model: &MethodModel) -> TokenStream {
     let method_ident = &model.method_ident;
     let response_type = &model.response_type;
     let client_call = &model.client_call;
     let path = &model.path;
+    let fn_suffix = format!("::{client_ident}::{method_ident}");
 
     if let Some(request_type) = &model.request_type {
         quote! {
             async fn #method_ident(&self, request: #request_type) -> #response_type {
+                ::framework::log!(concat!("call http api, fn=", module_path!(), #fn_suffix));
                 self.client.#client_call(#path, request).await
             }
         }
     } else {
         quote! {
             async fn #method_ident(&self) -> #response_type {
+                ::framework::log!(concat!("call http api, fn=", module_path!(), #fn_suffix));
                 self.client.#client_call(#path, ()).await
             }
         }
@@ -297,19 +300,22 @@ mod tests {
 
                 impl UserServiceClient {
                     pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
+                        Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }
 
                 impl UserService for UserServiceClient {
                     async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception> {
-                        self.client.get("/user/search", request).await
+                        ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::search"));
+                        self.client.__get("/user/search", request).await
                     }
                     async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
-                        self.client.post("/user/create", request).await
+                        ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::create"));
+                        self.client.__post("/user/create", request).await
                     }
                     async fn update(&self, request: UpdateUserRequest) -> Result<UpdateUserResponse, Exception> {
-                        self.client.put("/user/update", request).await
+                        ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::update"));
+                        self.client.__put("/user/update", request).await
                     }
                 }
             }
@@ -387,16 +393,18 @@ mod tests {
 
                 impl UserServiceClient {
                     pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::new(http_client, api_url) }
+                        Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }
 
                 impl UserService for UserServiceClient {
                     async fn get_all(&self) -> Result<GetAllUserResponse, Exception> {
-                        self.client.get("/user/get_all", ()).await
+                        ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::get_all"));
+                        self.client.__get("/user/get_all", ()).await
                     }
                     async fn create(&self, request: CreateUserRequest) -> Result<(), Exception> {
-                        self.client.post("/user/create", request).await
+                        ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::create"));
+                        self.client.__post("/user/create", request).await
                     }
                 }
             }

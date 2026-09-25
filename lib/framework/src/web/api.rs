@@ -48,13 +48,15 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
+    #[doc(hidden)]
     #[inline]
-    pub const fn new(http_client: HttpClient, api_url: String) -> Self {
+    pub const fn __new(http_client: HttpClient, api_url: String) -> Self {
         Self { http_client, api_url }
     }
 
+    #[doc(hidden)]
     #[inline]
-    pub async fn get<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
+    pub async fn __get<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where
         Req: Serialize + Debug + 'static,
         Res: DeserializeOwned + 'static,
@@ -71,8 +73,9 @@ impl ApiClient {
         parse_response(&response)
     }
 
+    #[doc(hidden)]
     #[inline]
-    pub async fn post<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
+    pub async fn __post<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where
         Req: Serialize + Debug,
         Res: DeserializeOwned + 'static,
@@ -84,8 +87,9 @@ impl ApiClient {
         parse_response(&response)
     }
 
+    #[doc(hidden)]
     #[inline]
-    pub async fn put<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
+    pub async fn __put<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
     where
         Req: Serialize + Debug,
         Res: DeserializeOwned + 'static,
