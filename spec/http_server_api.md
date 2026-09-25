@@ -2,7 +2,7 @@
 
 Code: [`framework_macro/src/api.rs`](../lib/framework_macro/src/api.rs),
 [`framework/src/web/api.rs`](../lib/framework/src/web/api.rs) · siblings:
-[`benchmark/http_server.md`](benchmark/http_server.md)
+[`benchmark/http_server.md`](benchmark/http_server.md), [`nats_api.md`](nats_api.md)
 
 ## Behaviour
 

@@ -157,7 +157,6 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
         quote! {
             move |request: #request_type| {
                 let svc = Arc::clone(&svc);
-                let fn_name = fn_name.clone();
                 async move {
                     context!(fn = fn_name);
                     svc.#method_ident(request).await
@@ -168,7 +167,6 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
         quote! {
             move |(): ()| {
                 let svc = Arc::clone(&svc);
-                let fn_name = fn_name.clone();
                 async move {
                     context!(fn = fn_name);
                     svc.#method_ident().await
@@ -177,10 +175,9 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
         }
     };
 
-    // the function context is fixed per handler, built once here instead of formatted per request
     quote! {
         let svc = Arc::clone(&service);
-        let fn_name = format!(#fn_format, std::any::type_name::<Self>());
+        let fn_name: &'static str = format!(#fn_format, std::any::type_name::<Self>()).leak();
         nats_service.__add_handler(#subject, #handler);
     }
 }
@@ -249,21 +246,19 @@ mod tests {
 
                         let mut nats_service = Service::__new(nats_client, config);
                         let svc = Arc::clone(&service);
-                        let fn_name = format!("{}::get_user_by_id", std::any::type_name::<Self>());
+                        let fn_name: &'static str = format!("{}::get_user_by_id", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
                             let svc = Arc::clone(&svc);
-                            let fn_name = fn_name.clone();
-                            async move {
+                                        async move {
                                 context!(fn = fn_name);
                                 svc.get_user_by_id(request).await
                             }
                         });
                         let svc = Arc::clone(&service);
-                        let fn_name = format!("{}::create_user", std::any::type_name::<Self>());
+                        let fn_name: &'static str = format!("{}::create_user", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.create_user", move |request: CreateUserRequest| {
                             let svc = Arc::clone(&svc);
-                            let fn_name = fn_name.clone();
-                            async move {
+                                        async move {
                                 context!(fn = fn_name);
                                 svc.create_user(request).await
                             }
@@ -333,21 +328,19 @@ mod tests {
 
                         let mut nats_service = Service::__new(nats_client, config);
                         let svc = Arc::clone(&service);
-                        let fn_name = format!("{}::get_all_users", std::any::type_name::<Self>());
+                        let fn_name: &'static str = format!("{}::get_all_users", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.get_all_users", move |(): ()| {
                             let svc = Arc::clone(&svc);
-                            let fn_name = fn_name.clone();
-                            async move {
+                                        async move {
                                 context!(fn = fn_name);
                                 svc.get_all_users().await
                             }
                         });
                         let svc = Arc::clone(&service);
-                        let fn_name = format!("{}::delete_user", std::any::type_name::<Self>());
+                        let fn_name: &'static str = format!("{}::delete_user", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.delete_user", move |request: DeleteUserRequest| {
                             let svc = Arc::clone(&svc);
-                            let fn_name = fn_name.clone();
-                            async move {
+                                        async move {
                                 context!(fn = fn_name);
                                 svc.delete_user(request).await
                             }
