@@ -160,7 +160,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
         let extractor = &model.extractor;
         quote! {
             async move |#extractor(req): #extractor<#request_type>| {
-                context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
+                context!(fn = fn_name);
                 let result = svc.#method_ident(req).await;
                 __into_response(result)
             }
@@ -168,7 +168,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     } else {
         quote! {
             async move || {
-                context!(fn = format!(#fn_format, std::any::type_name::<Self>()));
+                context!(fn = fn_name);
                 let result = svc.#method_ident().await;
                 __into_response(result)
             }
@@ -177,6 +177,7 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
 
     quote! {
         let svc = Arc::clone(&service);
+        let fn_name: &'static str = format!(#fn_format, std::any::type_name::<Self>()).leak();
         let router = router.route(
             #path,
             on(#filter, #handler),
@@ -257,28 +258,31 @@ mod tests {
 
                         let router = Router::new();
                         let svc = Arc::clone(&service);
+                        let fn_name: &'static str = format!("{}::search", std::any::type_name::<Self>()).leak();
                         let router = router.route(
                             "/user/search",
                             on(MethodFilter::GET, async move |Query(req): Query<SearchUserRequest>| {
-                                context!(fn = format!("{}::search", std::any::type_name::<Self>()));
+                                context!(fn = fn_name);
                                 let result = svc.search(req).await;
                                 __into_response(result)
                             }),
                         );
                         let svc = Arc::clone(&service);
+                        let fn_name: &'static str = format!("{}::create", std::any::type_name::<Self>()).leak();
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = format!("{}::create", std::any::type_name::<Self>()));
+                                context!(fn = fn_name);
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
                         );
                         let svc = Arc::clone(&service);
+                        let fn_name: &'static str = format!("{}::update", std::any::type_name::<Self>()).leak();
                         let router = router.route(
                             "/user/update",
                             on(MethodFilter::PUT, async move |Json(req): Json<UpdateUserRequest>| {
-                                context!(fn = format!("{}::update", std::any::type_name::<Self>()));
+                                context!(fn = fn_name);
                                 let result = svc.update(req).await;
                                 __into_response(result)
                             }),
@@ -354,19 +358,21 @@ mod tests {
 
                         let router = Router::new();
                         let svc = Arc::clone(&service);
+                        let fn_name: &'static str = format!("{}::get_all", std::any::type_name::<Self>()).leak();
                         let router = router.route(
                             "/user/get_all",
                             on(MethodFilter::GET, async move | | {
-                                context!(fn = format!("{}::get_all", std::any::type_name::<Self>()));
+                                context!(fn = fn_name);
                                 let result = svc.get_all().await;
                                 __into_response(result)
                             }),
                         );
                         let svc = Arc::clone(&service);
+                        let fn_name: &'static str = format!("{}::create", std::any::type_name::<Self>()).leak();
                         let router = router.route(
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = format!("{}::create", std::any::type_name::<Self>()));
+                                context!(fn = fn_name);
                                 let result = svc.create(req).await;
                                 __into_response(result)
                             }),
