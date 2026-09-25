@@ -26,7 +26,7 @@ impl<T> Subject<T> {
 type Header = &'static str;
 const REF_ID: Header = "ref_id";
 const CLIENT: Header = "client";
-const ERROR: Header = "error";
+const MESSAGE_TYPE: Header = "msg_type";
 
 // one connection can be shared by services, service clients and producers within a process
 pub async fn connect(url: &str) -> Client {

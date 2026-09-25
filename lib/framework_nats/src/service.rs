@@ -35,7 +35,7 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::CLIENT;
-use crate::ERROR;
+use crate::MESSAGE_TYPE;
 use crate::REF_ID;
 use crate::link_context;
 
@@ -186,9 +186,10 @@ where
                 let body =
                     ErrorResponse { severity: e.severity, code: e.code.map(str::to_owned), message: e.message.clone() };
                 let payload = to_json(&body)?;
-                let mut headers = HeaderMap::new();
-                headers.insert(ERROR, "true");
+                log!("[reply] payload={payload}");
                 stats!(nats_response_bytes = payload.len());
+                let mut headers = HeaderMap::new();
+                headers.insert(MESSAGE_TYPE, "error");
                 client.publish_with_headers(reply, headers, payload.into()).await?;
                 Err(e)
             }
@@ -243,7 +244,9 @@ impl ServiceClient {
         let reply_payload = String::from_utf8_lossy(&reply.payload);
         log!("[reply] payload={reply_payload}");
         stats!(nats_read_bytes = reply_payload.len());
-        let is_error = reply.headers.as_ref().is_some_and(|reply_headers| reply_headers.get(ERROR).is_some());
+        let is_error = reply.headers.as_ref().is_some_and(|reply_headers| {
+            reply_headers.get(MESSAGE_TYPE).is_some_and(|value| value.as_str() == "error")
+        });
         if is_error {
             let error: ErrorResponse = from_json(&reply_payload)?;
             if let Some(ref code) = error.code {
