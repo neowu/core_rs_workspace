@@ -252,7 +252,7 @@ mod tests {
                         let fn_name: &'static str = format!("{}::get_user_by_id", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.get_user_by_id", move |request: GetUserRequest| {
                             let svc = Arc::clone(&svc);
-                                        async move {
+                            async move {
                                 context!(fn = fn_name);
                                 svc.get_user_by_id(request).await
                             }
@@ -261,7 +261,7 @@ mod tests {
                         let fn_name: &'static str = format!("{}::create_user", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.create_user", move |request: CreateUserRequest| {
                             let svc = Arc::clone(&svc);
-                                        async move {
+                            async move {
                                 context!(fn = fn_name);
                                 svc.create_user(request).await
                             }
@@ -336,7 +336,7 @@ mod tests {
                         let fn_name: &'static str = format!("{}::get_all_users", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.get_all_users", move |(): ()| {
                             let svc = Arc::clone(&svc);
-                                        async move {
+                            async move {
                                 context!(fn = fn_name);
                                 svc.get_all_users().await
                             }
@@ -345,7 +345,7 @@ mod tests {
                         let fn_name: &'static str = format!("{}::delete_user", std::any::type_name::<Self>()).leak();
                         nats_service.__add_handler("api.user.delete_user", move |request: DeleteUserRequest| {
                             let svc = Arc::clone(&svc);
-                                        async move {
+                            async move {
                                 context!(fn = fn_name);
                                 svc.delete_user(request).await
                             }

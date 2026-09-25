@@ -47,7 +47,7 @@ impl GreetingService for GreetingServiceImpl {
 #[tokio::main]
 pub async fn main() {
     let mut system = System::init(env!("CARGO_PKG_NAME"), DefaultEnv).await;
-    let nats_client = framework_nats::connect("dev.internal:4222").await;
+    let nats_client = framework_nats::connect("nats.test:4222").await;
 
     let executor = start_executor();
     system.add_metrics(executor.metrics());

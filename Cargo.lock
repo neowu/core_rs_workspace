@@ -1010,6 +1010,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
+name = "http_test"
+version = "1.0.0"
+dependencies = [
+ "axum",
+ "framework",
+ "framework_macro",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "http_test_client"
 version = "0.9.3"
 dependencies = [
