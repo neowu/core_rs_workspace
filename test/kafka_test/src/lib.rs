@@ -28,8 +28,12 @@ pub fn producer() -> Producer {
     Producer::new(BROKER.to_owned())
 }
 
-// earliest, messages are sent before the new group subscribes
 pub fn consumer(group_id: &str) -> MessageConsumer<AppState> {
-    let config = ConsumerConfig { auto_offset_reset: "earliest", ..Default::default() };
+    consumer_with_config(group_id, ConsumerConfig::default())
+}
+
+// earliest, messages are sent before the new group subscribes
+pub fn consumer_with_config(group_id: &str, config: ConsumerConfig) -> MessageConsumer<AppState> {
+    let config = ConsumerConfig { auto_offset_reset: "earliest", ..config };
     MessageConsumer::new(BROKER.to_owned(), unique(group_id), &config)
 }

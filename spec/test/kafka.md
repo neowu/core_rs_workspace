@@ -11,4 +11,7 @@ Kafka has no service API, so only messaging is covered.
 - Single message: `add_handler` on two topics with different payload types, one keyed and one
   unkeyed message; assert key and payload.
 - Bulk message: `add_bulk_handler` receives 10 keyed messages; assert each key matches its payload.
+- Concurrency: `max_concurrency = 1`, one `add_handler` topic with 5 distinct keys and one
+  `add_bulk_handler` topic, handlers sleep 100ms; assert at most 1 handler (single or bulk) was in
+  flight.
 - Each test waits on a semaphore released by handlers, then cancels shutdown and joins.

@@ -4,7 +4,9 @@ Source: https://dial9-rs.github.io/blog/principles-for-fast-tokio-applications/
 
 Review of `lib/` and `app/` against the article's principles, ordered by priority.
 
-## 1. Kafka consumer blocks a worker (high)
+## 1. Kafka consumer blocks a worker (high) — done
+
+Done: switched to `StreamConsumer`, see `spec/kafka.md`.
 
 `lib/framework_kafka/src/consumer.rs` `poll_message_groups` calls `BaseConsumer::poll(Timeout::After(..))`,
 a synchronous rdkafka call, inside an async task. `log_processor` uses `poll_max_wait_time: 3s`, so one worker
@@ -16,7 +18,9 @@ Plan:
 - Alternative: switch to rdkafka `StreamConsumer` (async). Pick one after checking commit/ordering semantics.
 - Shutdown: thread checks the cancellation token between polls, use a short poll timeout (e.g. 100ms) in the loop.
 
-## 2. Kafka handlers have no concurrency bound (high)
+## 2. Kafka handlers have no concurrency bound (high) — done
+
+Done: `ConsumerConfig::max_concurrency`, see `spec/kafka.md`.
 
 `handle_messages` spawns one task per distinct key; with `poll_max_records: 5_000` that is up to 5,000 concurrent
 handlers hitting ES / DB.

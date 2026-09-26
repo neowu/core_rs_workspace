@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::str::from_utf8;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use framework::console;
 use framework::context;
@@ -19,22 +18,24 @@ use framework::metrics::Metrics;
 use framework::stats;
 use framework::time::DateTime;
 use futures::FutureExt as _;
+use futures::StreamExt as _;
 use futures::future::join_all;
 use rdkafka::ClientConfig;
 use rdkafka::Message as _;
 use rdkafka::Timestamp;
 use rdkafka::config::RDKafkaLogLevel;
-use rdkafka::consumer::BaseConsumer;
 use rdkafka::consumer::CommitMode;
 use rdkafka::consumer::Consumer as _;
+use rdkafka::consumer::StreamConsumer;
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
 use rdkafka::message::Headers as _;
 use rdkafka::message::OwnedMessage;
-use rdkafka::util::Timeout;
 use serde::de::DeserializeOwned;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::CLIENT;
@@ -50,6 +51,9 @@ pub struct Message<T> {
 type MessageHandler<S> = Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 pub struct ConsumerConfig {
+    // max in-flight handlers (semaphore size) across topics: each add_handler key group and each
+    // add_bulk_handler call holds one permit.
+    pub max_concurrency: usize,
     pub poll_max_wait_time: Duration,
     pub poll_max_records: usize,
     // "latest" or "earliest", where to start when the group has no committed offset for a partition
@@ -58,7 +62,12 @@ pub struct ConsumerConfig {
 
 impl Default for ConsumerConfig {
     fn default() -> Self {
-        Self { poll_max_wait_time: Duration::from_secs(1), poll_max_records: 1000, auto_offset_reset: "latest" }
+        Self {
+            max_concurrency: 100,
+            poll_max_wait_time: Duration::from_secs(1),
+            poll_max_records: 1000,
+            auto_offset_reset: "latest",
+        }
     }
 }
 
@@ -68,6 +77,7 @@ pub struct MessageConsumer<S> {
     poll_max_wait_time: Duration,
     poll_max_records: usize,
     counter: Arc<Counter>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl<S> MessageConsumer<S>
@@ -88,6 +98,7 @@ where
             poll_max_wait_time: config.poll_max_wait_time,
             poll_max_records: config.poll_max_records,
             counter: Arc::default(),
+            semaphore: Arc::new(Semaphore::new(config.max_concurrency)),
         }
     }
 
@@ -107,9 +118,10 @@ where
     {
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
+        let semaphore = Arc::clone(&self.semaphore);
         let wrapper: MessageHandler<S> = Box::new(move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
-            Box::pin(handle_messages(topic, messages, handler, &state, &counter))
+            Box::pin(handle_messages(topic, messages, handler, state, Arc::clone(&counter), Arc::clone(&semaphore)))
         });
 
         self.handlers.insert(topic, wrapper);
@@ -123,9 +135,17 @@ where
     {
         let topic = topic.name;
         let counter = Arc::clone(&self.counter);
+        let semaphore = Arc::clone(&self.semaphore);
         let wrapper: MessageHandler<S> = Box::new(move |state: S, messages: Vec<BorrowedMessage>| {
             let messages: Vec<OwnedMessage> = messages.iter().map(BorrowedMessage::detach).collect();
-            Box::pin(handle_bulk_messages(topic, messages, handler, state, Arc::clone(&counter)))
+            Box::pin(handle_bulk_messages(
+                topic,
+                messages,
+                handler,
+                state,
+                Arc::clone(&counter),
+                Arc::clone(&semaphore),
+            ))
         });
 
         self.handlers.insert(topic, wrapper);
@@ -139,26 +159,39 @@ where
             topics
         );
 
-        let consumer: BaseConsumer = self.config.create().expect("failed to create consumer"); // fail fast on startup
+        let consumer: StreamConsumer = self.config.create().expect("failed to create consumer"); // fail fast on startup
         consumer.subscribe(&topics).expect("failed to subscribe topic"); // fail fast on startup
 
         loop {
-            match poll_message_groups(&consumer, self.poll_max_wait_time, self.poll_max_records) {
-                Ok(topic_messages) => {
-                    let mut handles = Vec::with_capacity(topic_messages.len());
-                    for (topic, messages) in topic_messages {
-                        if let Some(handler) = self.handlers.get(topic.as_str()) {
-                            handles.push(tokio::spawn(handler(state.clone(), messages)));
-                        }
-                    }
-                    join_all(handles).await;
-                    if let Err(e) = consumer.commit_consumer_state(CommitMode::Async) {
-                        console!("ERROR failed to commit messages, error={e:?}");
+            let mut topic_messages = HashMap::new();
+            let result = poll_message_groups(
+                &consumer,
+                &mut topic_messages,
+                self.poll_max_wait_time,
+                self.poll_max_records,
+                &shutdown_signal,
+            )
+            .await;
+
+            // messages polled before an error are still handled, otherwise the next commit would skip them
+            if !topic_messages.is_empty() {
+                let mut handles = Vec::with_capacity(topic_messages.len());
+                for (topic, messages) in topic_messages {
+                    if let Some(handler) = self.handlers.get(topic.as_str()) {
+                        handles.push(tokio::spawn(handler(state.clone(), messages)));
                     }
                 }
-                Err(e) => {
-                    console!("ERROR failed to poll messages, error={e:?}");
-                    time::sleep(Duration::from_secs(5)).await;
+                join_all(handles).await;
+                if let Err(e) = consumer.commit_consumer_state(CommitMode::Async) {
+                    console!("ERROR failed to commit messages, error={e:?}");
+                }
+            }
+
+            if let Err(e) = result {
+                console!("ERROR failed to poll messages, error={e:?}");
+                tokio::select! {
+                    () = time::sleep(Duration::from_secs(5)) => {}
+                    () = shutdown_signal.cancelled() => {}
                 }
             }
 
@@ -170,54 +203,55 @@ where
     }
 }
 
-fn poll_message_groups(
-    consumer: &BaseConsumer,
+// collects until max_records, max_wait_time, or shutdown; StreamConsumer polls librdkafka without blocking
+async fn poll_message_groups<'a>(
+    consumer: &'a StreamConsumer,
+    messages: &mut HashMap<String, Vec<BorrowedMessage<'a>>>,
     max_wait_time: Duration,
     max_records: usize,
-) -> Result<HashMap<String, Vec<BorrowedMessage<'_>>>, KafkaError> {
-    let mut messages: HashMap<String, Vec<BorrowedMessage>> = HashMap::new();
-    let start_time = Instant::now();
-    let mut count = 1;
-    loop {
-        let elapsed = start_time.elapsed();
-        if elapsed >= max_wait_time {
-            break;
-        }
-
-        if count >= max_records {
-            break;
-        }
-
-        if let Some(result) = consumer.poll(Timeout::After(max_wait_time.saturating_sub(elapsed))) {
-            let message = result?;
-            let topic = message.topic().to_owned();
-            messages.entry(topic).or_default().push(message);
-            count += 1;
+    shutdown_signal: &CancellationToken,
+) -> Result<(), KafkaError> {
+    let deadline = Instant::now() + max_wait_time;
+    let mut stream = consumer.stream();
+    let mut count = 0;
+    while count < max_records {
+        tokio::select! {
+            result = stream.next() => {
+                let message = result.expect("kafka streams never terminate")?;
+                let topic = message.topic().to_owned();
+                messages.entry(topic).or_default().push(message);
+                count += 1;
+            }
+            () = time::sleep_until(deadline) => break,
+            () = shutdown_signal.cancelled() => break,
         }
     }
-    Ok(messages)
+    Ok(())
 }
 
-fn handle_bulk_messages<H, S, M, Fut>(
+// the bulk handler holds one permit, as a key group does
+async fn handle_bulk_messages<H, S, M, Fut>(
     topic: &'static str,
     raw_messages: Vec<OwnedMessage>,
     handler: H,
     state: S,
     counter: Arc<Counter>,
-) -> impl Future<Output = ()>
-where
+    semaphore: Arc<Semaphore>,
+) where
     S: Send + 'static,
     H: Fn(S, Vec<Message<M>>) -> Fut + Send + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     M: DeserializeOwned + Send + 'static,
 {
+    // acquired outside the action, so the wait is not counted in its elapsed
+    let _permit = semaphore.acquire().await.expect("semaphore should not close");
     let ref_id = raw_messages
         .iter()
         .map(|raw| header(raw, REF_ID).map(str::to_owned))
         .collect::<Option<HashSet<String>>>()
         .map(|set| set.into_iter().collect::<Vec<String>>());
 
-    log::action("message", ref_id, async move {
+    let _result = log::action("message", ref_id, async move {
         let _counter = counter.increase();
         context!(topic = topic, fn = type_name::<H>());
         let mut bytes = 0;
@@ -254,67 +288,49 @@ where
         }
         handler(state, messages).await
     })
-    .map(drop)
+    .await;
 }
 
-struct MessageNode {
-    message: OwnedMessage,
-    next: Option<Vec<MessageNode>>,
-}
-
-fn handle_messages<H, S, M, Fut>(
+// messages with the same key are handled sequentially in order, each key group (or unkeyed message) runs in its
+// own task, bounded by the consumer semaphore
+async fn handle_messages<H, S, M, Fut>(
     topic: &'static str,
     messages: Vec<OwnedMessage>,
     handler: H,
-    state: &S,
-    counter: &Arc<Counter>,
-) -> impl Future<Output = ()> + use<H, S, M, Fut>
-where
+    state: S,
+    counter: Arc<Counter>,
+    semaphore: Arc<Semaphore>,
+) where
     S: Clone + Send + 'static,
     H: Fn(S, Message<M>) -> Fut + Copy + Send + Sync + 'static,
     Fut: Future<Output = Result<(), Exception>> + Send + 'static,
     M: DeserializeOwned + Send + 'static,
 {
-    let mut handles = JoinSet::new();
-    let mut nodes: HashMap<String, MessageNode> = HashMap::new();
+    let mut key_groups: HashMap<String, Vec<OwnedMessage>> = HashMap::new();
+    let mut groups: Vec<Vec<OwnedMessage>> = Vec::new();
     for message in messages {
         if let Some(key) = key(&message) {
-            if let Some(node) = nodes.get_mut(&key) {
-                if let Some(ref mut next) = node.next {
-                    next.push(MessageNode { message, next: None });
-                } else {
-                    node.next = Some(vec![MessageNode { message, next: None }]);
-                }
-            } else {
-                nodes.insert(key, MessageNode { message, next: None });
-            }
+            key_groups.entry(key).or_default().push(message);
         } else {
-            let state = state.clone();
-            let counter = Arc::clone(counter);
-            handles.spawn(async move {
-                let _counter = counter.increase();
-                handle_message(topic, message, handler, state).await;
-            });
+            groups.push(vec![message]);
         }
     }
+    groups.extend(key_groups.into_values());
 
-    for node in nodes.into_values() {
+    let mut handles = JoinSet::new();
+    for group in groups {
+        let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
         let state = state.clone();
-        let counter = Arc::clone(counter);
+        let counter = Arc::clone(&counter);
         handles.spawn(async move {
+            let _permit = permit;
             let _counter = counter.increase();
-            handle_message(topic, node.message, handler, state.clone()).await;
-            if let Some(next) = node.next {
-                for next_node in next {
-                    handle_message(topic, next_node.message, handler, state.clone()).await;
-                }
+            for message in group {
+                handle_message(topic, message, handler, state.clone()).await;
             }
         });
     }
-
-    async move {
-        handles.join_all().await;
-    }
+    handles.join_all().await;
 }
 
 fn handle_message<H, S, M, Fut>(

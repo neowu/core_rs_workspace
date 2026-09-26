@@ -193,8 +193,8 @@ different `H`/`M`/`Fut`; the map forces one concrete return type and `Pin<Box<dy
 |---|---|
 | `framework_nats/src/consumer.rs:100` | `MessageHandler<S>` (`consumer.rs:73`), inside `add_handler`'s closure |
 | `framework_nats/src/service.rs:79` | request handler map, same shape |
-| `framework_kafka/src/consumer.rs:109` | `MessageHandler<S>` (`consumer.rs:50`), inside `add_handler`'s closure |
-| `framework_kafka/src/consumer.rs:125` | same, inside `add_bulk_handler`'s closure |
+| `framework_kafka/src/consumer.rs:124` | `MessageHandler<S>` (`consumer.rs:51`), inside `add_handler`'s closure |
+| `framework_kafka/src/consumer.rs:141` | same, inside `add_bulk_handler`'s closure |
 
 Removing them was tried and does not compile: kafka gives
 `error[E0271]: expected closure to return Pin<Box<dyn Future<..>>>, but it returns impl Future`,
@@ -203,11 +203,10 @@ only moves between callee and closure body — one allocation either way. Droppi
 mean replacing the handler maps with something non-`dyn`, which the per-subject/per-topic generic
 handler API rules out.
 
-**Erasure happens at the map, not in the helpers.** `handle_bulk_messages`, `handle_messages`,
-`handle_message` all return `impl Future`; the four sites above are the only `Box::pin`s.
-`handle_messages` needs `+ use<H, S, M, Fut>` on its RPIT — it takes `&S` and `&Arc<Counter>` (read
-synchronously before returning), and edition 2024 would otherwise capture those lifetimes and make
-the future non-`'static`, which `Box<dyn Future + Send>` rejects. The others do not need it.
+**Erasure happens at the map, not in the helpers.** `handle_message` returns `impl Future`;
+`handle_messages` and `handle_bulk_messages` are `async fn`s, since they await a semaphore permit
+before building the action; the four sites above are the only `Box::pin`s. None needs `+ use<..>`: every helper takes
+its state and counters by value, so the futures are `'static`.
 
 ## Measuring
 
@@ -248,7 +247,12 @@ Consumer handlers, `ret_size` probe at `H = fn(..) -> BoxFuture`, `M = String`, 
 | `framework_nats` `handle_message` | 1,384 B | — |
 | `framework_nats` `handle_batch` | 1,008 B | 1,264 B |
 | `framework_kafka` `handle_message` | 456 B | 712 B |
-| `framework_kafka` `handle_bulk_messages` | 360 B | — |
+| `framework_kafka` `handle_bulk_messages` | 512 B | 1,024 B |
+
+`handle_bulk_messages` awaits its permit *before* calling `log::action` (whose start stamp is taken
+at construction, see 3. above), so `S` sits in the `async fn` prefix and again inside the action
+future: `S` is counted twice. It was 360 B before bulk handlers took a permit. Apps pass
+`Arc<State>`, so the duplicate is 8 bytes in practice.
 
 ## Known gap
 
