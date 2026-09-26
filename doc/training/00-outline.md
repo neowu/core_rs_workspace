@@ -15,38 +15,39 @@ actually uses, and we teach it against real code in this repo rather than toy ex
 
 ## 1. Format & logistics
 
-| | |
-|---|---|
-| Sessions | 16 (0–15), plus a capstone |
-| Length | 90 min each (Session 0 is 60 min) |
-| Cadence | 2 per week → ~8 weeks |
-| Shape | 30–40 min walkthrough of real code, 40–50 min hands-on lab, 10 min review |
-| Prework | ~30–45 min reading per session, listed under **Read before** |
-| Homework | Each lab has a "stretch" item; carried into the next session's review |
-| Group size | ≤ 6 per instructor; pair programming during labs |
+|            |                                                                           |
+| ---------- | ------------------------------------------------------------------------- |
+| Sessions   | 16 (0–15), plus a capstone                                                |
+| Length     | 90 min each (Session 0 is 60 min)                                         |
+| Cadence    | 2 per week → ~8 weeks                                                     |
+| Shape      | 30–40 min walkthrough of real code, 40–50 min hands-on lab, 10 min review |
+| Prework    | ~30–45 min reading per session, listed under **Read before**              |
+| Homework   | Each lab has a "stretch" item; carried into the next session's review     |
+| Group size | ≤ 6 per instructor; pair programming during labs                          |
 
 **Everything is done in this repo.** Labs land in a scratch crate `app/demo` (examples dir) or in a
 personal branch. Nothing is merged to `main` during training except the capstone, by review.
 
 **Reference material we use instead of writing our own:**
-- *The Rust Programming Language* (the book) — chapters cited per session
-- *Rust by Example* — for quick syntax lookups
+
+- _The Rust Programming Language_ (the book) — chapters cited per session
+- _Rust by Example_ — for quick syntax lookups
 - Tokio tutorial — for Sessions 6–8
-- This repo: `doc/action_future_design.md`, `doc/config_design.md`, and the doc comments on
+- This repo: `doc/action_future.md`, `doc/config.md`, and the doc comments on
   `framework_macro`'s proc macros, which are the framework's own design write-ups
 
 ---
 
 ## 2. Phase map
 
-| Phase | Sessions | Theme | Outcome |
-|---|---|---|---|
-| 0 | 0 | Toolchain & repo tour | Everyone can build, test, lint, run `demo` |
-| 1 | 1–5 | Rust core for JVM/TS developers | Can read any file in `lib/framework` |
-| 2 | 6–8 | Async Rust & Tokio | Understands why the framework looks the way it does |
-| 3 | 9–14 | The framework itself | Can build a service end to end |
-| 4 | 15 | Quality, testing, ops | Can ship it |
-| — | Capstone | Build a small service | Reviewed and merged |
+| Phase | Sessions | Theme                           | Outcome                                             |
+| ----- | -------- | ------------------------------- | --------------------------------------------------- |
+| 0     | 0        | Toolchain & repo tour           | Everyone can build, test, lint, run `demo`          |
+| 1     | 1–5      | Rust core for JVM/TS developers | Can read any file in `lib/framework`                |
+| 2     | 6–8      | Async Rust & Tokio              | Understands why the framework looks the way it does |
+| 3     | 9–14     | The framework itself            | Can build a service end to end                      |
+| 4     | 15       | Quality, testing, ops           | Can ship it                                         |
+| —     | Capstone | Build a small service           | Reviewed and merged                                 |
 
 Phase 1 is deliberately front-loaded: the framework's API surface (`Exception`, `Field<E, V>`,
 `ActionFuture<F>`, `#[api]` traits) is unreadable without traits, generics and ownership. Do not
@@ -61,6 +62,7 @@ skip ahead to Phase 3 for a team that has never written Rust.
 **Goal:** everyone has a green `cargo clippy` and can run `demo` locally.
 
 **Content**
+
 - Install: `rustup`, stable toolchain, `rustfmt` (note: `rustfmt.toml` sets
   `unstable_features = true`, so formatting needs the nightly `rustfmt`), `rust-analyzer` in the IDE.
 - macOS native deps: `brew install pkgconf librdkafka` (see `README.md`) — Kafka binds to a C library,
@@ -101,7 +103,7 @@ where it shows up in `lib/framework`.
 **Goal:** read and predict compiler errors about ownership without guessing.
 
 **Rust concepts:** stack vs heap; move semantics; `Copy` vs `Clone`; `&T` / `&mut T`; the borrow
-rules (many readers xor one writer); `Drop`; lifetimes as a *description* of existing scope, not a
+rules (many readers xor one writer); `Drop`; lifetimes as a _description_ of existing scope, not a
 GC knob; `'static`.
 
 **Coming from Java/TS:** everything you have is a reference to a GC'd object; here, a variable owns
@@ -109,6 +111,7 @@ its value and assignment moves it. `String` vs `&str` is roughly "owned buffer" 
 Java's `String` is neither. There is no `null`; there is `Option`.
 
 **Read in this repo:**
+
 - `lib/framework/src/string.rs` — `truncate_to_max(&self) -> &str` returns a borrow of the input,
   which is the whole point of `&str`; also `intern()` and `Box::leak` producing a `&'static str`.
 - `lib/framework/src/log/span.rs` — `Span` does its real work in `Drop`. This is RAII, the pattern
@@ -137,6 +140,7 @@ combinators (`map`, `and_then`, `unwrap_or`, `is_some_and`, `map_or`); `Default`
 is `switch` that the compiler proves is exhaustive. There is no class inheritance at all.
 
 **Read in this repo:**
+
 - `lib/framework/src/log.rs` — `enum Severity` with explicit discriminants and `serde` renames.
 - `lib/framework_db/src/field.rs` — `enum CondInner { Eq, In, NotNull }` and how `build_conditions`
   matches on it to build SQL.
@@ -167,6 +171,7 @@ problem TS solves with declaration merging). `dyn Trait` is the closest thing to
 reference, and it costs a vtable.
 
 **Read in this repo:**
+
 - `lib/framework/src/exception.rs` — the blanket `impl<T: Error + 'static> From<T> for Exception`.
   This is the single most important impl in the codebase: it is what makes `?` work everywhere.
 - `lib/framework/src/pool.rs` — `trait ResourceManager` with an associated type `Target`, and
@@ -197,6 +202,7 @@ adapters and laziness; `collect` into `Result<Vec<_>, _>`; `Fn`/`FnMut`/`FnOnce`
 default. `collect::<Result<Vec<_>, _>>()` is the trick that replaces a try/catch inside a `.map()`.
 
 **Read in this repo:**
+
 - `lib/framework_db/src/repository.rs` — `rows.into_iter().map(T::try_from).collect::<Result<Vec<_>, _>>()`.
 - `lib/framework/src/log/action.rs` — `add_stat` linear-scans a `Vec<(&'static str, u64)>` instead of
   using a `HashMap`, with the reasoning in a comment. Good discussion of "know your N".
@@ -220,6 +226,7 @@ discuss whether it is actually clearer.
 `pub(crate)`, `use`, re-exports; how a crate's public surface is designed.
 
 **Framework specifics — this is where Phase 1 starts paying off:**
+
 - `lib/framework/src/exception.rs` — `Exception { severity, code, message, location, source }`, the
   `exception!` macro capturing `file!()`/`line!()`, and `backtrace()` walking the `source` chain.
 - `lib/framework/src/exception/error_code.rs` — `VALIDATION_ERROR`, `BAD_REQUEST`, `NOT_FOUND`,
@@ -264,9 +271,10 @@ two differences worth 20 minutes of discussion: (1) laziness, (2) you can be dro
 cancellation is real and happens at await points.
 
 **Read in this repo:**
+
 - `app/demo/src/main.rs` + `app/demo/src/lib.rs` — the smallest complete async app.
 - `lib/framework/src/log.rs` — `ActionFuture<F>`, a **hand-written** `Future` impl.
-- `doc/action_future_design.md` — read this in full. It explains coroutine layout, why an `async fn`
+- `doc/action_future.md` — read this in full. It explains coroutine layout, why an `async fn`
   wrapper stored the task three times, and why `clippy::large_futures` failed the build at 18 KB.
   This is the single best document in the repo for teaching how async Rust actually compiles.
 
@@ -286,6 +294,7 @@ runtime); `.await` inside a lock guard's scope; assuming an async block starts o
 allowed in a task-local.
 
 **Read in this repo — the four patterns, side by side:**
+
 1. `&'static` via `Box::leak` — `app/demo/src/lib.rs` (`AppState`), the default for app singletons.
 2. `Arc<T>` — `app/log_processor_rs/src/main.rs` (`Arc<AppState>` cloned into two consumers).
 3. `OnceLock` — `lib/framework/src/system.rs` (`CONTEXT`, `SENDER`), `lib/framework/src/task.rs`
@@ -311,6 +320,7 @@ Also: `lib/framework/src/metrics/counter.rs` and the `CounterGuard` pattern
 `tokio::task_local!` and `TaskLocalFuture`; timeouts; structured concurrency in practice.
 
 **Read in this repo:**
+
 - `lib/framework/src/system.rs` — `System<Init>` → `System<Running>` (a **typestate**: `start_service`
   simply does not exist before `start_logger`, enforced by the type system — worth highlighting to a
   Java audience used to runtime "illegal state" exceptions). Also `listen_shutdown_signal` on SIGTERM
@@ -338,19 +348,20 @@ tracker does not know about (use `spawn_action!`); `infinite_loop` is a denied l
 **Goal:** stand up a new app crate from scratch.
 
 **Content**
+
 - `System::init(env!("CARGO_PKG_NAME"), DefaultEnv)`, `add_metrics`, `start_logger(appender)`,
   `start_service(|token| ..)`, `wait()`, `shutdown_logger()` — and why they are in that order.
 - `trait Env` / `DefaultEnv` / `CloudRunEnv` (`lib/framework/src/cloud/gcloud.rs`) — resolving a
   host name on a managed platform.
 - `load_config!("assets/conf.json")` and `load_config!(.., env = "CONFIG")`; `EnvString` with the
-  `"env:NAME"` convention for secrets. **Read `doc/config_design.md` in full** — resolution order,
+  `"env:NAME"` convention for secrets. **Read `doc/config.md` in full** — resolution order,
   why env beats the filesystem instead of being a fallback, why blank counts as unset, why it must
-  be a macro (`CARGO_MANIFEST_DIR` has to expand in the *calling* crate).
+  be a macro (`CARGO_MANIFEST_DIR` has to expand in the _calling_ crate).
 - `asset_path!` and the same debug/release split for static files.
 - Appenders: `ConsoleAppender`, `NatsAppender`, `GCloudAppender` — pick per deployment.
 
 **Read:** `app/demo/src/lib.rs`, `app/log_processor_rs/src/main.rs`, `app/log_collector/src/main.rs`,
-`lib/framework/src/config.rs`, `lib/framework/src/asset.rs`, `doc/config_design.md`.
+`lib/framework/src/config.rs`, `lib/framework/src/asset.rs`, `doc/config.md`.
 
 **Lab:** create `app/training_<name>` — a binary that loads a config struct, starts a `System` with
 `ConsoleAppender`, registers one service that ticks every second, and shuts down cleanly. This crate
@@ -361,6 +372,7 @@ is the base for every remaining lab and for the capstone.
 **Goal:** this is the framework's centerpiece — one structured record per unit of work.
 
 **Content**
+
 - The model: an **action** (`kind`, `id`, `ref_ids`, `context`, `stats`, `logs`, `severity`, `error`)
   is a task-local created by `log::action(..)` and emitted to the appender when the future resolves.
 - Macros, in the order you reach for them:
@@ -397,6 +409,7 @@ task-local is borrowed twice and it panics (there is a comment saying exactly th
 **Goal:** add an endpoint with proper request/response types, validation and error mapping.
 
 **Content**
+
 - `HttpServer` / `HttpServerConfig`, the `http_server_layer` middleware (what it logs, the
   `/health-check` short-circuit, client IP resolution via `max_forwarded_ips`).
 - Routing: `framework::web::route::{get, post, ..}` wrap axum's so the handler's name lands in
@@ -404,7 +417,7 @@ task-local is borrowed twice and it panics (there is a comment saying exactly th
 - Extractors and bodies: `web::body::{Json, TextBody}`, `client_info`, and how a rejection becomes an
   `Exception` with `BAD_REQUEST`.
 - `HttpError` / `HttpResult<T>` and the code → status mapping in `web/error.rs`.
-- **`#[api]`** on a trait generates *both* the axum router (`UserService::route(Arc::new(impl))`) and
+- **`#[api]`** on a trait generates _both_ the axum router (`UserService::route(Arc::new(impl))`) and
   a typed HTTP client (`UserServiceClient`) — one declaration, two sides of the wire. Compare with
   Spring's `@RestController` + Feign, or a TS route file + a generated OpenAPI client.
 - **`#[derive(Validate)]`** — `#[not_blank]`, `#[range(min, max)]`, `#[length(min, max)]`,
@@ -424,13 +437,14 @@ generated client. Add `#[derive(Validate)]` to the request and verify the 400 bo
 **Goal:** persist and query without hand-writing SQL plumbing.
 
 **Content**
+
 - `Database` / `DbConfig`; the pool (`ResourcePool<ConnectionManager>`, capacity 50, validity
   window, max lifetime, checkout timeout) and its `metrics()`.
 - **`#[derive(Entity)]`**: `#[table(name)]`, `#[column(name)]`, `#[primary_key]` and
   `#[primary_key(auto_increment)]`. It generates the insert/select SQL plus a typed const per
   column, so `User::NAME.eq(name)` and `User::RATING.update(v)` are checked against `User`.
 - `repository::{insert, insert_ignore, upsert, insert_with_auto_increment_id, select_one, select_all,
-  update, delete}` and what each records in `stats!` (`db_read_rows`, `db_write_rows`, `db_*` span).
+update, delete}` and what each records in `stats!` (`db_read_rows`, `db_write_rows`, `db_*` span).
 - Types: `framework_db::types::{Timestamp, Date}`, `Json<T>` for jsonb columns, `Option<T>` for
   nullable columns, `Uuid` (`Uuid::now_v7()` — time-ordered, index-friendly).
 - Prepared statement caching (`conn.prepared_statement`) and per-query timeouts.
@@ -447,6 +461,7 @@ generated client. Add `#[derive(Validate)]` to the request and verify the 400 bo
 **Goal:** pick the right transport and wire a handler.
 
 **Content**
+
 - **NATS** (`framework_nats`): one shared `Client` per process.
   - Request/reply: `Service` + `#[nats_api]` traits (`#[subject = ".."]`) generating
     `Trait::service(client, Arc::new(impl), config)` and `TraitClient`; queue groups for load
@@ -477,10 +492,11 @@ example binary and consume in another; confirm the `ref_id` header links the two
 **Goal:** be able to read, debug, and (carefully) extend the macros the whole framework rests on.
 
 **Content**
+
 - Declarative (`macro_rules!`) vs derive vs attribute macros; when each is the right tool. Reuse the
   examples already seen: `exception!`, `log!`, `context!`, `stats!`, `span!`, `console!`,
   `load_config!`, `asset_path!`, `write_str!`, `spawn_action!`.
-- Why some of these *must* be macros: capturing `file!()`/`line!()`/`module_path!()` at the call
+- Why some of these _must_ be macros: capturing `file!()`/`line!()`/`module_path!()` at the call
   site, and expanding `env!("CARGO_MANIFEST_DIR")` in the caller's crate.
 - `proc_macro` crates: `TokenStream`, `syn`, `quote`, `proc_macro2`; parsing, error reporting via
   `syn::Error::into_compile_error`.
@@ -508,6 +524,7 @@ the implementation rather than trusting the comment — and a cheap first PR for
 **Goal:** get work through review and into production.
 
 **Content**
+
 - The lint policy: root `Cargo.toml` `[workspace.lints]` (nursery + pedantic + a large restriction
   set), `clippy.toml` test relaxations, `.cargo/config.toml` `warnings = "deny"`. Walk the list of
   the ~15 lints that will actually bite a newcomer (`unwrap_used`, `indexing_slicing`,
@@ -552,51 +569,52 @@ action log record produced by their service and explains every field.
 
 ## Appendix A — Mental-model translation table
 
-| Java / TypeScript | Rust here | Notes |
-|---|---|---|
-| GC reference | ownership + borrow | Session 1 |
-| `null` / `undefined` | `Option<T>` | no null at all |
-| checked exception / `throw` | `Result<T, Exception>` + `?` | Session 5 |
-| stack trace | `Exception::backtrace()` over `source` chain | records `?` sites, not frames |
-| interface | trait | can be implemented for foreign types |
-| abstract class / inheritance | trait + composition | no inheritance |
-| generics (erased) | generics (monomorphized) | `dyn Trait` when you need erasure |
-| `synchronized` / `AtomicX` | `Mutex`, atomics, or `&'static` | Session 7 |
-| `CompletableFuture` / `Promise` | `Future` | lazy; cancellable by drop |
-| `@PostConstruct` / DI container | explicit wiring in `main`/`run` | no framework magic |
-| Spring `@RestController` | `#[api]` trait + `route()` | also generates the client |
-| Feign / generated OpenAPI client | `<Trait>Client` from `#[api]` | same declaration |
-| JPA entity | `#[derive(Entity)]` | no lazy loading, no session |
-| Bean Validation `@NotBlank` | `#[not_blank]` via `#[derive(Validate)]` | |
-| MDC / trace context | task-local `Action`, `context!` | Session 10 |
-| SLF4J logger | `log!` / `warn!` / `error!` inside an action | `console!` outside one |
-| Micrometer | `Metrics`, `Counter`, `metrics()` fns | |
-| try-with-resources | `Drop` (`Span`, `CounterGuard`, `TaskGuard`) | |
-| Maven module / npm package | crate; workspace member | |
-| `application.yml` profiles | `load_config!` + `EnvString` | `doc/config_design.md` |
+| Java / TypeScript                | Rust here                                    | Notes                                |
+| -------------------------------- | -------------------------------------------- | ------------------------------------ |
+| GC reference                     | ownership + borrow                           | Session 1                            |
+| `null` / `undefined`             | `Option<T>`                                  | no null at all                       |
+| checked exception / `throw`      | `Result<T, Exception>` + `?`                 | Session 5                            |
+| stack trace                      | `Exception::backtrace()` over `source` chain | records `?` sites, not frames        |
+| interface                        | trait                                        | can be implemented for foreign types |
+| abstract class / inheritance     | trait + composition                          | no inheritance                       |
+| generics (erased)                | generics (monomorphized)                     | `dyn Trait` when you need erasure    |
+| `synchronized` / `AtomicX`       | `Mutex`, atomics, or `&'static`              | Session 7                            |
+| `CompletableFuture` / `Promise`  | `Future`                                     | lazy; cancellable by drop            |
+| `@PostConstruct` / DI container  | explicit wiring in `main`/`run`              | no framework magic                   |
+| Spring `@RestController`         | `#[api]` trait + `route()`                   | also generates the client            |
+| Feign / generated OpenAPI client | `<Trait>Client` from `#[api]`                | same declaration                     |
+| JPA entity                       | `#[derive(Entity)]`                          | no lazy loading, no session          |
+| Bean Validation `@NotBlank`      | `#[not_blank]` via `#[derive(Validate)]`     |                                      |
+| MDC / trace context              | task-local `Action`, `context!`              | Session 10                           |
+| SLF4J logger                     | `log!` / `warn!` / `error!` inside an action | `console!` outside one               |
+| Micrometer                       | `Metrics`, `Counter`, `metrics()` fns        |                                      |
+| try-with-resources               | `Drop` (`Span`, `CounterGuard`, `TaskGuard`) |                                      |
+| Maven module / npm package       | crate; workspace member                      |                                      |
+| `application.yml` profiles       | `load_config!` + `EnvString`                 | `doc/config_design.md`               |
+| config                           |
 
 ## Appendix B — Macro index (what to reach for)
 
-| Macro | Use |
-|---|---|
-| `console!` | log outside an action (startup, shutdown) |
-| `log!` | trace line in the current action; `log!(exception = e)` |
-| `warn!` / `error!` | promote action severity, with an `error_code` |
-| `context!` | searchable key/value dimension on the action |
-| `stats!` | numeric aggregate on the action |
-| `span!("name")` | timed sub-operation; adds `name_elapsed` / `name_count` |
-| `exception!` | build an `Exception` with location, `severity`, `code`, `source` |
-| `validation_error!` | `VALIDATION_ERROR` at `Warn` → HTTP 400 |
-| `spawn_action!` | background task with its own action, linked by `ref_id` |
-| `load_config!` | startup config from file or env |
-| `asset_path!` | resolve a static asset in dev and in the image |
-| `write_str!` | infallible `write!` into a `String` |
-| `#[api]` | HTTP service + client from a trait |
-| `#[nats_api]` | NATS request/reply service + client from a trait |
-| `#[derive(Entity)]` | Postgres table mapping + typed column consts |
-| `#[derive(Validate)]` | request validation |
-| `#[derive(Enum8)]` | ClickHouse `Enum8` column mapping |
-| `#[integration_test]` | e2e test wrapped in a `System` + action |
+| Macro                 | Use                                                              |
+| --------------------- | ---------------------------------------------------------------- |
+| `console!`            | log outside an action (startup, shutdown)                        |
+| `log!`                | trace line in the current action; `log!(exception = e)`          |
+| `warn!` / `error!`    | promote action severity, with an `error_code`                    |
+| `context!`            | searchable key/value dimension on the action                     |
+| `stats!`              | numeric aggregate on the action                                  |
+| `span!("name")`       | timed sub-operation; adds `name_elapsed` / `name_count`          |
+| `exception!`          | build an `Exception` with location, `severity`, `code`, `source` |
+| `validation_error!`   | `VALIDATION_ERROR` at `Warn` → HTTP 400                          |
+| `spawn_action!`       | background task with its own action, linked by `ref_id`          |
+| `load_config!`        | startup config from file or env                                  |
+| `asset_path!`         | resolve a static asset in dev and in the image                   |
+| `write_str!`          | infallible `write!` into a `String`                              |
+| `#[api]`              | HTTP service + client from a trait                               |
+| `#[nats_api]`         | NATS request/reply service + client from a trait                 |
+| `#[derive(Entity)]`   | Postgres table mapping + typed column consts                     |
+| `#[derive(Validate)]` | request validation                                               |
+| `#[derive(Enum8)]`    | ClickHouse `Enum8` column mapping                                |
+| `#[integration_test]` | e2e test wrapped in a `System` + action                          |
 
 ## Appendix C — Suggested reading order of the codebase
 
@@ -604,9 +622,9 @@ For anyone joining after the program, read in this order:
 
 1. `app/demo/src/lib.rs` — the shape of an app
 2. `lib/framework/src/exception.rs` — the error type everything returns
-3. `lib/framework/src/log.rs` + `doc/action_future_design.md` — the observability core
+3. `lib/framework/src/log.rs` + `doc/action_future.md` — the observability core
 4. `lib/framework/src/system.rs` — lifecycle
-5. `lib/framework/src/config.rs` + `doc/config_design.md` — startup
+5. `lib/framework/src/config.rs` + `doc/config.md` — startup
 6. `lib/framework/src/web/` — the HTTP layer
 7. `lib/framework_db/` — persistence
 8. `lib/framework_nats/` — messaging
