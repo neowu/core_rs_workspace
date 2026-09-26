@@ -1,16 +1,6 @@
-# End-to-end tests
+# HTTP e2e test
 
-Integration crates live under `test/` and use `#[integration_test]` to initialize the
-framework and run each test in an action log. Tests exercise real services and
-transports, own their shutdown signal, and assert observable results.
-
-Start required external services with Apple Container (`container start {service}`)
-before running their suites. HTTP tests need no external service.
-
-## HTTP
-
-Run `cargo test -p http_test`. Code:
-[`test/http_test`](../test/http_test), following [`test/nats_test`](../test/nats_test).
+Run `cargo test -p http_test`, no external service needed. Code: [`test/http_test`](../../test/http_test).
 
 - Start the framework `HttpServer` on a dynamically selected loopback port and send
   real HTTP requests with the framework `HttpClient`.
@@ -26,8 +16,8 @@ Run `cargo test -p http_test`. Code:
 - Verify requests fail after graceful server shutdown.
 
 The example contract uses `GreetRequest { name }` and `GreetResponse { greeting }`.
-See the [raw HTTP test](../test/http_test/tests/http_test.rs) and
-[API test](../test/http_test/tests/api_test.rs) for definitions and assertions.
+See the [raw HTTP test](../../test/http_test/tests/http_test.rs) and
+[API test](../../test/http_test/tests/api_test.rs) for definitions and assertions.
 
 | Example request | Response |
 | --- | --- |
@@ -41,4 +31,4 @@ See the [raw HTTP test](../test/http_test/tests/http_test.rs) and
 | `PUT /api/greet` with `{"name":""}` | `400`, error code `VALIDATION_ERROR` |
 | `POST /api/fail` | `500`, error code `TEST_FAILURE`, warning severity, message `expected failure` |
 
-The HTTP API contract is specified in [http_server_api.md](http_server_api.md).
+The HTTP API contract is specified in [http_server_api.md](../http_server_api.md).

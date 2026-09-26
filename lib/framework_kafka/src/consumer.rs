@@ -52,11 +52,13 @@ type MessageHandler<S> = Box<dyn Fn(S, Vec<BorrowedMessage>) -> Pin<Box<dyn Futu
 pub struct ConsumerConfig {
     pub poll_max_wait_time: Duration,
     pub poll_max_records: usize,
+    // "latest" or "earliest", where to start when the group has no committed offset for a partition
+    pub auto_offset_reset: &'static str,
 }
 
 impl Default for ConsumerConfig {
     fn default() -> Self {
-        Self { poll_max_wait_time: Duration::from_secs(1), poll_max_records: 1000 }
+        Self { poll_max_wait_time: Duration::from_secs(1), poll_max_records: 1000, auto_offset_reset: "latest" }
     }
 }
 
@@ -79,6 +81,7 @@ where
                 .set("group.id", group_id)
                 .set("bootstrap.servers", bootstrap_servers)
                 .set("enable.auto.commit", "false")
+                .set("auto.offset.reset", config.auto_offset_reset)
                 .set_log_level(RDKafkaLogLevel::Info)
                 .to_owned(),
             handlers: HashMap::new(),

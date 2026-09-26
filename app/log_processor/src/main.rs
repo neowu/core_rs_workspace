@@ -68,7 +68,7 @@ async fn main() -> Result<(), Exception> {
     let mut consumer = MessageConsumer::new(
         config.kafka_uri,
         env!("CARGO_BIN_NAME"),
-        &ConsumerConfig { poll_max_wait_time: Duration::from_secs(3), poll_max_records: 5_000 },
+        &ConsumerConfig { poll_max_wait_time: Duration::from_secs(3), poll_max_records: 5_000, ..Default::default() },
     );
     consumer.add_bulk_handler(&Topic::new("action-log-v2"), action_log_message_handler);
     consumer.add_bulk_handler(&Topic::new("stat"), stat_message_handler);

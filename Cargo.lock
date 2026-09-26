@@ -1325,6 +1325,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kafka_test"
+version = "1.0.0"
+dependencies = [
+ "framework",
+ "framework_kafka",
+ "framework_macro",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"

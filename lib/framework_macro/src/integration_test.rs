@@ -33,7 +33,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     function.sig.ident = Ident::new("__body", ident.span());
 
     Ok(quote! {
-        #[::tokio::test]
+        #[::tokio::test(flavor = "multi_thread")]
         #(#attrs)*
         #vis async fn #ident() {
             #function

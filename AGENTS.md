@@ -1,20 +1,16 @@
 # Overview
 
 Rust framework for server-side applications.
-Library crates under (`lib/`)
-Application crates under (`app/`)
 
-# e2e test
-
-under (`test/`), use apple container to start required services
-`container start {service}`
+Library crates: `lib/`
+Application crates: `app/`
+e2e test: `test/`, spec: `@spec/test/spec.md`
 
 # code style
 
-- only keep minimal comments
-- use `cargo +nightly fmt` to format code
+`@spec/code_style.md`
 
 # spec
 
-- update /spec to reflect what code and design changed
+- update `/spec` to reflect what code and design changed
 - for spec doc, only keep key design decisions / behaviour / requirements, always goes to code for impl details
