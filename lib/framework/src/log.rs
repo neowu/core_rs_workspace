@@ -257,7 +257,7 @@ pub trait VecContextValue {
 impl<T: Into<String>> VecContextValue for Vec<T> {
     #[inline]
     fn __into_context_value(self) -> ContextValues {
-        self.into_iter().map(Into::into).collect()
+        self.into_iter().map(T::into).collect()
     }
 }
 
