@@ -7,7 +7,6 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`appender.rs`](../lib/framework/src/appender.rs) · producers:
 [`web/server.rs`](../lib/framework/src/web/server.rs), [`task.rs`](../lib/framework/src/task.rs),
 [`framework_nats/src/consumer.rs`](../lib/framework_nats/src/consumer.rs) · consumers:
-[`cloud/gcloud.rs`](../lib/framework/src/cloud/gcloud.rs),
 [`framework_nats/src/appender.rs`](../lib/framework_nats/src/appender.rs),
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs) · siblings:
 [`action_future_design.md`](action_future_design.md),
@@ -122,9 +121,8 @@ collection has to be cheap, which is what the cost section below is about.
 
 Lines are appended into a single `String` (initial capacity 1 KB) separated by `'\n'`. Emitting it
 is then a move, not a join, and a trace of 200 lines costs one growing buffer instead of 200
-allocations. Consumers that want lines back split on `'\n'` —
-[`gcloud.rs`](../lib/framework/src/cloud/gcloud.rs) does, to emit one gcloud entry per line with an
-`insertId` that keeps them ordered under the action's trace id.
+allocations. Consumers that want lines back split on `'\n'`; `ConsoleAppender` writes the whole buffer to stderr
+in one write.
 
 `Span::clear()` exploits the same layout: a span records the buffer offset where it started, and
 `clear()` truncates back to it, so a long loop can keep the last iteration's trace without letting
@@ -227,8 +225,7 @@ rebuilt vectors. For a benchmark get (6 contexts, 2 stats) that is 19; a post ad
 `ContextValues` serializes as a json array even for the single value that it stores inline, so the
 representation change was invisible on the wire and no stored data or downstream schema moved.
 Collapsing a single value to a scalar happens **at the edge, per consumer**, where it is a display
-choice: `ConsoleAppender` prints `key=value`, gcloud's `serialize_key_value_tuple` writes a scalar
-field, and `log_processor_rs` routes single values to `context` and the rest to `multi_context`.
+choice: `ConsoleAppender` prints `key=value`, and `log_processor_rs` routes single values to `context` and the rest to `multi_context`.
 
 Doing it in the message instead would make the field's json type depend on the data, which every
 consumer would then have to handle — for a saving that only defers an allocation to the reader.
@@ -253,8 +250,14 @@ consumer would then have to handle — for a saving that only defers an allocati
 |---|---|
 | `ConsoleAppender` | one `ACTION: ..` line on stdout, trace on stderr |
 | `TraceAppender` | nothing but the trace, on stderr — used where the record is not wanted |
-| `GCloudAppender` | one json entry per action plus one per trace line, ordered by `insertId` |
 | `NatsAppender` | the `ActionMessage` json on `log.action`, plus console output for errors |
+
+Apps use `NatsAppender`; `ConsoleAppender` is only for `log_processor` / `log_processor_rs`, which
+cannot ship their own logs through the pipeline they run. The daemon writes stdout synchronously
+on a worker, which is acceptable because console output is at most two writes per action (record
+line, joined trace). There is deliberately no per-line appender (a gcloud json entry per trace line
+was removed): it turned one traced action into up to 2,000 blocking writes. The channel stays
+unbounded, logs are never dropped.
 
 `log_processor_rs` consumes `log.action` in batches and writes `action_rs` (one row per action) and
 `trace_rs` (one row per traced action), splitting single from multi-valued context, and single from

@@ -2,8 +2,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use framework::appender::ConsoleAppender;
 use framework::asset_path;
-use framework::cloud::GCloudAppender;
 use framework::config::EnvString;
 use framework::console;
 use framework::context;
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Exception> {
     consumer.add_bulk_handler(&Topic::new("event-v2"), event_message_handler);
     system.add_metrics(consumer.metrics());
 
-    let system = system.start_logger(GCloudAppender);
+    let system = system.start_logger(ConsoleAppender);
 
     let kibana_uri = config.kibana_uri;
     let banner = config.banner;

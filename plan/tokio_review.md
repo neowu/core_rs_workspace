@@ -30,18 +30,19 @@ Plan:
   `Semaphore` permit.
 - Update `spec/` kafka section.
 
-## 3. Appender does blocking stdout writes on a worker (medium)
+## 3. Appender does blocking stdout writes on a worker (medium) — done
 
-- `ConsoleAppender` / `GCloudAppender` `println!` per line; gcloud writes up to 2,000 trace lines per traced action,
-  each a `write(2)` (stdout is line-buffered), all within one poll. A slow log pipe blocks the worker.
-- Appender daemon (`lib/framework/src/system.rs`) handles one message per `recv()`.
-- Channel is `unbounded_channel`; a stalled stdout grows memory without limit.
+Done: removed `GCloudAppender`, see `spec/action_log.md` downstream section.
 
-Plan:
-- Drain with `recv_many` and write each batch through one `stdout().lock()` + `BufWriter`, flush once per batch.
-- Consider moving console/gcloud appender off the runtime onto a dedicated OS thread (`blocking_recv`); nats
-  appender stays async.
-- Open decision: keep unbounded (never lose logs) vs bounded + `try_send` with a dropped-count metric.
+`GCloudAppender` wrote one `println!` per trace line, up to 2,000 `write(2)` per traced action within one
+poll. Apps use `NatsAppender` (async); only `log_processor` / `log_processor_rs` use `ConsoleAppender`, at most
+two writes per action, so the remaining synchronous write is acceptable.
+
+Rejected:
+- `recv_many` + `BufWriter` per batch: an unbounded channel with queued messages already returns from `recv()`
+  without a wakeup, and without a per-line appender cross-message batching saves one or two writes per action.
+- dedicated OS thread for console output: not worth it for the two log processors.
+- bounded channel + dropped count: keep unbounded, never lose logs.
 
 ## 4. No runtime health metrics (medium)
 
