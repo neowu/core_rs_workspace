@@ -87,15 +87,15 @@ impl From<Action> for ActionMessage {
 pub struct MetricsMessage {
     pub id: String,
     pub timestamp: DateTime,
-    pub app: String,
-    pub host: String,
+    pub app: Cow<'static, str>,
+    pub host: Cow<'static, str>,
     pub severity: Severity,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
-    pub stats: Vec<(String, u64)>,
-    pub info: Vec<(String, String)>,
+    pub stats: Vec<(Cow<'static, str>, u64)>,
+    pub info: Vec<(Cow<'static, str>, String)>,
 }
 
 impl From<Metrics> for MetricsMessage {
@@ -110,13 +110,13 @@ impl From<Metrics> for MetricsMessage {
         MetricsMessage {
             id: metrics.id,
             timestamp: metrics.timestamp,
-            app: context.app.to_owned(),
-            host: context.host.clone(),
+            app: Cow::Borrowed(context.app),
+            host: Cow::Borrowed(&context.host),
             severity: metrics.severity,
             error_code,
             error_message,
-            stats: metrics.stats.into_iter().map(|(key, value)| (key.to_owned(), value)).collect(),
-            info: metrics.info.into_iter().map(|(key, value)| (key.to_owned(), value)).collect(),
+            stats: metrics.stats,
+            info: metrics.info,
         }
     }
 }

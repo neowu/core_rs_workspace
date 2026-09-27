@@ -90,7 +90,7 @@ impl Service {
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + use<> {
         let counter = Arc::clone(&self.counter);
         move |metrics| {
-            metrics.stats.push(("active_service_handlers", counter.max() as u64));
+            metrics.add_stat("active_service_handlers", counter.max() as u64);
         }
     }
 

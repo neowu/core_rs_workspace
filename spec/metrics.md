@@ -8,6 +8,10 @@ Code: [`lib/framework/src/metrics/collector.rs`](../lib/framework/src/metrics/co
 metrics through `System::add_metrics`. Framework stats plus each registered collector's stats go
 into the same record.
 
+Keys are `&'static str`, added through `Metrics::add_stat` / `add_info`. `MetricsMessage` holds
+them as `Cow<'static, str>`, as `ActionMessage` does. So the source app allocates nothing for keys,
+app or host, and only the log processor, running on another host, owns them after deserializing.
+
 ## Values cover the whole window, not one sample
 
 A 5s sample misses short spikes, so every stat is either a delta of a cumulative counter over the

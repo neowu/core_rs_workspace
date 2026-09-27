@@ -95,6 +95,6 @@ impl Database {
 
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
         let pool = Arc::clone(&self.pool);
-        move |metrics| metrics.stats.push(("active_db_conns", pool.active_count() as u64))
+        move |metrics| metrics.add_stat("active_db_conns", pool.active_count() as u64)
     }
 }

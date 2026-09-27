@@ -105,7 +105,7 @@ where
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + use<S> {
         let counter = Arc::clone(&self.counter);
         move |metrics| {
-            metrics.stats.push(("active_message_handlers", counter.max() as u64));
+            metrics.add_stat("active_message_handlers", counter.max() as u64);
         }
     }
 

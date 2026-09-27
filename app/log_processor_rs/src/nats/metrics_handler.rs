@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use framework::appender::MetricsMessage;
@@ -22,8 +23,8 @@ struct MetricsRow<'a> {
     severity: Severity,
     error_code: Option<&'a str>,
     error_message: Option<&'a str>,
-    stats: Map<'a, String, u64>,
-    info: Map<'a, String, String>,
+    stats: Map<'a, Cow<'static, str>, u64>,
+    info: Map<'a, Cow<'static, str>, String>,
 }
 
 pub(crate) async fn metrics_message_handler(

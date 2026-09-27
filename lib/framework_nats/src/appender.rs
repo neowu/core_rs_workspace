@@ -37,10 +37,8 @@ impl NatsAppender {
 
 impl Appender for NatsAppender {
     async fn append_action(&self, action: ActionMessage) {
-        match to_json(&action) {
-            Ok(payload) => self.publish(ACTION_SUBJECT, payload).await,
-            Err(e) => console!("ERROR failed to serialize action, error={e}"),
-        }
+        let payload = to_json(&action).expect("action message must be serializable");
+        self.publish(ACTION_SUBJECT, payload).await;
 
         if action.severity == Severity::Error {
             ConsoleAppender.append_action(action).await;
@@ -48,10 +46,8 @@ impl Appender for NatsAppender {
     }
 
     async fn append_metrics(&self, metrics: MetricsMessage) {
-        match to_json(&metrics) {
-            Ok(payload) => self.publish(METRICS_SUBJECT, payload).await,
-            Err(e) => console!("ERROR failed to serialize metrics, error={e}"),
-        }
+        let payload = to_json(&metrics).expect("metrics message must be serializable");
+        self.publish(METRICS_SUBJECT, payload).await;
 
         if metrics.severity == Severity::Error {
             ConsoleAppender.append_metrics(metrics).await;

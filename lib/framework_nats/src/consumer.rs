@@ -77,7 +77,7 @@ pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
     MESSAGE_COUNTER.set(Counter::default()).unwrap_or_else(|_| panic!("consumer_metrics can only be called once"));
     |metrics| {
         if let Some(counter) = MESSAGE_COUNTER.get() {
-            metrics.stats.push(("active_message_handlers", counter.max() as u64));
+            metrics.add_stat("active_message_handlers", counter.max() as u64);
         }
     }
 }

@@ -163,8 +163,8 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
     cpu_stats.previous_container_cpu_time = container_cpu_time;
     cpu_stats.previous_process_cpu_time = process_cpu_time;
 
-    metrics.stats.push(("container_cpu_usage", (container_usage * 100.0).round() as u64));
-    metrics.stats.push(("process_cpu_usage", (process_usage * 100.0).round() as u64));
+    metrics.add_stat("container_cpu_usage", (container_usage * 100.0).round() as u64);
+    metrics.add_stat("process_cpu_usage", (process_usage * 100.0).round() as u64);
 
     if container_usage > 0.8 {
         metrics.update_error(
@@ -173,7 +173,7 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
             format!("cpu usage is high, usage={:.2}%", container_usage * 100.0),
         );
         // pressure stall information is only exposed by cgroup v2
-        metrics.info.push(("cpu_pressure", fs::read_to_string("/sys/fs/cgroup/cpu.pressure").unwrap_or_default()));
+        metrics.add_info("cpu_pressure", fs::read_to_string("/sys/fs/cgroup/cpu.pressure").unwrap_or_default());
     }
 }
 
@@ -193,7 +193,7 @@ fn collect_runtime_usage(metrics: &mut Metrics, runtime_stats: &mut RuntimeStats
     runtime_stats.previous_wall_time = now;
     runtime_stats.previous_busy_time = busy_time;
 
-    metrics.stats.push(("runtime_busy_usage", (usage * 100.0).round() as u64));
+    metrics.add_stat("runtime_busy_usage", (usage * 100.0).round() as u64);
 }
 
 fn runtime_busy_time(metrics: &RuntimeMetrics) -> Duration {
@@ -201,14 +201,14 @@ fn runtime_busy_time(metrics: &RuntimeMetrics) -> Duration {
 }
 
 fn collect_mem_usage(metrics: &mut Metrics, mem_stats: &MemoryStats) {
-    metrics.stats.push(("container_mem_max", mem_stats.max));
+    metrics.add_stat("container_mem_max", mem_stats.max);
 
     if let Some(vm_rss) = process_vm_rss(mem_stats.page_size) {
-        metrics.stats.push(("process_vm_rss", vm_rss));
+        metrics.add_stat("process_vm_rss", vm_rss);
     }
 
     if let Some(container_mem_used) = container_mem_used() {
-        metrics.stats.push(("container_mem_used", container_mem_used));
+        metrics.add_stat("container_mem_used", container_mem_used);
 
         let mem_usage = mem_stats.usage(container_mem_used);
         if mem_usage > 0.8 {
@@ -217,13 +217,13 @@ fn collect_mem_usage(metrics: &mut Metrics, mem_stats: &MemoryStats) {
                 "HIGH_MEM_USAGE",
                 format!("memory usage is high, usage={:.2}%", mem_usage * 100.0),
             );
-            metrics.info.push(("proc_status", fs::read_to_string("/proc/self/status").unwrap_or_default()));
-            metrics.info.push((
+            metrics.add_info("proc_status", fs::read_to_string("/proc/self/status").unwrap_or_default());
+            metrics.add_info(
                 "memory_stat",
                 fs::read_to_string("/sys/fs/cgroup/memory.stat")
                     .or_else(|_| fs::read_to_string("/sys/fs/cgroup/memory/memory.stat"))
                     .unwrap_or_default(),
-            ));
+            );
         }
     }
 }

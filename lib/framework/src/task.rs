@@ -74,7 +74,7 @@ impl Executor {
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
         let counter = Arc::clone(&self.counter);
         move |metrics| {
-            metrics.stats.push(("active_tasks", counter.max() as u64));
+            metrics.add_stat("active_tasks", counter.max() as u64);
         }
     }
 
