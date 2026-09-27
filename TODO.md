@@ -1,0 +1,2 @@
+- mask request json?
+- support session / cookies, considering how to mask

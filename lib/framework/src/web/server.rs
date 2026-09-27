@@ -117,7 +117,7 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
         }
         let cookies = CookieJar::from_headers(request.headers());
         for cookie in cookies.iter() {
-            log!("[cookie] {}={}", cookie.name(), LogValue::new(cookie.name(), cookie.value()));
+            log!("[cookie] {}={:?}", cookie.name(), cookie.value());
         }
 
         let client_info = client_info(&request, max_forwarded_ips);
@@ -150,7 +150,7 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
         let status = http_response.status().as_u16();
         context!(response_status = status.to_string());
         for (name, value) in http_response.headers() {
-            log!("[header] {name}={:?}", LogValue::new(name.as_str(), value));
+            log!("[header] {name}={value:?}");
         }
         Ok(http_response)
     })
