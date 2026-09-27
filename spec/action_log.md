@@ -11,7 +11,7 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs) · siblings:
 [`action_future_design.md`](action_future_design.md),
 [`action_alloc_stats.md`](action_alloc_stats.md), [`task_executor.md`](task_executor.md),
-[`clickhouse.md`](clickhouse.md),
+[`clickhouse.md`](clickhouse.md), [`metrics.md`](metrics.md),
 [`benchmark/http_server.md`](benchmark/http_server.md)
 
 An **action** is one unit of work an app performs — an http request, a consumed message, a scheduled
@@ -34,7 +34,7 @@ buffer, and the whole thing leaves the request path over a channel.
 | `severity`, `error_code`, `error_message` | promoted from log lines and exceptions | see severity promotion |
 | `ref_ids` | the caller's id, off the transport header | how a call chain is reassembled |
 | `context` | `context!(key = value)` | ordered key → **list** of values, queryable dimensions |
-| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes` always |
+| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes`/`poll_elapsed`/`poll_count` always |
 | `logs` | `log!`, `warn!`, `error!`, `span!` | the trace buffer, emitted only when it is worth keeping |
 
 ## Lifecycle
@@ -104,6 +104,16 @@ vector allocates exactly once.
 `alloc_count` and `alloc_bytes` come from framework's counting `#[global_allocator]`, installed
 unconditionally, which charges each action the counter delta over its own polls. Design, cost and the limits of the attribution:
 [`action_alloc_stats.md`](action_alloc_stats.md).
+
+### Poll stats show how long an action held a worker
+
+`ActionFuture` times every `inner.poll`: `poll_elapsed` (nanos, summed) and `poll_count`. Time
+spent `Pending` — IO wait and waiting to be scheduled again — is outside the window, so
+`poll_elapsed` is the action's own synchronous work (cpu, blocking syscalls, std mutex waits, and any
+cpu throttling that hit mid poll). `elapsed - poll_elapsed` is the time spent off the worker, and
+`poll_elapsed / poll_count` separates one long blocking poll from many short ones. No per action
+max: an action's scope is small enough that the average points at the culprit. Runtime-wide
+saturation is `MetricsCollector`'s job, [`metrics.md`](metrics.md).
 
 ### The trace is always collected and rarely emitted
 
@@ -278,7 +288,7 @@ than one, where the `HashMap` used to keep only the last.
 
 Context and stats use flat keys shared by the framework and applications. All applications are
 under our control and must not reuse framework-generated keys: for example, `client` in context,
-`elapsed`, `alloc_count` and `alloc_bytes` in stats, and performance-counter keys such as `db_count`
+`elapsed`, `alloc_count`, `alloc_bytes`, `poll_elapsed` and `poll_count` in stats, and performance-counter keys such as `db_count`
 and `db_elapsed`. This also
 applies to Java core-ng messages handled by `log_processor`.
 

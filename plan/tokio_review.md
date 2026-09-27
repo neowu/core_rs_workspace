@@ -44,18 +44,18 @@ Rejected:
 - dedicated OS thread for console output: not worth it for the two log processors.
 - bounded channel + dropped count: keep unbounded, never lose logs.
 
-## 4. No runtime health metrics (medium)
+## 4. No runtime health metrics (medium) — done
+
+Done: `poll_elapsed`/`poll_count` per action, `runtime_busy_usage` in metrics, see `spec/metrics.md` and `spec/action_log.md`.
 
 Article principle #1: measure schedule latency before optimizing.
 
-Plan:
-- Lag probe in `MetricsCollector`: measure how late `sleep` wakes up, report `runtime_schedule_lag`.
-- Report stable tokio metrics from `Handle::current().metrics()`: `global_queue_depth`, `num_alive_tasks`.
-- Per action poll stats in `ActionFuture` (next to `ActionAllocs::poll`): `poll_elapsed` (sum) and
-  `max_poll_elapsed`, surfaces long polls per action in clickhouse.
-- CPU throttling: read `nr_throttled` / `throttled_usec` from `cpu.stat` (cgroup v2), report deltas; CFS quota
-  throttling is the container equivalent of the article's worker unpark delays.
-- Update `spec/action_log.md` / metrics spec with the new stats.
+Rejected:
+- lag probe (`runtime_schedule_lag`): needs a 10–100ms sampling loop plus a peak tracker to catch spikes,
+  and only says tasks waited, not why.
+- `max_poll_elapsed` per action: the action scope is small, `poll_elapsed / poll_count` is enough.
+- `global_queue_depth`, `num_alive_tasks`: instantaneous gauges sampled every 5s miss spikes.
+- cfs throttling stats: tokio workers already match the cgroup quota, `container_cpu_usage` covers it.
 
 ## 5. TaskExecutor global mutex (low)
 

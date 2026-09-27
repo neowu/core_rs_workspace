@@ -2,6 +2,8 @@ use std::fs;
 use std::time::Duration;
 use std::time::Instant;
 
+use tokio::runtime::Handle;
+use tokio::runtime::RuntimeMetrics;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -18,6 +20,7 @@ type Collector = Box<dyn Fn(&mut Metrics) + Send>;
 pub(crate) struct MetricsCollector {
     cpu_stats: Option<CpuStats>,
     mem_stats: Option<MemoryStats>,
+    runtime_stats: Option<RuntimeStats>,
     collectors: Vec<Collector>,
 }
 
@@ -48,7 +51,12 @@ impl MetricsCollector {
             None
         };
 
-        Self { cpu_stats, mem_stats, collectors: Vec::new() }
+        let runtime_stats = Handle::try_current().ok().map(|handle| {
+            let metrics = handle.metrics();
+            RuntimeStats { previous_wall_time: now, previous_busy_time: runtime_busy_time(&metrics), metrics }
+        });
+
+        Self { cpu_stats, mem_stats, runtime_stats, collectors: Vec::new() }
     }
 
     pub(crate) fn add(&mut self, collector: impl Fn(&mut Metrics) + Send + 'static) {
@@ -90,6 +98,10 @@ impl MetricsCollector {
             collect_mem_usage(&mut metrics, mem_stats);
         }
 
+        if let Some(runtime_stats) = &mut self.runtime_stats {
+            collect_runtime_usage(&mut metrics, runtime_stats);
+        }
+
         for collector in &self.collectors {
             collector(&mut metrics);
         }
@@ -111,6 +123,12 @@ impl CpuStats {
         let cpu_used = current.saturating_sub(prev) as f64 / wall_elapsed as f64;
         cpu_used / self.cpu_max
     }
+}
+
+struct RuntimeStats {
+    metrics: RuntimeMetrics,
+    previous_wall_time: Instant,
+    previous_busy_time: Duration,
 }
 
 struct MemoryStats {
@@ -157,6 +175,29 @@ fn collect_cpu_usage(metrics: &mut Metrics, cpu_stats: &mut CpuStats) {
         // pressure stall information is only exposed by cgroup v2
         metrics.info.push(("cpu_pressure", fs::read_to_string("/sys/fs/cgroup/cpu.pressure").unwrap_or_default()));
     }
+}
+
+// share of worker capacity spent polling tasks, 100% = every worker busy for the whole window.
+// a worker publishes busy time when it parks or runs maintenance, so one long poll lands in the window
+// it ends in, which can then read over 100%
+fn collect_runtime_usage(metrics: &mut Metrics, runtime_stats: &mut RuntimeStats) {
+    let now = Instant::now();
+    let busy_time = runtime_busy_time(&runtime_stats.metrics);
+    let capacity =
+        now.duration_since(runtime_stats.previous_wall_time).as_secs_f64() * runtime_stats.metrics.num_workers() as f64;
+    if capacity == 0.0 {
+        return;
+    }
+    let usage = busy_time.saturating_sub(runtime_stats.previous_busy_time).as_secs_f64() / capacity;
+
+    runtime_stats.previous_wall_time = now;
+    runtime_stats.previous_busy_time = busy_time;
+
+    metrics.stats.push(("runtime_busy_usage", (usage * 100.0).round() as u64));
+}
+
+fn runtime_busy_time(metrics: &RuntimeMetrics) -> Duration {
+    (0..metrics.num_workers()).map(|worker| metrics.worker_total_busy_duration(worker)).sum()
 }
 
 fn collect_mem_usage(metrics: &mut Metrics, mem_stats: &MemoryStats) {

@@ -5,6 +5,7 @@ use std::fmt::Formatter;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Instant;
 
 use pin_project_lite::pin_project;
 use serde::Deserialize;
@@ -100,6 +101,9 @@ pin_project! {
         #[pin]
         inner: TaskLocalFuture<RefCell<Action>, F>,
         allocs: ActionAllocs,
+        // nanos spent inside inner poll, i.e. holding the worker thread; waiting is not counted
+        poll_elapsed: u64,
+        poll_count: u64,
     }
 }
 
@@ -110,7 +114,12 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(action), task), allocs: ActionAllocs::new() }
+    ActionFuture {
+        inner: CURRENT_ACTION.scope(RefCell::new(action), task),
+        allocs: ActionAllocs::new(),
+        poll_elapsed: 0,
+        poll_count: 0,
+    }
 }
 
 impl<F, R> Future for ActionFuture<F>
@@ -121,9 +130,12 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        // not `ready!`: the allocation delta has to be taken on the Pending path too, or every poll
-        // but the last is lost
+        // not `ready!`: the allocation and poll stats have to be taken on the Pending path too, or every
+        // poll but the last is lost
+        let start = Instant::now();
         let polled = this.allocs.poll(|| this.inner.as_mut().poll(cx));
+        *this.poll_elapsed += start.elapsed().as_nanos() as u64;
+        *this.poll_count += 1;
         let Poll::Ready(result) = polled else {
             return Poll::Pending;
         };
@@ -136,6 +148,8 @@ where
             current_action.log_exception(e);
         }
         this.allocs.write_to(&mut current_action);
+        current_action.add_stat("poll_elapsed", *this.poll_elapsed);
+        current_action.add_stat("poll_count", *this.poll_count);
         current_action.finish();
 
         if let Some(sender) = SENDER.get() {
