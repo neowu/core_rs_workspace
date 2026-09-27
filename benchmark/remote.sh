@@ -44,6 +44,25 @@ remote_result=/opt/${name}_test_client/result.json
 perf_data=/opt/${name}_test_server/perf.data
 report="$target_dir/release/report"
 
+time=$(date +%Y-%m-%dT%H:%M:%S)
+dir="report/$(date +%F)_$name"
+stamp=$(date +%H%M%S)
+
+# the source rsynced below is the working tree, so a result names its full commit and, when the tree
+# differs from it, keeps the diff beside it (untracked files included): the build can be redone exactly;
+# taken before the build, so an edit made while it runs is not recorded as built
+commit=$(git rev-parse HEAD)
+fields=("time=$time" "commit=$commit")
+if [ -n "$(git status --porcelain)" ]; then
+    mkdir -p "$dir"
+    diff="$dir/$stamp.diff"
+    {
+        git diff --binary HEAD
+        git ls-files --others --exclude-standard -z | xargs -0 -r -n1 git diff --binary --no-index /dev/null || true
+    } > "$diff"
+    fields+=("diff=$(basename "$diff")")
+fi
+
 # $1 is the cargo profile, the rest are extra rustflags for the remote build
 build() {
     local profile=$1
@@ -140,10 +159,7 @@ else
 fi
 start
 
-time=$(date +%Y-%m-%dT%H:%M:%S)
-dir="report/$(date +%F)_$name"
-stamp=$(date +%H%M%S)
-fields=("time=$time" "commit=$(git rev-parse --short HEAD 2> /dev/null || echo none)" "profile=$PROFILE")
+fields+=("profile=$PROFILE")
 
 if [ "$mode" = "run" ]; then
     run_client "$dir/$stamp.json" "$@"

@@ -17,6 +17,13 @@ Provisioned on the server host, outside of a run:
 | `nats-server` | 4222 | systemd service |
 | postgres | 5432 | user `postgres`, no password (trust auth), database `postgres` |
 
+## Comparing across days
+
+The hosts do not keep their cpu platform across restarts (the server was AMD EPYC 7B12 on
+2026-09-23, Intel Xeon 2.20GHz on 2026-09-27, ~35% more cpu µs/req for the same code), so a result
+is only comparable with one from the same server cpu (the report's machine line). To compare with
+an earlier day, rebuild that day's commit (`run.commit`, plus `run.diff` if any) on today's hosts.
+
 ## A/B builds
 
 To compare code variants, build each once on the server host, keep the binaries side by side and

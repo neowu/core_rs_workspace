@@ -104,8 +104,12 @@ CREATE TABLE "benchmark_entity" (
   named by time (`HHMMSS.json`, `HHMMSS_profile.json`). The html `report/<date>_<name>.html` is
   derived from every file in it, so regenerating never loses anything.
 - `report run <result.json> [key=value]...` adds what only the building host knows (`time`,
-  `commit`, cargo `profile`) under `run`, then renders; `report render <dir>` re-renders by hand.
-- The report shows one machine line per distinct server/client/build combination in the day.
+  `commit`, `diff`, cargo `profile`) under `run`, then renders; `report render <dir>` re-renders by hand.
+- **Every run can be rebuilt exactly**: `remote.sh` builds the working tree, not a commit, so `commit`
+  is the full hash and a tree that differs from it (untracked files included) is saved as
+  `HHMMSS.diff` beside the result, named by `diff`. Both are taken before the build starts. The
+  report shows the commit on every run row and links the diff.
+- The report shows one machine line per distinct server/client/cargo profile combination in the day.
 
 ## Remote workflow
 

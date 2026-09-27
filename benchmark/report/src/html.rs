@@ -71,10 +71,10 @@ pub fn render(dir: &Path, results: &[Value]) -> PathBuf {
     }
 
     if !runs.is_empty() {
-        runs_table(&mut page, &runs);
+        runs_table(&mut page, &runs, &file);
     }
     for profile in &profiles {
-        profile_section(&mut page, profile);
+        profile_section(&mut page, profile, &file);
     }
     page.push_str(FOOTER);
     page.push('\n');
@@ -84,12 +84,12 @@ pub fn render(dir: &Path, results: &[Value]) -> PathBuf {
     html
 }
 
-fn runs_table(page: &mut String, runs: &[&Value]) {
+fn runs_table(page: &mut String, runs: &[&Value], dir: &str) {
     page.push_str(
         "<div class=\"wrap\"><table><thead><tr>\n\
          <th>time</th><th>scenario</th><th>proto</th><th>conc</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
          <th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>p99.9 ms</th>\n\
-         <th>cpu µs/req</th><th>server cpu %</th><th>client cpu %</th><th>peak rss MB</th>\n\
+         <th>cpu µs/req</th><th>server cpu %</th><th>client cpu %</th><th>peak rss MB</th><th>commit</th>\n\
          </tr></thead><tbody>\n",
     );
     let mut bad = 0;
@@ -114,6 +114,7 @@ fn runs_table(page: &mut String, runs: &[&Value]) {
         page.push_str(&cell(run, "/server/cpu_pct", ""));
         page.push_str(&cell(run, "/client/cpu_pct", ""));
         page.push_str(&cell(run, "/server/peak_rss_mb", ""));
+        let _ = write!(page, "<td class=\"t\">{}</td>", build(run, dir));
         page.push_str("</tr>\n");
         if number(run, "/result/failed") + number(run, "/result/errors") > 0.0 {
             bad += 1;
@@ -125,7 +126,19 @@ fn runs_table(page: &mut String, runs: &[&Value]) {
     }
 }
 
-/// Server and client machines, the build, as one line.
+/// The source a run was built from: its commit, short with the full hash on hover, and the diff of
+/// the working tree against it when there was one, which lives beside the result in `dir`.
+fn build(result: &Value, dir: &str) -> String {
+    let commit = get(result, "/run/commit");
+    let mut text = format!("<span title=\"{}\">{}</span>", esc(&commit), esc(commit.get(..7).unwrap_or(&commit)));
+    let diff = get(result, "/run/diff");
+    if !diff.is_empty() {
+        let _ = write!(text, " <a href=\"{}\">+diff</a>", esc(&format!("{dir}/{diff}")));
+    }
+    text
+}
+
+/// Server and client machines, the cargo profile, as one line.
 fn machines(result: &Value) -> String {
     let field = |pointer: &str| esc(&get(result, pointer));
     let mut line = format!(
@@ -144,11 +157,11 @@ fn machines(result: &Value) -> String {
     if result.get("broker").is_some() {
         let _ = write!(line, " · nats {} at {}", field("/broker/version"), field("/broker/url"));
     }
-    let _ = write!(line, " · commit {} · cargo profile {}", field("/run/commit"), field("/run/profile"));
+    let _ = write!(line, " · cargo profile {}", field("/run/profile"));
     line
 }
 
-fn profile_section(page: &mut String, result: &Value) {
+fn profile_section(page: &mut String, result: &Value, dir: &str) {
     let field = |pointer: &str| esc(&get(result, pointer));
     let _ = writeln!(
         page,
@@ -158,10 +171,11 @@ fn profile_section(page: &mut String, result: &Value) {
     );
     let _ = writeln!(
         page,
-        "<p class=\"meta\">{}<br>{} s warmup + {} s measured · {} concurrent {} streams · {} client threads · \
+        "<p class=\"meta\">{}<br>built from {} · {} s warmup + {} s measured · {} concurrent {} streams · {} client threads · \
          {} server threads · {} req/s · p99 {} ms · {} µs server cpu / request · \
          server cpu {}% · client cpu {}% · {} perf samples</p>",
         machines(result),
+        build(result, dir),
         field("/config/warmup"),
         field("/config/duration"),
         field("/config/concurrency"),
