@@ -322,9 +322,9 @@ async fn insert_to_clickhouse(
         }
     }
 
-    clickhouse.insert_borrowed::<ActionRow>("action", &actions).await?;
+    clickhouse.insert("action", &actions).await?;
     if !traces.is_empty() {
-        clickhouse.insert_borrowed::<TraceRow>("trace", &traces).await?;
+        clickhouse.insert("trace", &traces).await?;
     }
     Ok(())
 }

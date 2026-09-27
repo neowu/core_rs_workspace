@@ -63,7 +63,7 @@ async fn map() -> Result<(), Exception> {
         // three empty maps rather than nulls
         MapEntity { id: "2", context: Map(&empty), multi_context: Map(&[]), stats: Map(&[]) },
     ];
-    clickhouse.insert_borrowed::<MapEntity>("map_entity", &entities).await?;
+    clickhouse.insert("map_entity", &entities).await?;
     flush(&clickhouse).await?;
 
     let entity = clickhouse
@@ -90,7 +90,7 @@ async fn map() -> Result<(), Exception> {
     // this to keep a context key an action set twice rather than dropping one of the two values.
     let repeated = [("path".to_owned(), "/a".to_owned()), ("path".to_owned(), "/b".to_owned())];
     let entities = [MapEntity { id: "3", context: Map(&repeated), multi_context: Map(&[]), stats: Map(&[]) }];
-    clickhouse.insert_borrowed::<MapEntity>("map_entity", &entities).await?;
+    clickhouse.insert("map_entity", &entities).await?;
     flush(&clickhouse).await?;
 
     let (value, entries) = clickhouse

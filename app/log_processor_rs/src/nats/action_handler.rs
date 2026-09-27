@@ -104,9 +104,9 @@ pub(crate) async fn action_message_handler(
         actions.push(to_action_row(payload));
     }
 
-    state.clickhouse.insert_borrowed::<ActionRow>("action_rs", &actions).await?;
+    state.clickhouse.insert("action_rs", &actions).await?;
     if !traces.is_empty() {
-        state.clickhouse.insert_borrowed::<TraceRow>("trace_rs", &traces).await?;
+        state.clickhouse.insert("trace_rs", &traces).await?;
     }
     Ok(())
 }

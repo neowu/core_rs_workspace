@@ -111,7 +111,7 @@ enum StatResult {
 
 async fn insert_to_clickhouse(clickhouse: &ClickHouse, messages: &[Message<StatMessage>]) -> Result<(), Exception> {
     let stats: Vec<StatRow> = messages.iter().map(|message| to_stat_row(&message.payload)).collect();
-    clickhouse.insert_borrowed::<StatRow>("stat", &stats).await
+    clickhouse.insert("stat", &stats).await
 }
 
 fn to_stat_row(payload: &StatMessage) -> StatRow<'_> {

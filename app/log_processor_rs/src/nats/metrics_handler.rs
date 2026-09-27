@@ -40,7 +40,7 @@ pub(crate) async fn metrics_message_handler(
         rows.push(to_metrics_row(payload));
     }
 
-    state.clickhouse.insert_borrowed::<MetricsRow>("metrics_rs", &rows).await?;
+    state.clickhouse.insert("metrics_rs", &rows).await?;
     Ok(())
 }
 

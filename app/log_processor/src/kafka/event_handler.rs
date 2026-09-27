@@ -122,7 +122,7 @@ enum EventResult {
 
 async fn insert_to_clickhouse(clickhouse: &ClickHouse, messages: &[Message<EventMessage>]) -> Result<(), Exception> {
     let events: Vec<EventRow> = messages.iter().map(|message| to_event_row(&message.payload)).collect();
-    clickhouse.insert_borrowed::<EventRow>("event", &events).await
+    clickhouse.insert("event", &events).await
 }
 
 fn to_event_row(payload: &EventMessage) -> EventRow<'_> {

@@ -1,11 +1,12 @@
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 pub use clickhouse;
 use clickhouse::Client;
 use clickhouse::Row;
 use clickhouse::RowOwned;
 use clickhouse::RowRead;
-use clickhouse::RowWrite;
+use clickhouse::_priv::RowKind;
 use clickhouse::query::Query;
 use framework::console;
 use framework::exception;
@@ -96,28 +97,17 @@ impl ClickHouse {
         Ok(rows)
     }
 
-    // a row that owns its data, which is the usual one; the row type comes from the slice
+    // rows may own their data or borrow it, e.g. a row pointing into the message it is written for,
+    // so a batch costs no copy of the data it already has; either way the row type comes from the slice
     pub async fn insert<T>(&self, table: &str, rows: &[T]) -> Result<(), Exception>
     where
-        T: RowOwned + RowWrite,
-    {
-        // `RowOwned` is `for<'a> Row<Value<'a> = Self>`, so an owned slice is already the borrowed form
-        self.insert_borrowed::<T>(table, rows).await
-    }
-
-    // a row that borrows from whatever it was built from, e.g. a row pointing into the message it
-    // is written for, so a batch costs no copy of the data it already has. clickhouse takes those
-    // as `T::Value<'_>` - the same `T` with its data lifetime pinned to the slice - which no longer
-    // determines `T`, so the row type is named: `insert_borrowed::<ActionRow>("action", &rows)`.
-    pub async fn insert_borrowed<T>(&self, table: &str, rows: &[T::Value<'_>]) -> Result<(), Exception>
-    where
-        T: Row + RowWrite,
+        T: Row + Serialize,
     {
         let _span = span!("clickhouse");
         // previously it used setting .with_setting("async_insert", "1").with_setting("wait_for_async_insert", "0");
         // but found silent data loss on clickhouse, no error on both side, no error in "system.asynchronous_insert_log"
         // so here to use without, message handler will wait until success
-        let mut inserter = self.client.inserter::<T>(table);
+        let mut inserter = self.client.inserter::<FixedRow<T>>(table);
         for row in rows {
             inserter
                 .write(row)
@@ -131,4 +121,19 @@ impl ClickHouse {
         stats!(clickhouse_write_rows = quantities.rows, clickhouse_write_bytes = quantities.bytes);
         Ok(())
     }
+}
+
+// clickhouse writes a `T::Value<'_>` - `T` re-bound to the slice's lifetime - and a projection
+// can't be inverted to infer `T`, while bounding `T: Row<Value<'a> = T>` next to `RowWrite` trips
+// rustc ("one type is more general than the other"). a row whose `Value<'_>` is `T` itself, of
+// whatever lifetime, takes `&T` as is. forwards clickhouse's `#[doc(hidden)]` row metadata, which
+// is only what `#[derive(Row)]` generates, but isn't covered by semver.
+struct FixedRow<T>(PhantomData<T>);
+
+impl<T: Row> Row for FixedRow<T> {
+    const NAME: &'static str = T::NAME;
+    const COLUMN_NAMES: &'static [&'static str] = T::COLUMN_NAMES;
+    const COLUMN_COUNT: usize = T::COLUMN_COUNT;
+    const KIND: RowKind = T::KIND;
+    type Value<'a> = T;
 }

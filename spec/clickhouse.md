@@ -12,7 +12,7 @@ Code: [`lib/framework_clickhouse/src/lib.rs`](../lib/framework_clickhouse/src/li
 [`action_log.md`](action_log.md)
 
 A thin wrapper over the `clickhouse` crate: a client, four statements (`execute`, `select_one`,
-`select_all`, `insert`/`insert_borrowed`), and the column types the crate does not carry itself.
+`select_all`, `insert`), and the column types the crate does not carry itself.
 It adds nothing to the protocol — what it adds is an action-log span and write/read stats on every
 statement, and a set of newtypes that make a rust value serialize correctly on **both** wires the
 crate uses.
@@ -79,25 +79,19 @@ should show `2026-07-15`, not the nested debug of the inner type, and not a raw 
 ## Rows: owned and borrowed
 
 `clickhouse::Row` distinguishes a row that owns its data (`RowOwned`) from one that borrows
-(`Row` with a `Value<'a>` GAT). Both are supported, as two methods:
+(`Row` with a `Value<'a>` GAT). `insert(table, &[T])` takes both, with `T: Row + Serialize`, and
+the row type is always inferred from the slice.
 
-| method | rows | row type |
-|---|---|---|
-| `insert` | `&[T]`, `T: RowOwned` | inferred from the slice |
-| `insert_borrowed` | `&[T::Value<'_>]` | named: `insert_borrowed::<ActionRow>(..)` |
+The crate's own writer takes `&T::Value<'_>` — the same `T` with its data lifetime re-bound — and a
+projection does not determine `T`, so passing rows straight through would need a turbofish at every
+borrowed call site. The direct fix, `T: Row<Value<'a> = T> + RowWrite`, is rejected by rustc ("one
+type is more general than the other": the equality cannot be unified with `RowWrite`'s higher-ranked
+supertrait, also when moved into a helper trait). Instead `insert` writes through a private
+`FixedRow<T>` row whose `Value<'_>` is `T` itself, forwarding `T`'s row metadata.
 
-A borrowed row reaches the crate as `T::Value<'_>` — the same `T` with its data lifetime pinned to
-the slice — which no longer determines `T`, hence the turbofish. Keeping them separate means the
-ordinary case, a row built and owned by the caller, stays inferred; only a row that points into
-something else pays the annotation.
-
-They are one implementation: `RowOwned` is defined as `for<'a> Row<Value<'a> = Self>`, so an owned
-slice already *is* the borrowed form and `insert` is a call to `insert_borrowed`.
-
-A single inferred method covering both is not expressible today. `T: Row<Value<'a> = T> + RowWrite`
-fails to unify against `RowWrite`'s higher-ranked supertrait, and spelling that bound out as
-`for<'x> T::Value<'x>: Serialize` fails differently, since the `for<'x>` cannot be constrained to
-outlive `'a`.
+That metadata (`NAME`, `COLUMN_NAMES`, `COLUMN_COUNT`, `KIND`, and `RowKind` from `clickhouse::_priv`)
+is `#[doc(hidden)]` and outside the crate's semver; it is exactly what `#[derive(Row)]` generates, so
+a crate upgrade that changes it breaks the derive path too and shows up as a compile error here.
 
 ### A borrowed row is how a consumer avoids copying a message it already has
 

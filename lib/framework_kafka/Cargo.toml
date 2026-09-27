@@ -19,7 +19,7 @@ rdkafka = { version = "*", default-features = false, features = [
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-rdkafka = { version = "0.36", default-features = false, features = [
+rdkafka = { version = "*", default-features = false, features = [
     "dynamic-linking",
     "tokio",
     "zstd",
