@@ -63,8 +63,12 @@ in the action record, which is the thing built to hold it.
 - A spawned task is registered before it starts and removed by a guard when it finishes, so the
   registry is exactly the set of in-flight tasks whatever the task does or panics on.
 - `shutdown` stops accepting new tasks, then waits up to its timeout. It returns `None` if everything
-  drained, otherwise the names still in flight at the deadline — which callers log and the runtime
-  then abandons. The list is names, so duplicates are expected and meaningful.
+  drained, otherwise the names still in flight at the deadline — which callers log as abandoned and
+  the runtime drops on exit. The list is names, so duplicates are expected and meaningful.
+- **Overrunning tasks are not aborted.** An abort would need an `AbortHandle` per task in the
+  registry, a third lock (or one held across spawn) on the per-request path, and would buy nothing
+  observable: a dropped action emits nothing ([`action_future.md`](action_future.md)), and every
+  caller exits right after shutdown, when the runtime drops what is left anyway.
 - Ordering is the runtime's. Nothing here promises tasks start, finish or drain in spawn order.
 
 ## Known gaps

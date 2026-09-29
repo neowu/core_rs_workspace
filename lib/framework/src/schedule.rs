@@ -116,8 +116,8 @@ where
             });
         }
         handles.join_all().await;
-        if let Some(aborted) = self.executor.shutdown(Duration::from_secs(15)).await {
-            console!("WARN job aborted, jobs={aborted:?}");
+        if let Some(abandoned) = self.executor.shutdown(Duration::from_secs(15)).await {
+            console!("WARN job still running after shutdown timeout, abandoned, jobs={abandoned:?}");
         }
         console!("scheduler stopped");
     }

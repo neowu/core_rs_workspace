@@ -79,8 +79,8 @@ impl Executor {
     }
 
     pub async fn shutdown(&self, timeout: Duration) {
-        if let Some(aborted) = self.executor.shutdown(timeout).await {
-            console!("WARN executor tasks aborted, tasks={aborted:?}");
+        if let Some(abandoned) = self.executor.shutdown(timeout).await {
+            console!("WARN executor tasks still running after shutdown timeout, abandoned, tasks={abandoned:?}");
         } else {
             console!("executor stopped");
         }
@@ -121,6 +121,7 @@ impl TaskExecutor {
         });
     }
 
+    // tasks still running at the timeout are not aborted, only named; the runtime drops them on exit
     pub async fn shutdown(&self, timeout: Duration) -> Option<Vec<&'static str>> {
         self.tracker.close();
         if time::timeout(timeout, self.tracker.wait()).await.is_ok() {

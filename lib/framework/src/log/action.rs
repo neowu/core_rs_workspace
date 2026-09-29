@@ -149,13 +149,13 @@ impl Action {
             logs.push_str("] ");
         }
 
-        let start = logs.len();
-        logs.write_fmt(message).expect("writing to a String cannot fail");
-        logs.push('\n');
-        if logs.len() - start > max_message_len {
-            let end = start + logs[start..].truncate_to_max(max_message_len).len();
-            logs.truncate(end); // end is a char boundary by construction
+        // bounded while formatting, a large body is never copied in whole only to be cut
+        let mut writer = BoundedWriter { out: logs, remaining: max_message_len, truncated: false };
+        let _: fmt::Result = writer.write_fmt(message); // errs only once the bound is hit, formatting stops there
+        if writer.truncated {
             logs.push_str("...(truncated)\n");
+        } else {
+            logs.push('\n');
         }
 
         if !over_limit && logs.len() >= max_log_bytes {
@@ -171,6 +171,26 @@ impl Action {
                 message: error_message.truncate_to_max(MAX_ERROR_MESSAGE_LEN).to_owned(),
             });
         }
+    }
+}
+
+struct BoundedWriter<'a> {
+    out: &'a mut String,
+    remaining: usize,
+    truncated: bool,
+}
+
+impl fmt::Write for BoundedWriter<'_> {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        if value.len() <= self.remaining {
+            self.out.push_str(value);
+            self.remaining -= value.len();
+            return Ok(());
+        }
+        self.out.push_str(value.truncate_to_max(self.remaining));
+        self.remaining = 0; // nothing after the cut, even if a Display impl ignores the error
+        self.truncated = true;
+        Err(fmt::Error)
     }
 }
 
@@ -224,6 +244,23 @@ mod tests {
         assert!(action.logs.ends_with("...(truncated)\n"));
         let message = action.logs.rsplit("location ").next().expect("message must be present");
         assert_eq!(message.len(), 9 + "...(truncated)\n".len());
+    }
+
+    #[test]
+    fn log_line_formats_large_message_bounded() {
+        let mut action = action();
+        let capacity = action.logs.capacity();
+        let body = "x".repeat(1024 * 1024);
+        action.log_line(None, None, Some("location"), format_args!("body={body}"), MAX_LOG_BYTES, 100);
+        assert!(action.logs.ends_with(&format!("location body={}...(truncated)\n", "x".repeat(95))));
+        assert_eq!(action.logs.capacity(), capacity); // the body was never copied into the buffer
+    }
+
+    #[test]
+    fn log_line_keeps_message_of_exactly_max_len() {
+        let mut action = action();
+        action.log_line(None, None, Some("location"), format_args!("{}", "x".repeat(10)), MAX_LOG_BYTES, 10);
+        assert!(action.logs.ends_with(&format!("location {}\n", "x".repeat(10))));
     }
 
     #[test]

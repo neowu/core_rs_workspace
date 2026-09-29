@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 pub use async_nats;
 use async_nats::Client;
 use async_nats::HeaderMap;
+use async_nats::HeaderName;
 use framework::console;
 use framework::log;
 use framework::system;
@@ -23,10 +24,10 @@ impl<T> Subject<T> {
     }
 }
 
-type Header = &'static str;
-const REF_ID: Header = "ref_id";
-const CLIENT: Header = "client";
-const MESSAGE_TYPE: Header = "msg_type";
+// HeaderName, not &str: a &str key is validated and copied into a new HeaderName on every lookup
+const REF_ID: HeaderName = HeaderName::from_static("ref_id");
+const CLIENT: HeaderName = HeaderName::from_static("client");
+const MESSAGE_TYPE: HeaderName = HeaderName::from_static("msg_type");
 
 // one connection can be shared by services, service clients and producers within a process
 pub async fn connect(url: &str) -> Client {

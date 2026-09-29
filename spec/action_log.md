@@ -162,6 +162,9 @@ than from the count `time`'s `format_into` returns, which leaves out the subseco
 All of them cut on a char boundary and append `...(truncated)`, which is appended **only when
 something was actually cut**, so a value at exactly the limit is not misreported as truncated.
 
+A log line's message is bounded **while it is formatted**: the writer stops at the limit, so a
+megabyte body logged with `log!` costs 10,000 bytes of copying and buffer growth, not a megabyte.
+
 The buffer cap is soft and deliberately so: once it is reached a `...(log limit reached)` marker is
 written once, and after that **`Severity::Error` lines still go in** while everything else is
 dropped. An action that produced a megabyte of trace and then failed is the case where the trace

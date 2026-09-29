@@ -11,6 +11,9 @@ Start `nats`, then run `cargo test -p nats_test`. Code: [`test/nats_test`](../..
 - Service: `#[nats_api]` generated service and client for request/response, `()` request and
   response, and a service exception propagated with severity and code. After shutdown the
   service unsubscribes and requests fail with `NATS_NO_RESPONDERS`.
+- Saturated shutdown: a service with one permit held by a handler that never finishes, and a second
+  request waiting; after cancel it must unsubscribe within 2 s (`NATS_NO_RESPONDERS`), then stop
+  once the handler is released.
 - Consumer tests wait on a semaphore released by handlers, then cancel shutdown and join.
 
 The NATS contract is specified in [nats.md](../nats.md) and [nats_api.md](../nats_api.md).

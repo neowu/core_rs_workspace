@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use async_nats::Client;
 use async_nats::HeaderMap;
+use async_nats::HeaderName;
 use async_nats::HeaderValue;
 use async_nats::Message;
 use async_nats::RequestErrorKind;
@@ -114,31 +115,36 @@ impl Service {
         let executor = TaskExecutor::default();
 
         loop {
-            tokio::select! {
+            // permit before message: a saturated service stops pulling, and a wait on handlers that
+            // never finish still sees shutdown
+            let permit = tokio::select! {
                 () = shutdown_signal.cancelled() => break,
-                message = requests.next() => {
-                    let Some(message) = message else { break };
-                    let Some((subject, handler)) = handlers.get_key_value(message.subject.as_str()) else {
-                        console!("WARN no handler registered, subject={}", message.subject);
-                        continue;
-                    };
-                    let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
-                    let task = handler(Arc::clone(&client), message);
-                    let counter = Arc::clone(&counter);
-                    executor.spawn(subject, async move {
-                        let _permit = permit; // held until the handler (and its reply) completes
-                        let _counter = counter.increase();
-                        task.await;
-                    });
-                }
-            }
+                permit = Arc::clone(&semaphore).acquire_owned() => permit.expect("semaphore should not close"),
+            };
+            let message = tokio::select! {
+                () = shutdown_signal.cancelled() => break,
+                message = requests.next() => message,
+            };
+            let Some(message) = message else { break };
+            let Some((subject, handler)) = handlers.get_key_value(message.subject.as_str()) else {
+                console!("WARN no handler registered, subject={}", message.subject);
+                continue;
+            };
+            let task = handler(Arc::clone(&client), message);
+            let counter = Arc::clone(&counter);
+            executor.spawn(subject, async move {
+                let _permit = permit; // held until the handler (and its reply) completes
+                let _counter = counter.increase();
+                task.await;
+            });
         }
 
         // graceful shutdown: unsubscribe so pending requests fail over to other queue group members,
-        // then wait for every in-flight handler (and its reply) to finish, aborting any that overrun.
+        // then wait for every in-flight handler (and its reply) to finish; any that overrun the
+        // timeout are abandoned, the runtime drops them on exit.
         drop(requests);
-        if let Some(aborted) = executor.shutdown(Duration::from_secs(30)).await {
-            console!("WARN request aborted, requests={aborted:?}");
+        if let Some(abandoned) = executor.shutdown(Duration::from_secs(30)).await {
+            console!("WARN request still running after shutdown timeout, abandoned, requests={abandoned:?}");
         }
 
         console!("nats service stopped, subjects={subjects:?}");
@@ -162,14 +168,15 @@ where
         if let Some(client_name) = header(&message, CLIENT) {
             context!(client = client_name);
         }
-        log!("[request] payload={}", String::from_utf8_lossy(&message.payload));
+        let request_payload = String::from_utf8_lossy(&message.payload);
+        log!("[request] payload={request_payload}");
         stats!(nats_request_bytes = message.payload.len());
 
         let Some(reply) = message.reply else {
             return Err(exception!("invalid reply subject", code = "NATS_INVALID_MESSAGE"));
         };
 
-        let result = match decode::<Req>(&message.payload) {
+        let result = match decode::<Req>(&request_payload) {
             Ok(request) => handler(request).await,
             Err(e) => Err(exception!("failed to decode request", code = "NATS_INVALID_MESSAGE", source = e)),
         };
@@ -270,7 +277,7 @@ impl ServiceClient {
     }
 }
 
-fn decode<Req>(payload: &[u8]) -> Result<Req, Exception>
+fn decode<Req>(payload: &str) -> Result<Req, Exception>
 where
     Req: DeserializeOwned + 'static,
 {
@@ -278,7 +285,7 @@ where
         // SAFETY: We've verified Req is () via TypeId, so this transmute is sound.
         Ok(unsafe { transmute_copy(&()) })
     } else {
-        from_json(&String::from_utf8_lossy(payload))
+        from_json(payload)
     }
 }
 
@@ -290,6 +297,6 @@ where
 }
 
 // ref_id and client headers are set and consumed by the framework only.
-fn header<'a>(message: &'a Message, name: &str) -> Option<&'a str> {
+fn header(message: &Message, name: HeaderName) -> Option<&str> {
     message.headers.as_ref()?.get(name).map(HeaderValue::as_str)
 }

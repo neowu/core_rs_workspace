@@ -101,9 +101,13 @@ fn runs_table(page: &mut String, runs: &[&Value], dir: &str) {
             esc(&get(run, "/config/scenario")),
             esc(&get(run, "/config/protocol")),
         );
-        for (key, unit) in
-            [("/config/connections", ""), ("/config/concurrency", ""), ("/config/threads", ""), ("/server/threads", ""), ("/config/duration", "s")]
-        {
+        for (key, unit) in [
+            ("/config/connections", ""),
+            ("/config/concurrency", ""),
+            ("/config/threads", ""),
+            ("/server/threads", ""),
+            ("/config/duration", "s"),
+        ] {
             page.push_str(&cell(run, key, unit));
         }
         let _ = write!(page, "<td class=\"n\">{}</td>", esc(&get(run, "/result/throughput")));

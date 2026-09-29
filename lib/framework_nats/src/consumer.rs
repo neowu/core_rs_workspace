@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_nats::Client;
+use async_nats::HeaderName;
 use async_nats::HeaderValue;
 use async_nats::jetstream;
 use async_nats::jetstream::AckKind;
@@ -168,7 +169,12 @@ where
                             }
                             continue;
                         };
-                        let permit = Arc::clone(&semaphore).acquire_owned().await.expect("semaphore should not close");
+                        // saturated by stuck handlers, the wait must still see shutdown; the message
+                        // is left unacked and redelivered after ack_wait
+                        let permit = tokio::select! {
+                            () = shutdown_signal.cancelled() => break,
+                            permit = Arc::clone(&semaphore).acquire_owned() => permit.expect("semaphore should not close"),
+                        };
                         let task = handler(raw, state.clone());
                         executor.spawn(subject, async move {
                             let _permit = permit; // held until the handler (and its ack) completes
@@ -187,10 +193,10 @@ where
             }
         }
 
-        // graceful shutdown: stop pulling, then wait for every in-flight handler (and its ack) to finish,
-        // aborting any that overrun the drain timeout (their messages are redelivered later).
-        if let Some(aborted) = executor.shutdown(Duration::from_secs(30)).await {
-            console!("WARN message aborted, messages={aborted:?}");
+        // graceful shutdown: stop pulling, then wait for every in-flight handler (and its ack) to finish;
+        // any that overrun the drain timeout are abandoned (their messages are redelivered later).
+        if let Some(abandoned) = executor.shutdown(Duration::from_secs(30)).await {
+            console!("WARN message still running after shutdown timeout, abandoned, messages={abandoned:?}");
         }
 
         console!(
@@ -211,7 +217,8 @@ where
         let _counter = MESSAGE_COUNTER.get().map(Counter::increase);
         let subject = raw.subject.to_string();
         context!(subject = &subject, fn = type_name::<H>());
-        log!("[message] payload={}", String::from_utf8_lossy(&raw.payload));
+        let payload = String::from_utf8_lossy(&raw.payload);
+        log!("[message] payload={payload}");
         if let Some(timestamp) = timestamp(&raw) {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
             let lag = (DateTime::now() - timestamp).as_nanos();
@@ -223,7 +230,7 @@ where
             context!(client = client);
         }
         stats!(nats_read_messages = 1, nats_read_bytes = raw.payload.len());
-        let result = match from_json::<M>(&String::from_utf8_lossy(&raw.payload)) {
+        let result = match from_json::<M>(&payload) {
             Ok(payload) => handler(state, Message { subject, payload }).await,
             Err(e) => Err(exception!("failed to decode message", code = "NATS_INVALID_MESSAGE", source = e)),
         };
@@ -412,7 +419,7 @@ where
 }
 
 // ref_id and client headers are set and consumed by the framework only.
-fn header<'a>(raw: &'a jetstream::Message, name: &str) -> Option<&'a str> {
+fn header(raw: &jetstream::Message, name: HeaderName) -> Option<&str> {
     raw.headers.as_ref()?.get(name).map(HeaderValue::as_str)
 }
 
