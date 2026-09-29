@@ -167,7 +167,7 @@ written once, and after that **`Severity::Error` lines still go in** while every
 dropped. An action that produced a megabyte of trace and then failed is the case where the trace
 matters most, and a hard cap would drop precisely the line that explains it.
 
-### Sensitive fields are masked
+### Sensitive values are masked when the trace is flushed
 
 See [`log_mask.md`](log_mask.md).
 

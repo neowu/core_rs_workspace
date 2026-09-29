@@ -1,2 +1,1 @@
-- mask request json?
-- support session / cookies, considering how to mask
+- support session / cookies, mask the session cookie and `set-cookie` by name in `MASKED_KEYS`

@@ -30,6 +30,7 @@ futures = "*"
 pin-project-lite = "*"
 bytes = "*"
 libc = "*"
+memchr = "*"
 rand = "*"
 
 [lints]

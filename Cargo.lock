@@ -719,6 +719,7 @@ dependencies = [
  "http",
  "libc",
  "log",
+ "memchr",
  "pin-project-lite",
  "rand 0.10.3",
  "reqwest",

@@ -23,7 +23,6 @@ pub use tower_http::services::ServeDir;
 pub use tower_http::services::ServeFile;
 
 use crate::log;
-use crate::log::LogValue;
 use crate::metrics::Counter;
 use crate::metrics::Metrics;
 use crate::web::CLIENT;
@@ -112,7 +111,7 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
 
         for (name, value) in request.headers() {
             if name != header::COOKIE {
-                log!("[header] {name}={:?}", LogValue::new(name.as_str(), value));
+                log!("[header] {name}={value:?}");
             }
         }
         let cookies = CookieJar::from_headers(request.headers());

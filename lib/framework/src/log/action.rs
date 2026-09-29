@@ -8,6 +8,7 @@ use std::time::Instant;
 use crate::exception::Exception;
 use crate::log::ContextValues;
 use crate::log::Severity;
+use crate::log::mask::mask_logs;
 use crate::string::StringExt as _;
 use crate::time::DateTime;
 use crate::write_str;
@@ -111,6 +112,7 @@ impl Action {
         let elapsed = self.start_time.elapsed();
         self.add_stat("elapsed", elapsed.as_nanos() as u64);
         if self.flush_trace() {
+            mask_logs(&mut self.logs);
             let message = format_args!("# [action] elapsed={elapsed:?}");
             write_str!(self.logs, "{message}");
         }
@@ -263,6 +265,15 @@ mod tests {
         assert_eq!(error.code, Some("CODE"));
         assert_eq!(error.message, "boom");
         assert!(action.logs.ends_with("location ERROR [CODE] boom\n"));
+    }
+
+    #[test]
+    fn finish_masks_flushed_trace() {
+        let mut action = action();
+        action.log(None, None, Some("location"), format_args!(r#"body={{"password":"secret"}}"#));
+        action.trace = true;
+        action.finish();
+        assert!(action.logs.contains("location body={\"password\":\"**masked**\"}\n"));
     }
 
     #[test]
