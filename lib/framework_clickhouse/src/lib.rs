@@ -7,6 +7,7 @@ use clickhouse::Client;
 use clickhouse::Row;
 use clickhouse::RowOwned;
 use clickhouse::RowRead;
+use clickhouse::error::Error;
 use clickhouse::query::Query;
 use framework::console;
 use framework::exception;
@@ -51,10 +52,13 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        query
-            .execute()
-            .await
-            .map_err(|err| exception!("failed to execute statement", code = "CLICKHOUSE_ERROR", source = err))
+        query.execute().await.map_err(|err| {
+            exception!(
+                format!("failed to execute statement, error={}", clickhouse_error_code(&err)),
+                code = "CLICKHOUSE_ERROR",
+                source = err
+            )
+        })
     }
 
     pub async fn select_one<T>(&self, sql: &str, params: &[&dyn QueryParam]) -> Result<Option<T>, Exception>
@@ -67,10 +71,13 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        let row = query
-            .fetch_optional()
-            .await
-            .map_err(|err| exception!("failed to select one", code = "CLICKHOUSE_ERROR", source = err))?;
+        let row = query.fetch_optional().await.map_err(|err| {
+            exception!(
+                format!("failed to select one, error={}", clickhouse_error_code(&err)),
+                code = "CLICKHOUSE_ERROR",
+                source = err
+            )
+        })?;
 
         stats!(clickhouse_read_rows = if row.is_some() { 1 } else { 0 });
 
@@ -87,10 +94,13 @@ impl ClickHouse {
         for param in params {
             query = param.bind(query);
         }
-        let rows = query
-            .fetch_all()
-            .await
-            .map_err(|err| exception!("failed to select all", code = "CLICKHOUSE_ERROR", source = err))?;
+        let rows = query.fetch_all().await.map_err(|err| {
+            exception!(
+                format!("failed to select all, error={}", clickhouse_error_code(&err)),
+                code = "CLICKHOUSE_ERROR",
+                source = err
+            )
+        })?;
 
         stats!(clickhouse_read_rows = rows.len());
 
@@ -109,17 +119,57 @@ impl ClickHouse {
         // so here to use without, message handler will wait until success
         let mut inserter = self.client.inserter::<FixedRow<T>>(table);
         for row in rows {
-            inserter
-                .write(row)
-                .await
-                .map_err(|err| exception!("failed to insert", code = "CLICKHOUSE_ERROR", source = err))?;
+            inserter.write(row).await.map_err(|err| {
+                exception!(
+                    format!("failed to insert, error={}", clickhouse_error_code(&err)),
+                    code = "CLICKHOUSE_ERROR",
+                    source = err
+                )
+            })?;
         }
-        let quantities = inserter
-            .end()
-            .await
-            .map_err(|err| exception!("failed to commit insert", code = "CLICKHOUSE_ERROR", source = err))?;
+        let quantities = inserter.end().await.map_err(|err| {
+            exception!(
+                format!("failed to commit insert, error={}", clickhouse_error_code(&err)),
+                code = "CLICKHOUSE_ERROR",
+                source = err
+            )
+        })?;
         stats!(clickhouse_write_rows = quantities.rows, clickhouse_write_bytes = quantities.bytes);
         Ok(())
+    }
+}
+
+// the full error goes to the trace via source, the message only carries a short name to keep sql/schema out of responses
+fn clickhouse_error_code(err: &Error) -> &str {
+    match err {
+        // e.g. "Code: 60. DB::Exception: ... (UNKNOWN_TABLE) (version 25.8.1.1 (official build))"
+        Error::BadResponse(body) => body
+            .rfind(" (version ")
+            .and_then(|end| body[..end].strip_suffix(')')?.rsplit_once('('))
+            .map(|(_, name)| name)
+            .filter(|name| {
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+            })
+            .unwrap_or("BAD_RESPONSE"),
+        Error::Network(_) => "NETWORK_ERROR",
+        Error::TimedOut => "TIMED_OUT",
+        Error::SchemaMismatch(_) => "SCHEMA_MISMATCH",
+        Error::InvalidParams(_)
+        | Error::Compression(_)
+        | Error::Decompression(_)
+        | Error::DataFormat(_)
+        | Error::RowNotFound
+        | Error::SequenceMustHaveLength
+        | Error::DeserializeAnyNotSupported
+        | Error::NotEnoughData
+        | Error::InvalidUtf8Encoding(_)
+        | Error::InvalidTagEncoding(_)
+        | Error::VariantDiscriminatorIsOutOfBound(_)
+        | Error::Custom(_)
+        | Error::InvalidColumnsHeader(_)
+        | Error::Unsupported(_)
+        | Error::Other(_)
+        | _ => "CLIENT_ERROR",
     }
 }
 
@@ -136,4 +186,45 @@ impl<T: Row> Row for FixedRow<T> {
     const COLUMN_COUNT: usize = T::COLUMN_COUNT;
     const KIND: RowKind = T::KIND;
     type Value<'a> = T;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bad_response(body: &str) -> Error {
+        Error::BadResponse(body.to_owned())
+    }
+
+    #[test]
+    fn code_from_server_error() {
+        let err = bad_response(
+            "Code: 60. DB::Exception: Unknown table expression identifier 'foo' in scope SELECT * FROM foo. (UNKNOWN_TABLE) (version 25.8.1.1 (official build))",
+        );
+        assert_eq!(clickhouse_error_code(&err), "UNKNOWN_TABLE");
+    }
+
+    #[test]
+    fn code_ignores_parens_in_message() {
+        let err = bad_response(
+            "Code: 62. DB::Exception: Syntax error: failed at position 8 ('(') (line 1, col 8): (SELECT. (SYNTAX_ERROR) (version 25.8.1.1 (official build))",
+        );
+        assert_eq!(clickhouse_error_code(&err), "SYNTAX_ERROR");
+    }
+
+    #[test]
+    fn code_without_name_in_response() {
+        // empty body falls back to the numeric X-ClickHouse-Exception-Code header, or http status
+        assert_eq!(clickhouse_error_code(&bad_response("60")), "BAD_RESPONSE");
+        assert_eq!(clickhouse_error_code(&bad_response("502 Bad Gateway")), "BAD_RESPONSE");
+        assert_eq!(clickhouse_error_code(&bad_response("upstream error (version 1.0)")), "BAD_RESPONSE");
+        assert_eq!(clickhouse_error_code(&bad_response("error () (version 1.0)")), "BAD_RESPONSE");
+    }
+
+    #[test]
+    fn code_from_client_error() {
+        assert_eq!(clickhouse_error_code(&Error::TimedOut), "TIMED_OUT");
+        assert_eq!(clickhouse_error_code(&Error::SchemaMismatch("column".to_owned())), "SCHEMA_MISMATCH");
+        assert_eq!(clickhouse_error_code(&Error::RowNotFound), "CLIENT_ERROR");
+    }
 }

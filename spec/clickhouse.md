@@ -130,6 +130,14 @@ extra allocations and hashing.
   query is visible in the action that issued it without extra instrumentation.
 - **One batch is one insert.** `Inserter` is created per call and ended in the same call; there is
   no cross-call buffering that could outlive the caller.
+- **An error message carries only a short name, the trace carries the rest.** Every statement
+  fails with `CLICKHOUSE_ERROR` and a message like `failed to select all, error=UNKNOWN_TABLE`.
+  The name is the ClickHouse exception name, parsed from the server's error text (`... (NAME)
+  (version ...)`), because the crate keeps that text only as a string. Client-side errors get a
+  fixed name (`NETWORK_ERROR`, `TIMED_OUT`, `SCHEMA_MISMATCH`, `CLIENT_ERROR`), and server text
+  with no name falls back to `BAD_RESPONSE`. The full error stays in the backtrace as the source.
+  The message is kept short because it becomes the action's `error_message` and the api / nats
+  error response, and the full server text can contain sql and schema details.
 
 ## Known gaps
 
