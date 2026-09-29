@@ -25,7 +25,6 @@ pub use tokio_stream::StreamExt;
 
 use crate::exception::Exception;
 use crate::log;
-use crate::log::LogValue;
 use crate::log::Severity;
 use crate::span;
 use crate::stats;
@@ -234,7 +233,7 @@ fn create_request(request: &HttpRequest) -> Result<Request, Exception> {
     let mut http_request = Request::new(request.method.clone(), url);
     http_request.headers_mut().extend(request.headers.clone());
     for (key, value) in http_request.headers() {
-        log!("[header] {key}={:?}", LogValue::new(key.as_str(), value));
+        log!("[header] {key}={value:?}");
     }
     if let Some(ref body) = request.body {
         log!("[request] body={body}");

@@ -2,11 +2,11 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 pub use clickhouse;
+use clickhouse::_priv::RowKind;
 use clickhouse::Client;
 use clickhouse::Row;
 use clickhouse::RowOwned;
 use clickhouse::RowRead;
-use clickhouse::_priv::RowKind;
 use clickhouse::query::Query;
 use framework::console;
 use framework::exception;
