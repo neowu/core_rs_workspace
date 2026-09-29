@@ -87,7 +87,7 @@ pub fn render(dir: &Path, results: &[Value]) -> PathBuf {
 fn runs_table(page: &mut String, runs: &[&Value], dir: &str) {
     page.push_str(
         "<div class=\"wrap\"><table><thead><tr>\n\
-         <th>time</th><th>scenario</th><th>proto</th><th>conc</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
+         <th>time</th><th>scenario</th><th>proto</th><th>conn</th><th>conc</th><th>client thr</th><th>server thr</th><th>dur</th>\n\
          <th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>p99.9 ms</th>\n\
          <th>cpu µs/req</th><th>server cpu %</th><th>client cpu %</th><th>peak rss MB</th><th>commit</th>\n\
          </tr></thead><tbody>\n",
@@ -102,7 +102,7 @@ fn runs_table(page: &mut String, runs: &[&Value], dir: &str) {
             esc(&get(run, "/config/protocol")),
         );
         for (key, unit) in
-            [("/config/concurrency", ""), ("/config/threads", ""), ("/server/threads", ""), ("/config/duration", "s")]
+            [("/config/connections", ""), ("/config/concurrency", ""), ("/config/threads", ""), ("/server/threads", ""), ("/config/duration", "s")]
         {
             page.push_str(&cell(run, key, unit));
         }
@@ -171,7 +171,7 @@ fn profile_section(page: &mut String, result: &Value, dir: &str) {
     );
     let _ = writeln!(
         page,
-        "<p class=\"meta\">{}<br>built from {} · {} s warmup + {} s measured · {} concurrent {} streams · {} client threads · \
+        "<p class=\"meta\">{}<br>built from {} · {} s warmup + {} s measured · {} concurrent {} streams over {} connections · {} client threads · \
          {} server threads · {} req/s · p99 {} ms · {} µs server cpu / request · \
          server cpu {}% · client cpu {}% · {} perf samples</p>",
         machines(result),
@@ -180,6 +180,7 @@ fn profile_section(page: &mut String, result: &Value, dir: &str) {
         field("/config/duration"),
         field("/config/concurrency"),
         field("/config/protocol"),
+        field("/config/connections"),
         field("/config/threads"),
         field("/server/threads"),
         field("/result/throughput"),

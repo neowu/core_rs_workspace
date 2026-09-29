@@ -97,35 +97,28 @@ impl Target {
 }
 
 async fn run(args: Args) {
-    // h2c, matching how framework::http::HttpClient is configured for internal calls
-    // (HttpClientConfig::internal_only -> prefer_http2 -> http2_prior_knowledge): one shared,
-    // kept alive connection carrying every request as a multiplexed stream
-    let client = Client::builder()
-        .http2_prior_knowledge()
-        .pool_idle_timeout(Duration::from_secs(300))
-        .connection_verbose(false)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .expect("failed to build client");
+    // a client holds one h2 connection per host, so each connection is its own client
+    let clients: Vec<Client> = (0..args.connections).map(|_| client()).collect();
+    let client = &clients[0];
 
     if args.scenario.is_db() {
-        init_db(&client, &args.url, args.rows).await;
+        init_db(client, &args.url, args.rows).await;
     }
 
     let target = Target::new(&args);
-    verify(&client, &target, &args).await;
+    verify(client, &target, &args).await;
 
     if !args.warmup.is_zero() {
-        load(&client, &target, args.concurrency, args.warmup).await;
+        load(&clients, &target, args.concurrency, args.warmup).await;
         println!("warmup done");
     }
 
     // sampled around the measured phase only, so server cpu per request excludes the warmup
-    let before = server_info(&client, &args.url).await;
+    let before = server_info(client, &args.url).await;
     let client_before = ProcessUsage::current();
-    let summary = load(&client, &target, args.concurrency, args.duration).await;
+    let summary = load(&clients, &target, args.concurrency, args.duration).await;
     let client_after = ProcessUsage::current();
-    let after = server_info(&client, &args.url).await;
+    let after = server_info(client, &args.url).await;
 
     let cpu_us = after.usage.cpu_us.saturating_sub(before.usage.cpu_us);
     let cpu_us_per_request = if summary.requests > 0 { cpu_us as f64 / summary.requests as f64 } else { 0.0 };
@@ -163,16 +156,30 @@ async fn server_info(client: &Client, base_url: &str) -> ServerInfo {
     serde_json::from_str(&body).unwrap_or_else(|err| panic!("failed to parse server info, url={address}, err={err}"))
 }
 
+/// h2c, matching how framework::http::HttpClient is configured for internal calls
+/// (HttpClientConfig::internal_only -> prefer_http2 -> http2_prior_knowledge): one kept alive
+/// connection carrying every request of this client as a multiplexed stream.
+fn client() -> Client {
+    Client::builder()
+        .http2_prior_knowledge()
+        .pool_idle_timeout(Duration::from_secs(300))
+        .connection_verbose(false)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("failed to build client")
+}
+
 /// Closed loop: every worker holds one in flight request and sends the next as soon as the previous
 /// one resolves, so `concurrency` is the number of open h2 streams and the server's own pace sets
-/// the rate.
-async fn load(client: &Client, target: &Target, concurrency: usize, duration: Duration) -> Summary {
+/// the rate. Workers take the connections round robin, so each carries an even share of the streams.
+async fn load(clients: &[Client], target: &Target, concurrency: usize, duration: Duration) -> Summary {
     let start = Instant::now();
     let deadline = start + duration;
 
     let mut handles = Vec::with_capacity(concurrency);
-    for _ in 0..concurrency {
-        handles.push(tokio::spawn(worker(client.clone(), target.clone(), deadline)));
+    for i in 0..concurrency {
+        let client = clients[i % clients.len()].clone();
+        handles.push(tokio::spawn(worker(client, target.clone(), deadline)));
     }
 
     let mut recorders = Vec::with_capacity(concurrency);
@@ -267,6 +274,7 @@ fn config(args: &Args) -> serde_json::Value {
         "protocol": "h2c",
         "url": args.url,
         "concurrency": args.concurrency,
+        "connections": args.connections,
         "threads": args.threads,
         "values": args.values,
         "rows": args.rows,

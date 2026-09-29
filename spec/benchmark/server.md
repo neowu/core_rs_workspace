@@ -2,19 +2,20 @@
 
 The remote hosts `remote.sh` runs on, shared by every benchmark.
 
-For remote server ip, use `gcloud compute instances list` to find `office-agent-0` to be server,
-`office-agent-1` to be client (the external ip is the ssh host for `SERVER` / `CLIENT`). Public ips
-are ephemeral, look them up before each session, never hardcode them.
+For remote server ip, use `gcloud compute instances list` to find `office-agent-0` (e2-highcpu-2) to
+be server, `office-client-0` (e2-highcpu-8, sized so the client is never the bottleneck) to be
+client (the external ip is the ssh host for `SERVER` / `CLIENT`). Public ips are ephemeral, look
+them up before each session, never hardcode them.
 
 ```
-SERVER=<office-agent-0 ip> CLIENT=<office-agent-1 ip> ./benchmark/remote.sh run http --scenario get
+SERVER=<office-agent-0 ip> CLIENT=<office-client-0 ip> ./benchmark/remote.sh run http --scenario get
 ```
 
 Provisioned on the server host, outside of a run:
 
 | service | port | access |
 |---|---|---|
-| `nats-server` | 4222 | systemd service |
+| `nats-server` | 4222 | systemd unit `nats.service` |
 | postgres | 5432 | user `postgres`, no password (trust auth), database `postgres` |
 
 ## Comparing across days

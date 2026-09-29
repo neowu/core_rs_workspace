@@ -10,7 +10,8 @@ usage: http_test_client [options]
   --scenario    <name>  get | post | api_get | api_post | db_select | db_insert_ignore, default get
                         get/post hit the plain controllers, api_* hit the #[api] generated routes,
                         db_* go through postgres, the table is recreated by PUT /benchmark/init_db first
-  --concurrency <n>     in flight requests, all multiplexed on one h2c connection, default 64
+  --concurrency <n>     in flight requests, spread evenly over the connections, default 64
+  --connections <n>     h2c connections, each multiplexing its share of the streams, default 1
   --duration    <secs>  measured phase, default 30
   --warmup      <secs>  discarded phase before the measured one, default 5
   --values      <n>     number of values in the post body, default 10
@@ -67,6 +68,7 @@ pub struct Args {
     pub url: String,
     pub scenario: Scenario,
     pub concurrency: usize,
+    pub connections: usize,
     pub duration: Duration,
     pub warmup: Duration,
     pub values: usize,
@@ -81,6 +83,7 @@ impl Default for Args {
             url: "http://localhost:8080".to_owned(),
             scenario: Scenario::Get,
             concurrency: 64,
+            connections: 1,
             duration: Duration::from_secs(30),
             warmup: Duration::from_secs(5),
             values: 10,
@@ -118,6 +121,7 @@ impl Args {
                     };
                 }
                 "--concurrency" => args.concurrency = number(&key, &value),
+                "--connections" => args.connections = number(&key, &value),
                 "--duration" => args.duration = Duration::from_secs(number(&key, &value) as u64),
                 "--warmup" => args.warmup = Duration::from_secs(number(&key, &value) as u64),
                 "--values" => args.values = number(&key, &value),
@@ -130,6 +134,11 @@ impl Args {
 
         if args.concurrency == 0 {
             fail::<()>("concurrency must be greater than 0");
+        }
+
+        // every connection must carry at least one stream, an idle one is never opened
+        if args.connections == 0 || args.connections > args.concurrency {
+            fail::<()>("connections must be between 1 and concurrency");
         }
 
         // db_select reads the fixed id, it must be among the seeded rows

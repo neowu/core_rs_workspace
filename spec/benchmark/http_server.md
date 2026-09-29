@@ -74,8 +74,13 @@ CREATE TABLE "benchmark_entity" (
 
 - **Only `TraceAppender`**: action construction and channel send stay (real cost), nothing is
   written per request, so output never becomes the bottleneck.
-- **h2c over one shared connection**, matching `framework::http::HttpClient` for internal calls.
-  `verify` asserts HTTP/2. `--concurrency` is streams on one connection, which is also the ceiling.
+- **h2c**, matching `framework::http::HttpClient` for internal calls, which holds one connection per
+  host. `verify` asserts HTTP/2. `--concurrency` is streams, spread round robin over `--connections`
+  (default 1, one `reqwest::Client` each, since a client keeps one h2 connection per host).
+- **One connection caps the rate, not the server**: hyper runs a connection's framing (hpack, flow
+  control, reads and writes) in one task, so it never uses more than one core (2026-09-29: ~42k
+  req/s at ~50% of 2 cores whatever the concurrency). Finding the server's ceiling needs a few
+  connections; many are worse, each carries fewer streams per wakeup, so cpu per request rises.
 - **Client uses `reqwest` directly, not `HttpClient`**, which logs every request and would make the
   instrument the bottleneck.
 - **The measured loop never parses a response**; one `verify` request at startup parses and
@@ -141,7 +146,6 @@ children) and `report profile` stores the top methods under `profile` in the res
 
 - No bare-axum baseline to separate framework cost from axum/hyper.
 - Nothing compares runs automatically.
-- One connection, one client process: the server's real ceiling is unknown.
 - DB scenarios: the framework pool holds at most 50 connections, a higher `--concurrency` queues
   on checkout. Postgres shares the server host, its cpu is not in the server's `cpu_us_per_request`
   but does compete for the same cores.
