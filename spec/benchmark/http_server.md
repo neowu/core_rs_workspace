@@ -25,14 +25,17 @@ layer, action log, routing, extractor, controller, serialization).
 | `post` | `/benchmark/post` | plain controller, `Json` |
 | `api_get` | `/benchmark/api/get` | `#[api]` generated, `Query` |
 | `api_post` | `/benchmark/api/post` | `#[api]` generated, `Json` |
-| `db_select` | `GET /benchmark/db/select` | plain controller, `repository::select_one` by primary key |
-| `db_insert_ignore` | `POST /benchmark/db/insert_ignore` | plain controller, `repository::insert_ignore` |
+| `db_select` | `GET /benchmark/db/select` | `#[api]` generated, `repository::select_one` by primary key |
+| `db_insert_ignore` | `POST /benchmark/db/insert_ignore` | `#[api]` generated, `repository::insert_ignore` |
 
 ### DB scenarios
 
 Postgres runs on the server host (trust auth, user `postgres`, empty password), the server
 connects to `DB_URL` (default `postgres://localhost:5432/postgres`). The pool connects lazily, so
 non-db scenarios need no postgres.
+
+All database endpoints, including initialization, use the `BenchmarkService` generated API contract.
+The service delegates database operations to the database module.
 
 Before `verify`, the client calls `PUT /benchmark/init_db`, which drops and recreates the table and
 seeds ids `1..=rows` (`--rows`, default 1000) through `repository::insert`, so every run starts
@@ -66,7 +69,8 @@ CREATE TABLE "benchmark_entity" (
 - The server is a normal framework app (`System::init` / `start_logger` / `start_service`).
 - Server and client run on two separate remote hosts (debian, over ssh), the local host only
   builds `report`, deploys and renders.
-- The server exposes `GET /benchmark/info`: machine (host, ip, cpu, cores, memory, os), tokio
+- The server exposes `GET /benchmark/info` through the `BenchmarkService` generated API:
+  machine (host, ip, cpu, cores, memory, os), tokio
   workers, its own cpu time and peak rss at the moment of the call.
 - The server binds `0.0.0.0:8080`, no override.
 

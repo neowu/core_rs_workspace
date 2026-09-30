@@ -12,9 +12,15 @@ use framework::web::route::get;
 use framework::web::route::post;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
+use framework_db::Database;
 use http_test_server::BenchmarkService;
+use http_test_server::DbInsertRequest;
+use http_test_server::DbInsertResponse;
+use http_test_server::DbSelectResponse;
 use http_test_server::GetRequest;
 use http_test_server::GetResponse;
+use http_test_server::InitDbRequest;
+use http_test_server::InitDbResponse;
 use http_test_server::PostRequest;
 use http_test_server::PostResponse;
 use http_test_server::info::MachineInfo;
@@ -32,15 +38,13 @@ async fn main() {
     LazyLock::force(&MACHINE);
 
     let app = Router::new();
-    let app = app.route("/benchmark/info", get(info));
     let app = app.route("/benchmark/get", get(get_benchmark));
     let app = app.route("/benchmark/post", post(post_benchmark));
-    let app = app.merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl)));
 
     // the pool connects lazily, so the non db scenarios run without postgres
     let database = db::database();
     system.add_metrics(database.metrics());
-    let app = app.merge(db::route(Arc::new(database)));
+    let app = app.merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl { database })));
 
     // the default binds 0.0.0.0:8080, a benchmark host keeps that port free
     let http_server = HttpServer::new(HttpServerConfig::default());
@@ -57,16 +61,6 @@ async fn main() {
 
 static MACHINE: LazyLock<MachineInfo> = LazyLock::new(MachineInfo::collect);
 
-/// Lets a client on another host report where it ran, and take server cpu and rss around its
-/// measured phase without anything sampling the process from outside.
-async fn info() -> Json<ServerInfo> {
-    Json(ServerInfo {
-        machine: MACHINE.clone(),
-        threads: tokio::runtime::Handle::current().metrics().num_workers(),
-        usage: ProcessUsage::current(),
-    })
-}
-
 // controllers do no work on purpose, what is measured is everything around them
 async fn get_benchmark(Query(request): Query<GetRequest>) -> Json<GetResponse> {
     Json(GetResponse::new(&request))
@@ -76,7 +70,9 @@ async fn post_benchmark(Json(request): Json<PostRequest>) -> Json<PostResponse> 
     Json(PostResponse::new(&request))
 }
 
-struct BenchmarkServiceImpl;
+struct BenchmarkServiceImpl {
+    database: Database,
+}
 
 impl BenchmarkService for BenchmarkServiceImpl {
     async fn get(&self, request: GetRequest) -> Result<GetResponse, Exception> {
@@ -85,5 +81,25 @@ impl BenchmarkService for BenchmarkServiceImpl {
 
     async fn post(&self, request: PostRequest) -> Result<PostResponse, Exception> {
         Ok(PostResponse::new(&request))
+    }
+
+    async fn info(&self) -> Result<ServerInfo, Exception> {
+        Ok(ServerInfo {
+            machine: MACHINE.clone(),
+            threads: tokio::runtime::Handle::current().metrics().num_workers(),
+            usage: ProcessUsage::current(),
+        })
+    }
+
+    async fn init_db(&self, request: InitDbRequest) -> Result<InitDbResponse, Exception> {
+        db::init_db(&self.database, request).await
+    }
+
+    async fn db_select(&self, request: GetRequest) -> Result<DbSelectResponse, Exception> {
+        db::select(&self.database, request).await
+    }
+
+    async fn db_insert_ignore(&self, request: DbInsertRequest) -> Result<DbInsertResponse, Exception> {
+        db::insert_ignore(&self.database, request).await
     }
 }

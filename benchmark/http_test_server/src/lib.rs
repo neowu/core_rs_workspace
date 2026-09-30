@@ -8,6 +8,8 @@ use serde::Serialize;
 
 pub mod info;
 
+use crate::info::ServerInfo;
+
 /// Query of the get endpoints, one scalar so query parsing is not the subject.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetRequest {
@@ -83,8 +85,7 @@ pub struct DbInsertResponse {
     pub inserted: bool,
 }
 
-/// Same payloads and same work as the plain controllers, on a different path. The delta between the
-/// two is the cost of the `#[api]` generated route.
+/// Generated API routes for the HTTP and database benchmarks.
 #[api]
 pub trait BenchmarkService {
     #[get]
@@ -94,4 +95,20 @@ pub trait BenchmarkService {
     #[post]
     #[path("/benchmark/api/post")]
     async fn post(&self, request: PostRequest) -> Result<PostResponse, Exception>;
+
+    #[get]
+    #[path("/benchmark/info")]
+    async fn info(&self) -> Result<ServerInfo, Exception>;
+
+    #[put]
+    #[path("/benchmark/init_db")]
+    async fn init_db(&self, request: InitDbRequest) -> Result<InitDbResponse, Exception>;
+
+    #[get]
+    #[path("/benchmark/db/select")]
+    async fn db_select(&self, request: GetRequest) -> Result<DbSelectResponse, Exception>;
+
+    #[post]
+    #[path("/benchmark/db/insert_ignore")]
+    async fn db_insert_ignore(&self, request: DbInsertRequest) -> Result<DbInsertResponse, Exception>;
 }

@@ -550,7 +550,6 @@ dependencies = [
  "axum",
  "framework",
  "framework_db",
- "framework_kafka",
  "framework_macro",
  "framework_nats",
  "serde",
