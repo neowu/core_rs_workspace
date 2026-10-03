@@ -1,6 +1,7 @@
 use std::any::type_name;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -31,6 +32,7 @@ use framework::time::DateTime;
 use futures::FutureExt as _;
 use futures::StreamExt as _;
 use serde::de::DeserializeOwned;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -71,6 +73,9 @@ impl Default for BatchConsumerConfig {
     }
 }
 
+// the framework bounds in-flight messages itself, the server must not throttle below that.
+const UNLIMITED: i64 = -1;
+
 // shared across every consumer in the process; reports overall in-flight handlers.
 static MESSAGE_COUNTER: OnceLock<Counter> = OnceLock::new();
 
@@ -84,9 +89,12 @@ pub fn consumer_metrics() -> impl Fn(&mut Metrics) {
 }
 
 type MessageHandler<S> = Box<dyn Fn(jetstream::Message, S) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type Queued<'a, S> = (&'static str, &'a MessageHandler<S>, jetstream::Message);
+
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 // one durable pull consumer over a whole stream that may carry different subject types. each
-// subject is registered with its own handler; messages are pulled continuously via sequence(),
+// subject is registered with its own handler; messages are pulled in batches,
 // dispatched by subject, and processed in their own task (bounded by a semaphore) that acks itself.
 pub struct Consumer<S> {
     context: Context,
@@ -132,6 +140,7 @@ where
                 durable_name: Some(durable.to_owned()),
                 ack_policy: AckPolicy::Explicit,
                 ack_wait: Duration::from_mins(30),
+                max_ack_pending: UNLIMITED, // in-flight is bounded by one batch plus the semaphore
                 filter_subjects: subjects,
                 deliver_policy: DeliverPolicy::New,
                 ..Default::default()
@@ -141,61 +150,77 @@ where
 
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
         let executor = TaskExecutor::default();
+        let dispatch = |permit: OwnedSemaphorePermit, (subject, handler, raw): Queued<'_, S>| {
+            let task = handler(raw, state.clone());
+            executor.spawn(subject, async move {
+                let _permit = permit; // held until the handler (and its ack) completes
+                task.await;
+            });
+        };
 
-        // re-issue a bounded batch pull each round; it expires after batch_max_wait, so the
-        // shutdown check runs at least that often without needing to race the pull.
-        loop {
-            match consumer
+        // a batch is read to its end without waiting on permits, queueing what no permit is free for:
+        // async-nats ends a batch at expires + 5s and drops what it still buffers, so a read stalled on
+        // busy handlers would leave those messages unacked until ack_wait. once the batch is over nothing
+        // more arrives for it, so the queue is all this instance holds, and it is dispatched before the
+        // next pull. on shutdown the current batch is still read to its end and what is left queued is
+        // nak'd: every pulled message is handled or handed back, none stranded.
+        let mut queue: VecDeque<Queued<'_, S>> = VecDeque::new();
+        while !shutdown_signal.is_cancelled() {
+            let mut batch = match consumer
                 .batch()
                 .max_messages(config.batch_max_messages)
                 .expires(config.batch_max_wait)
                 .messages()
                 .await
             {
-                Ok(mut batch) => {
-                    while let Some(message) = batch.next().await {
-                        let raw = match message {
-                            Ok(raw) => raw,
-                            Err(e) => {
-                                console!("ERROR failed to read message, error={e:?}");
-                                continue;
-                            }
-                        };
-
-                        let Some((subject, handler)) = handlers.get_key_value(raw.subject.as_str()) else {
-                            console!("WARN no handler registered, subject={}", raw.subject);
-                            if let Err(e) = raw.ack_with(AckKind::Nak(Some(Duration::from_mins(1)))).await {
-                                console!("ERROR failed to ack message, error={e:?}");
-                            }
-                            continue;
-                        };
-                        // saturated by stuck handlers, the wait must still see shutdown; the message
-                        // is left unacked and redelivered after ack_wait
-                        let permit = tokio::select! {
-                            () = shutdown_signal.cancelled() => break,
-                            permit = Arc::clone(&semaphore).acquire_owned() => permit.expect("semaphore should not close"),
-                        };
-                        let task = handler(raw, state.clone());
-                        executor.spawn(subject, async move {
-                            let _permit = permit; // held until the handler (and its ack) completes
-                            task.await;
-                        });
-                    }
-                }
+                Ok(batch) => batch,
                 Err(e) => {
                     console!("ERROR failed to fetch messages, error={e:?}");
                     time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            loop {
+                tokio::select! {
+                    message = batch.next() => match message {
+                        Some(Ok(raw)) => {
+                            if let Some((subject, handler)) = handlers.get_key_value(raw.subject.as_str()) {
+                                queue.push_back((*subject, handler, raw));
+                            } else {
+                                console!("WARN no handler registered, subject={}", raw.subject);
+                                nak(&raw, Some(Duration::from_mins(1))).await;
+                            }
+                        }
+                        Some(Err(e)) => console!("ERROR failed to read message, error={e:?}"),
+                        None => break,
+                    },
+                    // dispatch while reading, not after: on a quiet stream a batch only ends at expires,
+                    // so waiting for its end would delay every message by up to batch_max_wait (measured
+                    // ~2ms to read a message vs ~900ms to batch end with expires 1s)
+                    permit = Arc::clone(&semaphore).acquire_owned(), if !queue.is_empty() => {
+                        dispatch(permit.expect("semaphore should not close"), queue.pop_front().expect("queue is not empty"));
+                    }
                 }
             }
 
-            if shutdown_signal.is_cancelled() {
-                break;
+            while !queue.is_empty() {
+                tokio::select! {
+                    permit = Arc::clone(&semaphore).acquire_owned() => {
+                        dispatch(permit.expect("semaphore should not close"), queue.pop_front().expect("queue is not empty"));
+                    }
+                    () = shutdown_signal.cancelled() => break,
+                }
             }
         }
 
-        // graceful shutdown: stop pulling, then wait for every in-flight handler (and its ack) to finish;
-        // any that overrun the drain timeout are abandoned (their messages are redelivered later).
-        if let Some(abandoned) = executor.shutdown(Duration::from_secs(30)).await {
+        // graceful shutdown: messages not yet dispatched are nak'd for immediate redelivery (to another
+        // instance, or the next release), then in-flight handlers are waited for; any that overrun the
+        // timeout are abandoned (their messages are redelivered after ack_wait).
+        for (_, _, raw) in queue.drain(..) {
+            nak(&raw, None).await;
+        }
+        if let Some(abandoned) = executor.shutdown(SHUTDOWN_TIMEOUT).await {
             console!("WARN message still running after shutdown timeout, abandoned, messages={abandoned:?}");
         }
 
@@ -249,9 +274,9 @@ where
     .map(drop)
 }
 
-// one durable pull consumer for a single subject/type. a single task pulls a batch, hands the
-// whole batch to one handler, then acks the latest message; AckPolicy::All makes that single ack
-// cover the entire batch.
+// one durable pull consumer for a single subject/type, one active instance per durable. a single task
+// pulls a batch, hands the whole batch to one handler, then acks the latest message; AckPolicy::All
+// makes that single ack cover the entire batch.
 pub struct BatchConsumer<S, M, H> {
     context: Context,
     stream: &'static str,
@@ -305,8 +330,9 @@ where
             .create_consumer(Config {
                 durable_name: Some(durable.to_owned()),
                 filter_subject: subject.to_owned(),
-                ack_policy: AckPolicy::All,
+                ack_policy: AckPolicy::All, // also acks messages another instance of the durable is processing
                 ack_wait: Duration::from_mins(30),
+                max_ack_pending: UNLIMITED, // in-flight is one batch; the server default (1000) caps the batch
                 deliver_policy: DeliverPolicy::New,
                 ..Default::default()
             })
@@ -416,6 +442,12 @@ where
         result
     })
     .map(drop)
+}
+
+async fn nak(raw: &jetstream::Message, delay: Option<Duration>) {
+    if let Err(e) = raw.ack_with(AckKind::Nak(delay)).await {
+        console!("ERROR failed to nak message, error={e:?}");
+    }
 }
 
 // ref_id and client headers are set and consumed by the framework only.

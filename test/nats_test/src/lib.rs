@@ -29,8 +29,11 @@ pub async fn setup_jetstream(client: Client) {
 }
 
 // create consumer before start, to make sure receive all new message, since deliver_policy = New,
+// recreated so a rerun does not inherit messages a previous run left unacked
 pub async fn setup_consumer(client: Client, durable: &str, ack_policy: AckPolicy) {
-    jetstream::new(client)
+    let context = jetstream::new(client);
+    let _ = context.delete_consumer_from_stream(durable, STREAM).await;
+    context
         .create_consumer_on_stream(
             pull::Config {
                 durable_name: Some(durable.to_owned()),

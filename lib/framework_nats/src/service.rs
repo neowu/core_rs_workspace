@@ -32,6 +32,7 @@ use futures::StreamExt as _;
 use futures::stream::select_all;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
@@ -113,10 +114,23 @@ impl Service {
         let mut requests = select_all(subscribers);
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
         let executor = TaskExecutor::default();
+        let dispatch = |permit: Option<OwnedSemaphorePermit>, message: Message| {
+            let Some((subject, handler)) = handlers.get_key_value(message.subject.as_str()) else {
+                console!("WARN no handler registered, subject={}", message.subject);
+                return;
+            };
+            let task = handler(Arc::clone(&client), message);
+            let counter = Arc::clone(&counter);
+            executor.spawn(subject, async move {
+                let _permit = permit; // held until the handler (and its reply) completes
+                let _counter = counter.increase();
+                task.await;
+            });
+        };
 
         loop {
-            // permit before message: a saturated service stops pulling, and a wait on handlers that
-            // never finish still sees shutdown
+            // permit before message: a saturated service stops reading its buffer, and a wait on
+            // handlers that never finish still sees shutdown
             let permit = tokio::select! {
                 () = shutdown_signal.cancelled() => break,
                 permit = Arc::clone(&semaphore).acquire_owned() => permit.expect("semaphore should not close"),
@@ -126,23 +140,22 @@ impl Service {
                 message = requests.next() => message,
             };
             let Some(message) = message else { break };
-            let Some((subject, handler)) = handlers.get_key_value(message.subject.as_str()) else {
-                console!("WARN no handler registered, subject={}", message.subject);
-                continue;
-            };
-            let task = handler(Arc::clone(&client), message);
-            let counter = Arc::clone(&counter);
-            executor.spawn(subject, async move {
-                let _permit = permit; // held until the handler (and its reply) completes
-                let _counter = counter.increase();
-                task.await;
-            });
+            dispatch(Some(permit), message);
         }
 
-        // graceful shutdown: unsubscribe so pending requests fail over to other queue group members,
-        // then wait for every in-flight handler (and its reply) to finish; any that overrun the
-        // timeout are abandoned, the runtime drops them on exit.
-        drop(requests);
+        // graceful shutdown: drain, so new requests go to other queue group members while the ones
+        // already delivered to this client (core nats never redelivers them) are still handled, all
+        // at once without permits so a stuck handler can't hold them back, then wait for every
+        // in-flight handler (and its reply) to finish; whatever overruns the timeout is abandoned,
+        // the runtime drops it on exit.
+        for subscriber in &mut requests {
+            if let Err(e) = subscriber.drain().await {
+                console!("ERROR failed to drain subscription, error={e:?}");
+            }
+        }
+        while let Some(message) = requests.next().await {
+            dispatch(None, message);
+        }
         if let Some(abandoned) = executor.shutdown(Duration::from_secs(30)).await {
             console!("WARN request still running after shutdown timeout, abandoned, requests={abandoned:?}");
         }
