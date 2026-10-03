@@ -72,10 +72,7 @@ impl HttpServer {
 
     pub async fn start(self, router: Router, shutdown_signal: CancellationToken) {
         let state = HttpServerState { counter: self.counter, max_forwarded_ips: self.config.max_forwarded_ips };
-        let app = Router::new();
-        let app = app.merge(router);
-        // layer after merge, so it runs after routing and MatchedPath is available
-        let app = app.layer(middleware::from_fn_with_state(state, http_server_layer));
+        let app = router.layer(middleware::from_fn_with_state(state, http_server_layer));
         let app = app.into_make_service_with_connect_info::<SocketAddr>();
         let listener = TcpListener::bind(&self.config.bind_address).await.expect("failed to bind address");
         console!("start http server, bind={}", self.config.bind_address);

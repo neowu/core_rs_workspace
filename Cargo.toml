@@ -30,7 +30,7 @@ debug = true
 
 [workspace.lints.rust]
 unused_crate_dependencies = "warn"
-unreachable-pub = "warn"
+unreachable_pub = "warn"
 
 [workspace.lints.clippy]
 # nursery
