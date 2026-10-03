@@ -2,13 +2,14 @@
 
 Run `cargo test -p http_test`, no external service needed. Code: [`test/http_test`](../../test/http_test).
 
-- Start the framework `HttpServer` on a dynamically selected loopback port and send
-  real HTTP requests with the framework `HttpClient`.
+- Bind a Tokio listener to loopback port `0` and pass it to `HttpServer::start_with_listener`
+  without releasing the port. Send real HTTP requests with the framework `HttpClient`.
 - Wait for `/health-check` readiness with a deadline; bound requests and shutdown.
   Stop the server after each test, including cleanup on failure.
 - Cover query, JSON, and text request/response handling, Unicode and query escaping,
   malformed input (`400` / `BAD_REQUEST`), unknown routes (`404`), and unsupported
   methods (`405`).
+- Verify a non-text `client` logging header does not prevent a valid request from reaching its handler.
 - Exercise `#[api]` generated routes and clients for GET, POST, and PUT, no-argument
   calls, empty `204` responses, validation errors, and service exceptions. Verify
   status, JSON error bodies, and preservation of severity, code, and message in

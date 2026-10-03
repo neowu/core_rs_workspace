@@ -18,6 +18,11 @@ A 5s sample misses short spikes, so every stat is either a delta of a cumulative
 window, or a peak tracked since the last collect (`Counter::max()`, reported as `active_*`).
 Instantaneous gauges such as tokio's `global_queue_depth` are left out for that reason.
 
+`active_http_requests` is the peak number of concurrent HTTP handlers, including middleware,
+and excludes health checks. A request leaves the count when its response is returned, before
+response body transmission finishes. Open connections and streaming downloads/SSE are not counted;
+see [`http_server.md`](http_server.md).
+
 ## Framework stats
 
 | key | source | meaning |

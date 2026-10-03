@@ -15,7 +15,7 @@ use axum::middleware;
 use axum::middleware::Next;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::Cookie;
 use tokio::net::TcpListener;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -34,7 +34,8 @@ const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto
 pub struct HttpServerConfig {
     pub bind_address: String,
     pub max_forwarded_ips: usize,
-    pub shutdown_grace_period: Duration,
+    /// Delay before stopping acceptance and starting graceful drain; not a drain timeout.
+    pub shutdown_delay: Duration,
 }
 
 impl Default for HttpServerConfig {
@@ -42,7 +43,7 @@ impl Default for HttpServerConfig {
         HttpServerConfig {
             bind_address: "0.0.0.0:8080".to_owned(),
             max_forwarded_ips: 2,
-            shutdown_grace_period: Duration::ZERO,
+            shutdown_delay: Duration::ZERO,
         }
     }
 }
@@ -63,6 +64,7 @@ impl HttpServer {
         Self { config, counter: Arc::default() }
     }
 
+    /// Peak active handlers between collections, excluding health checks and response body streaming.
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
         let counter = Arc::clone(&self.counter);
         move |metrics| {
@@ -71,18 +73,23 @@ impl HttpServer {
     }
 
     pub async fn start(self, router: Router, shutdown_signal: CancellationToken) {
+        let listener = TcpListener::bind(&self.config.bind_address).await.expect("failed to bind address");
+        self.start_with_listener(listener, router, shutdown_signal).await;
+    }
+
+    /// Uses the bound listener instead of the configured bind address.
+    pub async fn start_with_listener(self, listener: TcpListener, router: Router, shutdown_signal: CancellationToken) {
         let state = HttpServerState { counter: self.counter, max_forwarded_ips: self.config.max_forwarded_ips };
         let app = router.layer(middleware::from_fn_with_state(state, http_server_layer));
         let app = app.into_make_service_with_connect_info::<SocketAddr>();
-        let listener = TcpListener::bind(&self.config.bind_address).await.expect("failed to bind address");
-        console!("start http server, bind={}", self.config.bind_address);
+        console!("start http server, bind={}", listener.local_addr().expect("failed to get local address"));
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 shutdown_signal.cancelled().await;
-                let period = self.config.shutdown_grace_period;
-                if !period.is_zero() {
-                    console!("http server shutdown in {period:?}");
-                    sleep(period).await;
+                let delay = self.config.shutdown_delay;
+                if !delay.is_zero() {
+                    console!("http server shutdown in {delay:?}");
+                    sleep(delay).await;
                 }
             })
             .await
@@ -103,17 +110,17 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
 
     let _counter = counter.increase();
 
-    let response = log::action("http", ref_id, async {
+    log::action("http", ref_id, async {
         context!(uri = request_url(&request), method = request.method().as_str());
 
         for (name, value) in request.headers() {
             if name != header::COOKIE {
                 log!("[header] {name}={value:?}");
+            } else if let Ok(value) = value.to_str() {
+                for cookie in Cookie::split_parse_encoded(value).filter_map(Result::ok) {
+                    log!("[cookie] {}={:?}", cookie.name(), cookie.value());
+                }
             }
-        }
-        let cookies = CookieJar::from_headers(request.headers());
-        for cookie in cookies.iter() {
-            log!("[cookie] {}={:?}", cookie.name(), cookie.value());
         }
 
         let client_info = client_info(&request, max_forwarded_ips);
@@ -123,8 +130,8 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
         }
         request.extensions_mut().insert(Arc::new(client_info));
 
-        if let Some(client) = request.headers().get(CLIENT) {
-            context!(client = client.to_str()?);
+        if let Some(client) = request.headers().get(CLIENT).and_then(|value| value.to_str().ok()) {
+            context!(client = client);
         }
 
         let matched_path = request.extensions().get::<MatchedPath>().map(MatchedPath::as_str);
@@ -150,8 +157,8 @@ async fn http_server_layer(State(state): State<HttpServerState>, mut request: Re
         }
         Ok(http_response)
     })
-    .await;
-    if let Ok(response) = response { response } else { StatusCode::INTERNAL_SERVER_ERROR.into_response() }
+    .await
+    .expect("http action always returns a response")
 }
 
 // http/1.1 request uri is in origin-form (only path and query), rebuild the absolute url with scheme and host

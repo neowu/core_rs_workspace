@@ -1,4 +1,3 @@
-use std::net::TcpListener;
 use std::time::Duration;
 
 use axum::Router;
@@ -12,6 +11,7 @@ use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -35,13 +35,11 @@ pub struct TestServer {
 
 impl TestServer {
     pub async fn start(router: Router) -> Result<Self, Exception> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
-        // HttpServer binds its own listener, so release the selected port before starting it.
-        drop(listener);
-        let http_server = HttpServer::new(HttpServerConfig { bind_address: address.to_string(), ..Default::default() });
+        let http_server = HttpServer::new(HttpServerConfig::default());
         let shutdown_signal = CancellationToken::new();
-        let task = tokio::spawn(http_server.start(router, shutdown_signal.clone()));
+        let task = tokio::spawn(http_server.start_with_listener(listener, router, shutdown_signal.clone()));
         let server = Self {
             client: HttpClient::new(HttpClientConfig { timeout: Duration::from_secs(2), ..Default::default() }),
             url: format!("http://{address}"),

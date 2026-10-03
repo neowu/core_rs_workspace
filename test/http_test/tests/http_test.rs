@@ -1,4 +1,5 @@
 use axum::Router;
+use axum::http::HeaderName;
 use axum::http::header;
 use framework::api::ErrorResponse;
 use framework::exception::Exception;
@@ -38,6 +39,13 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(response.headers.get(&header::CONTENT_TYPE).map(String::as_str), Some("application/json"));
     let body: GreetResponse = json::from_json(&response.body)?;
     assert_eq!(body.greeting, "hello, world & friends");
+
+    let mut request = server.request(Method::GET, "/greet?name=world");
+    request.header(HeaderName::from_static("client"), "café")?;
+    let response = server.client.execute(request).await?;
+    assert_eq!(response.status, 200);
+    let body: GreetResponse = json::from_json(&response.body)?;
+    assert_eq!(body.greeting, "hello, world");
 
     let mut request = server.request(Method::POST, "/greet");
     request.body(json::to_json(&GreetRequest { name: "世界".to_owned() })?, "application/json");

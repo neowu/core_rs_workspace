@@ -62,7 +62,7 @@ pub async fn run() {
     let app = app.merge(scheduler_routes);
     let app = app.merge(user::web::routes(state));
     let app = app.merge(web::routes());
-    let http_server = HttpServer::new(HttpServerConfig { shutdown_grace_period: Duration::ZERO, ..Default::default() });
+    let http_server = HttpServer::new(HttpServerConfig { shutdown_delay: Duration::ZERO, ..Default::default() });
     system.add_metrics(http_server.metrics());
 
     // let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);

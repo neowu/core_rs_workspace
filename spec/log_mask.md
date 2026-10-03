@@ -47,6 +47,9 @@ quote cannot be part of a match, so text inside a string value is never taken as
 
 - request and response headers are logged as `[header] name={value:?}`; the `cookie` header is not
   logged as a whole, each parsed cookie is logged as `[cookie] name={value:?}`
+- cookie names and values are percent-decoded; every valid pair is logged in header order,
+  including duplicate names. Invalid cookie pairs and non-text cookie headers are skipped.
+  Logging parses borrowed header slices without building an owned cookie jar.
 - there is no session support yet; when it is added, mask the session cookie and `set-cookie` by
   adding their names to the list
 

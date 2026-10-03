@@ -245,6 +245,12 @@ consumer would then have to handle — for a saving that only defers an allocati
   to the end of its scope, and an early return still records it.
 - **`/health-check` opens no action at all.** A load balancer probing every second would otherwise
   dominate the record volume with nothing to learn from.
+- **An HTTP action finishes when middleware returns the handler's response.** Its elapsed time
+  includes request body reads in the handler, but excludes response body transmission and detached
+  work. Later streaming failures are outside the completed action; see [`http_server.md`](http_server.md).
+- **HTTP `client` and `ref-id` headers are optional logging metadata.** Values that cannot be
+  read as header text are omitted from the corresponding context/reference fields without
+  rejecting the request.
 - **Context and stats keep insertion order** end to end, into the ClickHouse `Map` column, which
   stores an array of tuples.
 - **The record is produced exactly once per action**, even on error — the error path adds fields, it
