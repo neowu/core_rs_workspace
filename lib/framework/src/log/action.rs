@@ -16,6 +16,7 @@ use crate::write_str;
 const MAX_LOG_BYTES: usize = 512 * 1024; // soft limitation, framework may still write few lines after hits limit
 const MAX_LOG_MESSAGE_LEN: usize = 10_000;
 const MAX_ERROR_MESSAGE_LEN: usize = 200;
+const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
 pub(crate) struct Action {
     pub start_time: Instant,
@@ -65,6 +66,13 @@ impl Action {
 
     pub(crate) const fn flush_trace(&self) -> bool {
         self.error.is_some() || self.trace
+    }
+
+    pub(crate) fn add_context(&mut self, key: &'static str, mut values: ContextValues) {
+        for value in &mut values {
+            truncate_with_marker(value, MAX_CONTEXT_VALUE_LEN);
+        }
+        self.context.push((key.into(), values));
     }
 
     /// Accumulates into an existing key or appends it. Keys come from stringify!/concat! and an action
@@ -174,6 +182,17 @@ impl Action {
     }
 }
 
+/// Truncates in place on a char boundary, appending the marker only when something was cut.
+fn truncate_with_marker(value: &mut String, len: usize) {
+    if value.len() <= len {
+        return;
+    }
+
+    let new_len = value.truncate_to_max(len).len();
+    value.truncate(new_len);
+    value.push_str("...(truncated)");
+}
+
 struct BoundedWriter<'a> {
     out: &'a mut String,
     remaining: usize,
@@ -225,7 +244,10 @@ fn write_digits(out: &mut [u8], mut value: u32) {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::time::Duration;
+
+    use smallvec::smallvec;
 
     use super::Action;
     use super::MAX_LOG_BYTES;
@@ -234,6 +256,51 @@ mod tests {
 
     fn action() -> Action {
         Action::new("id".to_owned(), "test", None, DateTime::now())
+    }
+
+    #[test]
+    fn add_context_truncates_values_and_preserves_entries() {
+        let mut action = action();
+        let logs = action.logs.clone();
+        action.add_context("scalar", smallvec!["老".repeat(334)]);
+        action.add_context("empty", smallvec![]);
+        action.add_context("single", smallvec!["one".to_owned()]);
+        action.add_context("multiple", smallvec!["x".repeat(1_001), "老".repeat(334)]);
+        action.add_context("scalar", smallvec!["x".repeat(1_000)]);
+
+        assert_eq!(
+            action.context,
+            vec![
+                (Cow::Borrowed("scalar"), smallvec![format!("{}...(truncated)", "老".repeat(333))]),
+                (Cow::Borrowed("empty"), smallvec![]),
+                (Cow::Borrowed("single"), smallvec!["one".to_owned()]),
+                (
+                    Cow::Borrowed("multiple"),
+                    smallvec![
+                        format!("{}...(truncated)", "x".repeat(1_000)),
+                        format!("{}...(truncated)", "老".repeat(333))
+                    ]
+                ),
+                (Cow::Borrowed("scalar"), smallvec!["x".repeat(1_000)]),
+            ]
+        );
+        assert_eq!(action.logs, logs);
+    }
+
+    #[test]
+    fn truncate_with_marker() {
+        let mut cut_at_char = "123老虎456".to_owned();
+        super::truncate_with_marker(&mut cut_at_char, 6);
+        assert_eq!(cut_at_char, "123老...(truncated)");
+
+        let mut cut_mid_char = "123老虎456".to_owned();
+        super::truncate_with_marker(&mut cut_mid_char, 10);
+        assert_eq!(cut_mid_char, "123老虎4...(truncated)");
+
+        // nothing was cut, so no marker
+        let mut untouched = "123".to_owned();
+        super::truncate_with_marker(&mut untouched, 3);
+        assert_eq!(untouched, "123");
     }
 
     #[test]

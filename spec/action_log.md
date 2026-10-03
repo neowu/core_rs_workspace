@@ -67,6 +67,17 @@ a borrow panic would mean a genuine reentrancy bug. The one real hazard is docum
 itself — never call `log!` from a `Display` impl that is being passed *as an argument to* `log!`,
 which borrows the `RefCell` twice.
 
+### Logging adapters own messages; Action owns context storage
+
+`context!` formats its trace message, then `Action::add_context` truncates each `ContextValues`
+entry and appends it to structured context. Trace messages use the message limit; stored context
+values use the separate context limit.
+
+HTTP middleware uses `log!`, `context!`, and `stats!` at each call site. Client-IP parsing uses
+`warn!` for malformed forwarded addresses and falls back to the connection peer address (or
+`unknown`). The HTTP batching experiment was removed after benchmark review: no demonstrated
+benefit warranted the extra call-site code. See [HTTP tuning](../plan/http_tuning.md).
+
 ### Three shapes, because they are read three different ways
 
 `context` is **dimensions you filter and group by** (uri, client_ip, matched_path). `stats` are
@@ -320,9 +331,9 @@ Measured on the http server benchmark, which exists for exactly this question; m
 - **No regression guard on the record's cost.** Every action carries its own allocation counts,
   but nothing fails when they go up; noticing is still a person comparing two reports. The counts
   and what they cost: [`action_alloc_stats.md`](action_alloc_stats.md).
-- **Per-line trace overhead is unamortized.** Every line re-reads the task local and re-reads the
-  clock for its elapsed prefix. A header-block writer could share both across a block of lines, at
-  the price of one timestamp per block, which would change what a trace shows.
+- **Per-line trace overhead remains.** HTTP logging uses the normal task-local adapters after
+  the [batching experiment](../plan/http_tuning.md) did not justify its extra code. Each accepted
+  trace line still reads the clock; sharing timestamps would change the timing shown in traces.
 - **The trace is collected even when no appender could ever emit it.** There is no way for an
   appender to declare that it never wants traces, and `flush_trace` is decided after the fact.
 - **Context values are capped per value, not per action.** An action setting many large values can

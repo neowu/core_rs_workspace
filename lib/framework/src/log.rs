@@ -18,7 +18,6 @@ use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
 use crate::log::alloc_stats::ActionAllocs;
-use crate::string::StringExt as _;
 use crate::system::SENDER;
 use crate::time::DateTime;
 
@@ -262,15 +261,9 @@ impl<T: Into<String>> VecContextValue for Vec<T> {
 
 #[doc(hidden)]
 #[inline]
-pub fn __context(key: &'static str, mut values: ContextValues, location: &'static str) {
-    const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
-
+pub fn __context(key: &'static str, values: ContextValues, location: &'static str) {
     let _result = CURRENT_ACTION.try_with(|action| {
         let mut action = action.borrow_mut();
-
-        for value in &mut values {
-            truncate_with_marker(value, MAX_CONTEXT_VALUE_LEN);
-        }
 
         if values.len() == 1
             && let Some(value) = values.first()
@@ -280,7 +273,7 @@ pub fn __context(key: &'static str, mut values: ContextValues, location: &'stati
             action.log(None, None, Some(location), format_args!("[context] {key}={values:?}"));
         }
 
-        action.context.push((key.into(), values));
+        action.add_context(key, values);
     });
 }
 
@@ -307,31 +300,13 @@ pub fn __stats(key: &'static str, value: u64, location: &'static str) {
     });
 }
 
-/// Truncates in place on a char boundary, appending the marker only when something was cut.
-fn truncate_with_marker(value: &mut String, len: usize) {
-    if value.len() <= len {
-        return;
-    }
-
-    let new_len = value.truncate_to_max(len).len();
-    value.truncate(new_len);
-    value.push_str("...(truncated)");
-}
-
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::pin::pin;
 
-    use futures::executor::block_on;
-
-    use super::CURRENT_ACTION;
     use super::ContextValues;
     use super::ScalarContextValue as _;
     use super::VecContextValue as _;
     use crate::log::Severity;
-    use crate::log::action::Action;
-    use crate::time::DateTime;
 
     #[test]
     fn context_values_preserve_arrays() {
@@ -350,50 +325,9 @@ mod tests {
     }
 
     #[test]
-    fn context_logs_and_truncates_inline_and_multiple_values() {
-        let mut scope = pin!(CURRENT_ACTION.scope(
-            RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())),
-            async {
-                context!(scalar = "老".repeat(334));
-                context!(empty = Vec::<String>::new());
-                context!(single = vec!["one"]);
-                context!(multiple = vec!["one".to_owned(), "老".repeat(334)]);
-            }
-        ));
-        block_on(scope.as_mut());
-        let action = scope.take_value().unwrap().into_inner();
-        let truncated = format!("{}...(truncated)", "老".repeat(333));
-        let values: Vec<_> = action.context.iter().map(|(_, values)| values.as_slice()).collect();
-        assert_eq!(
-            values,
-            vec![vec![truncated.clone()], vec![], vec!["one".to_owned()], vec!["one".to_owned(), truncated.clone()]]
-        );
-        assert!(action.logs.contains(&format!("[context] scalar={truncated}\n")));
-        assert!(action.logs.contains("[context] empty=[]\n"));
-        assert!(action.logs.contains("[context] single=one\n"));
-        assert!(action.logs.contains(&format!("[context] multiple={:?}\n", ["one", &truncated])));
-    }
-
-    #[test]
     fn compare_severity() {
         assert_eq!(Severity::Info, Severity::Info);
         assert!(Severity::Info < Severity::Warn);
         assert!(Severity::Warn < Severity::Error);
-    }
-
-    #[test]
-    fn truncate_with_marker() {
-        let mut cut_at_char = "123老虎456".to_owned();
-        super::truncate_with_marker(&mut cut_at_char, 6);
-        assert_eq!(cut_at_char, "123老...(truncated)");
-
-        let mut cut_mid_char = "123老虎456".to_owned();
-        super::truncate_with_marker(&mut cut_mid_char, 10);
-        assert_eq!(cut_mid_char, "123老虎4...(truncated)");
-
-        // nothing was cut, so no marker
-        let mut untouched = "123".to_owned();
-        super::truncate_with_marker(&mut untouched, 3);
-        assert_eq!(untouched, "123");
     }
 }

@@ -88,7 +88,11 @@ CREATE TABLE "benchmark_entity" (
 - **Client uses `reqwest` directly, not `HttpClient`**, which logs every request and would make the
   instrument the bottleneck.
 - **The measured loop never parses a response**; one `verify` request at startup parses and
-  asserts, so a wrong url fails fast. Urls and bodies are prepared once.
+  asserts, so a wrong url fails fast. Urls, headers and bodies are prepared once.
+- **Browser-like headers on every scenario request**: the framework's `client` and `ref-id` plus a
+  desktop Safari navigation (`accept*`, `priority`, `sec-fetch-*`, `user-agent`), so the server's
+  per-header logging and context are exercised as for real traffic. Names are recorded in
+  `config.headers`; the server does no compression, so `accept-encoding` changes nothing but the log.
 - **Closed loop, fixed concurrency**: answers capacity and cost, not overload behaviour; latencies
   are subject to coordinated omission.
 - **Every latency sample is kept** per worker, merged and sorted once: exact percentiles.

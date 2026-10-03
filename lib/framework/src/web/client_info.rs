@@ -82,7 +82,7 @@ fn extract_ip(node: &str) -> Option<String> {
             last_colon_index = Some(i);
         } else if ch.to_digit(16).is_none() {
             // Invalid character in IP address
-            warn!(error_code = "BAD_REQUEST", "Invalid character in client IP address: {node}");
+            warn!(error_code = "BAD_REQUEST", "invalid character in client ip address, value={node}");
             return None;
         }
     }
@@ -107,13 +107,41 @@ fn extract_ip(node: &str) -> Option<String> {
         return Some(node[0..last_colon_index].to_string());
     }
 
-    warn!(error_code = "BAD_REQUEST", "Invalid client IP address: {node}");
+    warn!(error_code = "BAD_REQUEST", "invalid client ip address, value={node}");
     None
 }
 
 #[cfg(test)]
 mod tests {
+    use axum::body::Body;
+
     use super::*;
+
+    #[test]
+    fn client_info_falls_back_for_invalid_forwarded_ip() {
+        let mut request = Request::builder()
+            .header(X_FORWARDED_FOR, "invalid")
+            .header(header::USER_AGENT, "test-agent")
+            .body(Body::empty())
+            .unwrap();
+        let unknown_info = client_info(&request, 2);
+        assert_eq!(unknown_info.client_ip, "unknown");
+        assert_eq!(unknown_info.user_agent.as_deref(), Some("test-agent"));
+
+        request.extensions_mut().insert(ConnectInfo("127.0.0.1:1234".parse::<SocketAddr>().unwrap()));
+        let peer_info = client_info(&request, 2);
+        assert_eq!(peer_info.client_ip, "127.0.0.1");
+        assert_eq!(peer_info.user_agent.as_deref(), Some("test-agent"));
+
+        let disabled_info = client_info(&request, 0);
+        assert_eq!(disabled_info.client_ip, "127.0.0.1");
+        assert_eq!(disabled_info.user_agent.as_deref(), Some("test-agent"));
+
+        request.headers_mut().insert(X_FORWARDED_FOR, "1.2.3".parse().unwrap());
+        let malformed_info = client_info(&request, 2);
+        assert_eq!(malformed_info.client_ip, "127.0.0.1");
+        assert_eq!(malformed_info.user_agent.as_deref(), Some("test-agent"));
+    }
 
     #[test]
     fn extract_client_ip_with_empty() {

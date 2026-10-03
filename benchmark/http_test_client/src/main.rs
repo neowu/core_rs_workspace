@@ -20,8 +20,14 @@ use reqwest::Method;
 use reqwest::Request;
 use reqwest::Url;
 use reqwest::Version;
+use reqwest::header::ACCEPT;
+use reqwest::header::ACCEPT_ENCODING;
+use reqwest::header::ACCEPT_LANGUAGE;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::USER_AGENT;
 use serde_json::json;
 
 use crate::args::Args;
@@ -33,6 +39,24 @@ mod args;
 mod stats;
 
 const ID: i64 = 7;
+
+/// Sent with every scenario request, what a browser behind a gateway sends: the framework's `client`
+/// and `ref-id` plus a desktop Safari navigation, so the server's header logging does real work.
+const HEADERS: [(HeaderName, &str); 10] = [
+    (HeaderName::from_static("client"), "benchmark"),
+    (HeaderName::from_static("ref-id"), "benchmark-ref-id"),
+    (ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    (ACCEPT_ENCODING, "gzip, deflate, br, zstd"),
+    (ACCEPT_LANGUAGE, "en-US,en;q=0.9"),
+    (HeaderName::from_static("priority"), "u=0, i"),
+    (HeaderName::from_static("sec-fetch-dest"), "document"),
+    (HeaderName::from_static("sec-fetch-mode"), "navigate"),
+    (HeaderName::from_static("sec-fetch-site"), "none"),
+    (
+        USER_AGENT,
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Safari/605.1.15",
+    ),
+];
 
 fn main() {
     let args = Args::parse();
@@ -53,6 +77,7 @@ struct Target {
     scenario: Scenario,
     method: Method,
     url: Url,
+    headers: HeaderMap,
     body: Option<Bytes>,
 }
 
@@ -60,7 +85,10 @@ impl Target {
     fn new(args: &Args) -> Self {
         let scenario = args.scenario;
         let path = scenario.path();
+        let mut headers: HeaderMap =
+            HEADERS.into_iter().map(|(name, value)| (name, HeaderValue::from_static(value))).collect();
         if scenario.is_post() {
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
             let body = match scenario {
                 // one id past the seeded rows: the first insert lands, every later one conflicts
                 Scenario::DbInsertIgnore => serde_json::to_vec(&DbInsertRequest {
@@ -79,17 +107,24 @@ impl Target {
                 scenario,
                 method: Method::POST,
                 url: url(&format!("{}{path}", args.url)),
+                headers,
                 body: Some(Bytes::from(body)),
             }
         } else {
-            Target { scenario, method: Method::GET, url: url(&format!("{}{path}?id={ID}", args.url)), body: None }
+            Target {
+                scenario,
+                method: Method::GET,
+                url: url(&format!("{}{path}?id={ID}", args.url)),
+                headers,
+                body: None,
+            }
         }
     }
 
     fn request(&self) -> Request {
         let mut request = Request::new(self.method.clone(), self.url.clone());
+        *request.headers_mut() = self.headers.clone();
         if let Some(ref body) = self.body {
-            request.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
             *request.body_mut() = Some(Body::from(body.clone()));
         }
         request
@@ -278,6 +313,7 @@ fn config(args: &Args) -> serde_json::Value {
         "threads": args.threads,
         "values": args.values,
         "rows": args.rows,
+        "headers": HEADERS.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(),
         "warmup": args.warmup.as_secs(),
         "duration": args.duration.as_secs(),
     })
