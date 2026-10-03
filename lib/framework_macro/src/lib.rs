@@ -9,7 +9,7 @@ mod nats_api;
 mod validate;
 
 /// `#[derive(Validate)]` supports following field validations:
-/// ```
+/// ```text
 /// #[range(min = 1, max = 10)]    // for Numeric
 /// #[length(max = 10, min = 1)]   // for String (char count), Collections (element count)
 /// #[validate]                    // for nested struct
@@ -22,11 +22,11 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 /// Derive `framework_db::Entity` for a struct, plus a `FIELD_<NAME>` const per column.
 /// struct attributes
-/// ```
+/// ```text
 /// #[table(name = "table_name")]
 /// ```
 /// field attributes
-/// ```
+/// ```text
 /// #[primary_key(auto_increment)]  // auto increment pk, excluded from INSERT, must be `Option<i64>`, only one allowed
 /// #[primary_key]                  // assigned pk, included in INSERT
 /// #[column(name = "column_name")]
