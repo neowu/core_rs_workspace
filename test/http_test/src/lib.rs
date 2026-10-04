@@ -12,7 +12,6 @@ use framework::web::server::HttpServerConfig;
 use framework_macro::Validate;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -37,14 +36,13 @@ pub struct TestServer {
 
 impl TestServer {
     pub async fn start(router: Router) -> Result<Self, Exception> {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let address = listener.local_addr()?;
-        let http_server = HttpServer::new(HttpServerConfig::default());
+        let http_server =
+            HttpServer::new(HttpServerConfig { bind_address: "127.0.0.1:8081".to_owned(), ..Default::default() });
         let shutdown_signal = CancellationToken::new();
-        let task = tokio::spawn(http_server.start_with_listener(listener, router, shutdown_signal.clone()));
+        let task = tokio::spawn(http_server.start(router, shutdown_signal.clone()));
         let server = Self {
             client: HttpClient::new(HttpClientConfig { timeout: Duration::from_secs(2), ..Default::default() }),
-            url: format!("http://{address}"),
+            url: "http://127.0.0.1:8081".to_owned(),
             shutdown_signal,
             task,
         };

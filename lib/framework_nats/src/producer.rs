@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use async_nats::Client;
 use async_nats::jetstream;
 use async_nats::jetstream::Context;
+use async_nats::jetstream::context::PublishAckFuture;
 use framework::console;
 use framework::exception::Exception;
 use framework::json::to_json;
@@ -24,7 +25,8 @@ impl Producer {
         Self { context: jetstream::new(client) }
     }
 
-    pub async fn send<T>(&self, subject: &Subject<T>, message: &T) -> Result<(), Exception>
+    // let caller decide what to do with ack, whether batch wait or throw away
+    pub async fn send<T>(&self, subject: &Subject<T>, message: &T) -> Result<PublishAckFuture, Exception>
     where
         T: Serialize + Debug,
     {
@@ -33,8 +35,8 @@ impl Producer {
         let payload = to_json(message)?;
         let len = payload.len();
         log!("send, subject={}, payload={payload}", subject.name);
-        let _ack = self.context.publish_with_headers(subject.name, headers, payload.into()).await?;
+        let ack = self.context.publish_with_headers(subject.name, headers, payload.into()).await?;
         stats!(nats_write_messages = 1, nats_write_bytes = len);
-        Ok(())
+        Ok(ack)
     }
 }

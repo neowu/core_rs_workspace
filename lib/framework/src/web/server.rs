@@ -74,15 +74,11 @@ impl HttpServer {
 
     pub async fn start(self, router: Router, shutdown_signal: CancellationToken) {
         let listener = TcpListener::bind(&self.config.bind_address).await.expect("failed to bind address");
-        self.start_with_listener(listener, router, shutdown_signal).await;
-    }
 
-    /// Uses the bound listener instead of the configured bind address.
-    pub async fn start_with_listener(self, listener: TcpListener, router: Router, shutdown_signal: CancellationToken) {
         let state = HttpServerState { counter: self.counter, max_forwarded_ips: self.config.max_forwarded_ips };
         let app = router.layer(middleware::from_fn_with_state(state, http_server_layer));
         let app = app.into_make_service_with_connect_info::<SocketAddr>();
-        console!("start http server, bind={}", listener.local_addr().expect("failed to get local address"));
+        console!("start http server, bind={}", &self.config.bind_address);
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 shutdown_signal.cancelled().await;
