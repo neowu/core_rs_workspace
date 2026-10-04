@@ -10,7 +10,6 @@ use syn::Fields::Named;
 use syn::FieldsNamed;
 use syn::Ident;
 use syn::Lit;
-use syn::LitInt;
 use syn::Meta;
 use syn::Result;
 use syn::Token;
@@ -42,23 +41,6 @@ pub(crate) struct FieldModel {
 }
 
 impl FieldModel {
-    pub(crate) fn is_optional_type(&self) -> bool {
-        self.field_type.starts_with("Option<")
-    }
-
-    pub(crate) fn is_vec_type(&self) -> bool {
-        self.field_type.starts_with("Vec<")
-    }
-
-    pub(crate) fn is_optional_vec_type(&self) -> bool {
-        self.field_type.starts_with("Option<Vec<")
-    }
-
-    // includes Option<String>, since length validation applies to the inner value
-    pub(crate) fn is_string_type(&self) -> bool {
-        self.field_type == "String" || self.field_type == "Option<String>"
-    }
-
     pub(crate) fn attr(&self, attr_name: &'static str) -> Result<&AttributeModel> {
         self.optional_attr(attr_name)
             .ok_or_else(|| Error::new_spanned(&self.ident, format!("can not find {attr_name} attribute")))
@@ -103,17 +85,6 @@ impl AttributeModel {
             Ok(value.value())
         } else {
             Err(Error::new_spanned(&self.attr, format!("meta {meta_name} value is not string")))
-        }
-    }
-
-    pub(crate) fn optional_int_meta_value(&self, meta_name: &str) -> Result<Option<LitInt>> {
-        let Some(lit) = self.optional_meta_value(meta_name)? else {
-            return Ok(None);
-        };
-        if let Lit::Int(value) = lit {
-            Ok(Some(value))
-        } else {
-            Err(Error::new_spanned(&self.attr, format!("meta {meta_name} is not int")))
         }
     }
 }
@@ -186,46 +157,6 @@ mod tests {
         assert_eq!(model.fields[1].attrs.len(), 1);
         assert_eq!(model.fields[1].attr("column")?.string_meta_value("name")?, "col1");
         assert_eq!(model.fields[2].attr("column")?.string_meta_value("name")?, "col2");
-
-        Ok(())
-    }
-
-    #[test]
-    fn parse_struct_with_validate_macro() -> syn::Result<()> {
-        let tokens = quote! {
-            #[derive(Validate)]
-            struct TestBean {
-                #[range(min = 2, max = 100)]
-                col1: i32,
-                #[length(min = 1, max = 10)]
-                col2: Vec<String>,
-                #[not_blank]
-                col3: Option<String>,
-                #[validate]
-                col4: Child,
-            }
-        };
-
-        let model = parse_struct(tokens)?;
-        assert_eq!(model.ident, "TestBean");
-
-        assert_eq!(model.fields.len(), 4);
-        assert_eq!(model.fields[0].ident, "col1");
-        assert_eq!(model.fields[0].field_type, "i32");
-        assert_eq!(model.fields[1].field_type, "Vec<String>");
-
-        assert_eq!(model.fields[0].attrs.len(), 1);
-        let range = model.fields[0].attr("range")?;
-        assert_eq!(range.optional_int_meta_value("min")?.unwrap().base10_digits(), "2");
-        assert_eq!(range.optional_int_meta_value("max")?.unwrap().base10_digits(), "100");
-
-        let length = model.fields[1].attr("length")?;
-        assert_eq!(length.optional_int_meta_value("min")?.unwrap().base10_digits(), "1");
-        assert_eq!(length.optional_int_meta_value("max")?.unwrap().base10_digits(), "10");
-
-        assert!(model.fields[2].optional_attr("not_blank").is_some());
-        assert!(model.fields[2].is_optional_type());
-        assert!(model.fields[3].optional_attr("validate").is_some());
 
         Ok(())
     }

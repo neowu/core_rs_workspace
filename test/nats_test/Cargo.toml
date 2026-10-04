@@ -7,7 +7,6 @@ edition = "2024"
 framework = { workspace = true }
 framework_nats = { workspace = true }
 framework_macro = { workspace = true }
-
 serde.workspace = true
 tokio.workspace = true
 async-nats = "*"

@@ -8,13 +8,14 @@ mod model;
 mod nats_api;
 mod validate;
 
-/// `#[derive(Validate)]` supports following field validations:
+/// `#[derive(Validate)]` supports following field validations, see spec/validate.md:
 /// ```text
-/// #[range(min = 1, max = 10)]    // for Numeric
-/// #[length(max = 10, min = 1)]   // for String (char count), Collections (element count)
-/// #[validate]                    // for nested struct
-/// #[not_blank]                   // for String
+/// #[range(min = 1, max = 10)]    // for Numeric, bounds are inclusive integer literals
+/// #[length(max = 10, min = 1)]   // for String/&str (char count), other types (`len()`)
+/// #[validate]                    // for nested `Validator`, including Option<T> and Vec<T>
+/// #[not_blank]                   // for String/&str
 /// ```
+/// On `Option<T>` fields, checks apply to the inner value and `None` passes.
 #[proc_macro_derive(Validate, attributes(range, length, validate, not_blank))]
 pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()

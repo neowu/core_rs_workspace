@@ -2,6 +2,8 @@
 
 Integration crates live under `test/`, one crate per service:
 [http](http.md) · [nats](nats.md) · [kafka](kafka.md) · [db](db.md) · [clickhouse](clickhouse.md).
+Framework features that need a downstream crate to exercise generated code, but no service, also get a crate,
+e.g. `validator_test` for `#[derive(Validate)]`; they use plain `#[test]` and the rules below do not apply.
 
 - Every test uses `#[integration_test]`: it initializes `System`, runs the body in a log action
   named after the fn, and fails with the exception backtrace. Keep one integration test per file,
