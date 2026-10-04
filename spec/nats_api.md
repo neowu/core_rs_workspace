@@ -16,6 +16,8 @@ Code: [`framework_macro/src/nats_api.rs`](../lib/framework_macro/src/nats_api.rs
 Method rules, enforced at expansion time:
 
 - must be `async fn(&self [, request: Req]) -> Result<Res, Exception>`, at most one request param.
+- `Req` must implement `Validator`, the handler validates it before calling the method, see
+  [`validate.md`](validate.md#api-request).
 - `#[subject = "..."]` (or `#[subject("...")]`) is required.
 - `service` is reserved.
 

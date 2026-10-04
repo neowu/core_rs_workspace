@@ -9,7 +9,8 @@ Start `nats`, then run `cargo test -p nats_test`. Code: [`test/nats_test`](../..
   explicit ack; assert subject and payload.
 - Batch message: `BatchConsumer` receives 10 messages, ack policy `All`; assert subject.
 - Service: `#[nats_api]` generated service and client for request/response, `()` request and
-  response, and a service exception propagated with severity and code. After shutdown the
+  response, a blank request rejected with `VALIDATION_ERROR` before the service, and a service exception
+  propagated with severity and code. After shutdown the
   service unsubscribes and requests fail with `NATS_NO_RESPONDERS`.
 - Saturated shutdown: a service with one permit held by a handler that never finishes, and a second
   request waiting; after cancel it must unsubscribe within 2 s (`NATS_NO_RESPONDERS`), then stop

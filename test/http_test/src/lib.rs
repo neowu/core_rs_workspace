@@ -9,6 +9,7 @@ use framework::http::Method;
 use framework::system::CancellationToken;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
+use framework_macro::Validate;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -16,8 +17,9 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct GreetRequest {
+    #[not_blank]
     pub name: String,
 }
 

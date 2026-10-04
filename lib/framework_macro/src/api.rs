@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
+use quote::quote_spanned;
 use syn::Error;
 use syn::FnArg;
 use syn::Ident;
@@ -13,6 +14,7 @@ use syn::TraitItemFn;
 use syn::Type;
 use syn::parse_quote;
 use syn::parse2;
+use syn::spanned::Spanned as _;
 use syn::token::RArrow;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
@@ -158,10 +160,15 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
 
     let handler = if let Some(request_type) = &model.request_type {
         let extractor = &model.extractor;
+        // spanned to request type, so missing Validator impl is reported on the trait method
+        let validate = quote_spanned! {request_type.span()=> framework::validate::Validator::validate(&req)};
         quote! {
             async move |#extractor(req): #extractor<#request_type>| {
                 context!(fn = fn_name);
-                let result = svc.#method_ident(req).await;
+                let result = match #validate {
+                    Ok(()) => svc.#method_ident(req).await,
+                    Err(error) => Err(error),
+                };
                 __into_response(result)
             }
         }
@@ -266,7 +273,10 @@ mod tests {
                             "/user/search",
                             on(MethodFilter::GET, async move |Query(req): Query<SearchUserRequest>| {
                                 context!(fn = fn_name);
-                                let result = svc.search(req).await;
+                                let result = match framework::validate::Validator::validate(&req) {
+                                    Ok(()) => svc.search(req).await,
+                                    Err(error) => Err(error),
+                                };
                                 __into_response(result)
                             }),
                         );
@@ -276,7 +286,10 @@ mod tests {
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
                                 context!(fn = fn_name);
-                                let result = svc.create(req).await;
+                                let result = match framework::validate::Validator::validate(&req) {
+                                    Ok(()) => svc.create(req).await,
+                                    Err(error) => Err(error),
+                                };
                                 __into_response(result)
                             }),
                         );
@@ -286,7 +299,10 @@ mod tests {
                             "/user/update",
                             on(MethodFilter::PUT, async move |Json(req): Json<UpdateUserRequest>| {
                                 context!(fn = fn_name);
-                                let result = svc.update(req).await;
+                                let result = match framework::validate::Validator::validate(&req) {
+                                    Ok(()) => svc.update(req).await,
+                                    Err(error) => Err(error),
+                                };
                                 __into_response(result)
                             }),
                         );
@@ -379,7 +395,10 @@ mod tests {
                             "/user/create",
                             on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
                                 context!(fn = fn_name);
-                                let result = svc.create(req).await;
+                                let result = match framework::validate::Validator::validate(&req) {
+                                    Ok(()) => svc.create(req).await,
+                                    Err(error) => Err(error),
+                                };
                                 __into_response(result)
                             }),
                         );

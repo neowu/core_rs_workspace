@@ -1,5 +1,9 @@
 use crate::exception::Exception;
 
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `Validator`",
+    note = "add `#[derive(Validate)]` to `{Self}`, it's required by `#[api]` / `#[nats_api]` request and `#[validate]` field"
+)]
 pub trait Validator {
     fn validate(&self) -> Result<(), Exception>;
 }

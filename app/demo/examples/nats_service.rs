@@ -8,12 +8,13 @@ use framework::spawn_action;
 use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::task::start_executor;
+use framework_macro::Validate;
 use framework_macro::nats_api;
 use framework_nats::service::ServiceConfig;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Validate)]
 pub struct GreetRequest {
     pub name: String,
 }

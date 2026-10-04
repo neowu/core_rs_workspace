@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
+use quote::quote_spanned;
 use syn::Attribute;
 use syn::Error;
 use syn::Expr;
@@ -18,6 +19,7 @@ use syn::TraitItemFn;
 use syn::Type;
 use syn::parse_quote;
 use syn::parse2;
+use syn::spanned::Spanned as _;
 use syn::token::RArrow;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
@@ -154,11 +156,14 @@ fn build_handler_statement(model: &MethodModel) -> TokenStream {
     let fn_format = format!("{{}}::{method_ident}");
 
     let handler = if let Some(request_type) = &model.request_type {
+        // spanned to request type, so missing Validator impl is reported on the trait method
+        let validate = quote_spanned! {request_type.span()=> framework::validate::Validator::validate(&request)};
         quote! {
             move |request: #request_type| {
                 let svc = Arc::clone(&svc);
                 async move {
                     context!(fn = fn_name);
+                    #validate?;
                     svc.#method_ident(request).await
                 }
             }
@@ -254,6 +259,7 @@ mod tests {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = fn_name);
+                                framework::validate::Validator::validate(&request)?;
                                 svc.get_user_by_id(request).await
                             }
                         });
@@ -263,6 +269,7 @@ mod tests {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = fn_name);
+                                framework::validate::Validator::validate(&request)?;
                                 svc.create_user(request).await
                             }
                         });
@@ -347,6 +354,7 @@ mod tests {
                             let svc = Arc::clone(&svc);
                             async move {
                                 context!(fn = fn_name);
+                                framework::validate::Validator::validate(&request)?;
                                 svc.delete_user(request).await
                             }
                         });

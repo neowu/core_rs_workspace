@@ -47,6 +47,7 @@ pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// `#[api]` derives an axum route builder and an HTTP client from a trait.
 /// Each method must be `async fn`, annotated with one of `#[get]`, `#[post]`, `#[put]` plus `#[path("/...")]`,
 /// take `&self` and a single request parameter, and return `Result<..., Exception>`.
+/// The request type must implement `Validator` (`#[derive(Validate)]`), it's validated before calling the method.
 /// Adds a `route(service)` associated fn to the trait, and generates a sibling `<Trait>Client` struct
 /// implementing the trait, both with the trait's own visibility.
 /// ```text
@@ -61,6 +62,7 @@ pub fn api(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> pro
 /// `#[nats_api]` derives a NATS request/reply service builder and client from a trait.
 /// Each method must be `async fn`, annotated with `#[subject = "..."]`,
 /// take `&self` and at most one request parameter, and return `Result<..., Exception>`.
+/// The request type must implement `Validator` (`#[derive(Validate)]`), it's validated before calling the method.
 /// Adds a `service(nats_client, service)` associated fn to the trait, and generates a sibling `<Trait>Client`
 /// struct implementing the trait, both with the trait's own visibility.
 /// ```text

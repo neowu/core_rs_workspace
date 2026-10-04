@@ -5,6 +5,7 @@
 pub mod info;
 
 use framework::exception::Exception;
+use framework_macro::Validate;
 use framework_macro::nats_api;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,7 +19,7 @@ pub const POST: &str = "api.benchmark.post";
 pub const INFO: &str = "api.benchmark.info";
 
 /// Request of the get subjects, one scalar so decoding is not the subject.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct GetRequest {
     pub id: i64,
 }
@@ -31,7 +32,7 @@ pub struct GetResponse {
 }
 
 /// Request of the post subjects, `values` is sized by the client to vary the payload size.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct PostRequest {
     pub id: i64,
     pub name: String,

@@ -48,7 +48,7 @@ pub struct GetUserResponse {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub struct UpdateUserRequest {
     pub id: Uuid,
     pub rating: Option<i32>,

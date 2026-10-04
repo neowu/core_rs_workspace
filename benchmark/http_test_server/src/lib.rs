@@ -2,6 +2,7 @@
 //! payload types and the info endpoint's shape so they cannot drift between the two processes.
 
 use framework::exception::Exception;
+use framework_macro::Validate;
 use framework_macro::api;
 use serde::Deserialize;
 use serde::Serialize;
@@ -11,7 +12,7 @@ pub mod info;
 use crate::info::ServerInfo;
 
 /// Query of the get endpoints, one scalar so query parsing is not the subject.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct GetRequest {
     pub id: i64,
 }
@@ -24,7 +25,7 @@ pub struct GetResponse {
 }
 
 /// Body of the post endpoints, `values` is sized by the client to vary the body size.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct PostRequest {
     pub id: i64,
     pub name: String,
@@ -52,7 +53,7 @@ impl PostResponse {
 }
 
 /// Body of `PUT /benchmark/init_db`: drops and recreates the table, then seeds ids `1..=rows`.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct InitDbRequest {
     pub rows: i64,
 }
@@ -72,7 +73,7 @@ pub struct DbSelectResponse {
 
 /// Body of `POST /benchmark/db/insert_ignore`, the client repeats one id so only the first insert
 /// lands and the table never grows.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct DbInsertRequest {
     pub id: i64,
     pub name: String,

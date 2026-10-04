@@ -15,6 +15,8 @@ Code: [`framework_macro/src/api.rs`](../lib/framework_macro/src/api.rs),
 Method rules, enforced at expansion time:
 
 - must be `async fn(&self [, request: Req]) -> Result<Res, Exception>`, at most one request param.
+- `Req` must implement `Validator`, the route validates it before calling the method, see
+  [`validate.md`](validate.md#api-request).
 - exactly one of `#[get]` / `#[post]` / `#[put]`, plus `#[path("...")]`.
 - `route` is reserved.
 

@@ -29,7 +29,7 @@ See the [raw HTTP test](../../test/http_test/tests/http_test.rs) and
 | `POST /api/greet` with `{"name":"world"}` | `200`, `{"greeting":"created, world"}` |
 | `PUT /api/greet` with `{"name":"world"}` | `200`, `{"greeting":"updated, world"}` |
 | `GET /api/ping` | `204`, empty body |
-| `PUT /api/greet` with `{"name":""}` | `400`, error code `VALIDATION_ERROR` |
+| `PUT /api/greet` with `{"name":" "}` | `400`, error code `VALIDATION_ERROR` from the generated route |
 | `POST /api/fail` | `500`, error code `TEST_FAILURE`, warning severity, message `expected failure` |
 
 The HTTP API contract is specified in [http_server_api.md](../http_server_api.md).

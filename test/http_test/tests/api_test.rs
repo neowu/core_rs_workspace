@@ -49,9 +49,6 @@ impl GreetingService for GreetingServiceImpl {
     }
 
     async fn update(&self, request: GreetRequest) -> Result<GreetResponse, Exception> {
-        if request.name.is_empty() {
-            return Err(exception!("name is required", severity = Severity::Warn, code = error_code::VALIDATION_ERROR));
-        }
         Ok(GreetResponse { greeting: format!("updated, {}", request.name) })
     }
 
@@ -81,11 +78,12 @@ async fn api() -> Result<(), Exception> {
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty(), "unit response must have an empty body");
 
-    let error = client.update(GreetRequest { name: String::new() }).await.unwrap_err();
+    // request is validated before calling the service
+    let error = client.update(GreetRequest { name: " ".to_owned() }).await.unwrap_err();
     assert_eq!(error.severity, Severity::Warn);
     assert_eq!(error.code, Some(error_code::VALIDATION_ERROR));
     assert!(error.message.contains("status=400"), "message={}", error.message);
-    assert!(error.message.contains("name is required"), "message={}", error.message);
+    assert!(error.message.contains("name must not be blank"), "message={}", error.message);
 
     let error = client.fail().await.unwrap_err();
     assert_eq!(error.severity, Severity::Warn);

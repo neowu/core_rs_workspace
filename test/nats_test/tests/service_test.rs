@@ -3,9 +3,11 @@ use std::time::Duration;
 
 use framework::exception;
 use framework::exception::Exception;
+use framework::exception::error_code;
 use framework::log;
 use framework::log::Severity;
 use framework::system::CancellationToken;
+use framework_macro::Validate;
 use framework_macro::integration_test;
 use framework_macro::nats_api;
 use framework_nats::service::ServiceConfig;
@@ -13,8 +15,9 @@ use nats_test::client;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Validate)]
 struct GreetRequest {
+    #[not_blank]
     name: String,
 }
 
@@ -68,6 +71,12 @@ async fn service() -> Result<(), Exception> {
     // request/response
     let response = client.greet(GreetRequest { name: "world".to_owned() }).await?;
     assert_eq!(response.greeting, "hello, world");
+
+    // request is validated before calling the service
+    let error = client.greet(GreetRequest { name: " ".to_owned() }).await.unwrap_err();
+    assert_eq!(error.severity, Severity::Warn);
+    assert_eq!(error.code, Some(error_code::VALIDATION_ERROR));
+    assert!(error.message.contains("name must not be blank"), "message={}", error.message);
 
     // both request and response can be ()
     client.ping().await?;

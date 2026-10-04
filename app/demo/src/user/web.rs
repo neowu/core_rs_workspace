@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::Router;
 use framework::exception::Exception;
 use framework::time::DateTime;
-use framework::validate::Validator as _;
 use framework_db::Json;
 use framework_db::repository;
 use framework_db::types::Timestamp;
@@ -28,8 +27,6 @@ struct UserServiceImpl {
 
 impl UserService for UserServiceImpl {
     async fn create(&self, request: CreateUserRequest) -> Result<Uuid, Exception> {
-        request.validate()?;
-
         let user = User {
             id: Uuid::now_v7(),
             name: request.name,
@@ -44,8 +41,6 @@ impl UserService for UserServiceImpl {
     }
 
     async fn get_by_name(&self, request: GetUserByNameRequest) -> Result<Option<GetUserResponse>, Exception> {
-        request.validate()?;
-
         let user = repository::select_one(&self.state.db, vec![User::NAME.eq(request.name)]).await?;
 
         Ok(user.map(|user| GetUserResponse { id: user.id, name: user.name, rating: user.rating, tags: user.tags.0 }))

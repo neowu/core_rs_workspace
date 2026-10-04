@@ -34,7 +34,22 @@ struct with named fields. Checks are generated code, fail fast, and format the e
   `#[validate] items: Vec<T>`) are declared by the user. Std types in the signature are fully qualified, so a caller
   `type Result<T>` alias does not break it.
 
+## API request
+
+`#[api]` and `#[nats_api]` server handlers call `Validator::validate` on the request before the service method, so
+every request type must implement `Validator`; a type without rules derives `Validate` with no attributes (no-op).
+
+- Required, not opt-in: stable Rust has no specialization, "validate if implemented" needs autoref tricks, and a
+  forgotten derive would silently skip validation. A missing impl is a compile error spanned to the request type
+  in the trait, with `#[diagnostic::on_unimplemented]` pointing to the derive.
+- Orphan rule: apps can't implement `Validator` for std / third party types, so request types are app structs.
+- Server side only, the generated client doesn't validate: callers are expected to validate earlier (e.g. on UI),
+  not right before the call, and the server must validate anyway.
+- Failure is `VALIDATION_ERROR`: http `400`, nats error reply keeping severity and code. The validate call runs after
+  `context!(fn)`, so the action log records which api rejected it.
+
 ## Tests
 
 - `lib/framework_macro`: generated token snapshot and compile errors of invalid attributes.
 - `test/validator_test`: runtime behaviour through the real derive.
+- `test/http_test`, `test/nats_test`: api request rejected with `VALIDATION_ERROR` before reaching the service.
