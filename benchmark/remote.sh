@@ -32,7 +32,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 SERVER="${SERVER:?set SERVER to the ssh host of the server}"
 CLIENT="${CLIENT:?set CLIENT to the ssh host of the client}"
-PROFILE="${PROFILE:-release}"
 RATE="${RATE:-999}"
 TOP="${TOP:-25}"
 
@@ -52,7 +51,7 @@ stamp=$(date +%H%M%S)
 # differs from it, keeps the diff beside it (untracked files included): the build can be redone exactly;
 # taken before the build, so an edit made while it runs is not recorded as built
 commit=$(git rev-parse HEAD)
-fields=("time=$time" "commit=$commit")
+fields=("time=$time" "commit=$commit" "profile=release")
 if [ -n "$(git status --porcelain)" ]; then
     mkdir -p "$dir"
     diff="$dir/$stamp.diff"
@@ -63,10 +62,8 @@ if [ -n "$(git status --porcelain)" ]; then
     fields+=("diff=$(basename "$diff")")
 fi
 
-# $1 is the cargo profile, the rest are extra rustflags for the remote build
+# arguments are extra rustflags for the remote build
 build() {
-    local profile=$1
-    shift
     cargo build --release -p report
 
     # --delete so removed files never linger, rsync keeps mtimes so cargo sees unchanged files as such
@@ -75,8 +72,7 @@ build() {
         ./ "$SERVER:$build_dir/src/"
     # shellcheck disable=SC2029 # expanded here on purpose
     ssh "$SERVER" "cd $build_dir/src && CARGO_TARGET_DIR=$build_dir/target RUSTFLAGS='$*' \
-        ~/.cargo/bin/cargo build --profile $profile -p ${name}_test_server -p ${name}_test_client"
-    remote_bin_dir="$build_dir/target/$([ "$profile" = "dev" ] && echo debug || echo "$profile")"
+        ~/.cargo/bin/cargo build --release -p ${name}_test_server -p ${name}_test_client"
 }
 
 # copied beside and renamed over, so a binary still running from an earlier run is never in the way;
@@ -84,7 +80,7 @@ build() {
 deploy() {
     local host=$1 path=$2
     ssh "$host" "sudo mkdir -p $(dirname "$path") && sudo chown \$(id -u):\$(id -g) $(dirname "$path")"
-    scp -q -3 "$SERVER:$remote_bin_dir/$(basename "$path")" "$host:$path.new"
+    scp -q -3 "$SERVER:$build_dir/target/release/$(basename "$path")" "$host:$path.new"
     ssh "$host" "mv $path.new $path"
 }
 
@@ -149,17 +145,13 @@ run_client() {
 # anchored like stop_server, sudo's own command line starts with sudo
 stop_perf() { ssh "$SERVER" "sudo pkill -INT -f '^perf record' || true; while pgrep -f '^perf record' > /dev/null; do sleep 0.2; done"; }
 
-# profiling = release plus full debug info, frame pointers so perf can walk the stacks for the
-# inclusive view without copying stack memory per sample
+# frame pointers let perf walk the stacks for the inclusive view without copying stack memory
 if [ "$mode" = "profile" ]; then
-    PROFILE=profiling
-    build profiling -Cforce-frame-pointers=yes
+    build -Cforce-frame-pointers=yes
 else
-    build "$PROFILE"
+    build
 fi
 start
-
-fields+=("profile=$PROFILE")
 
 if [ "$mode" = "run" ]; then
     run_client "$dir/$stamp.json" "$@"

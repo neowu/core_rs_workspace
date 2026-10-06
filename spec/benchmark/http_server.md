@@ -130,7 +130,7 @@ CREATE TABLE "benchmark_entity" (
 hosts (which hosts and what runs on them: [`server.md`](server.md)):
 
 1. rsync the working tree to `/opt/build/src` on the server host and build both binaries there
-   (native build, no cross toolchain; target dir kept for incremental builds)
+   with the release profile (native build, no cross toolchain; target dir kept for incremental builds)
 2. copy each binary to `/opt/<binary>/`, the client via the local host (`scp -3`), so the two
    hosts need no ssh trust
 3. start the server, wait until it is ready (http: `/health-check` from the client host)
@@ -139,7 +139,8 @@ hosts (which hosts and what runs on them: [`server.md`](server.md)):
 
 ## Profiling
 
-`remote.sh profile` builds `--profile profiling` with frame pointers, attaches `perf record -g` to
+`remote.sh profile` uses the release profile with line-table debug info and frame pointers; no
+separate Cargo profiling profile is needed. It attaches `perf record -g` to
 the server for the client run, runs `perf report` twice on the server (self time; total time with
 children) and `report profile` stores the top methods under `profile` in the result file.
 
