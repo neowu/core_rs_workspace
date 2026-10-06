@@ -37,6 +37,7 @@ use crate::kafka::EventMessage;
 pub(super) fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/robots.txt", get(robots_txt))
+        .route("/1x1.png", get(png_1x1))
         .route("/event/{app}", options(event_options))
         .route("/event/{app}", post(event_post))
         .with_state(state)
@@ -54,6 +55,11 @@ async fn robots_txt() -> (HeaderMap, &'static str) {
         "User-agent: *
 Disallow: /",
     )
+}
+
+#[debug_handler]
+async fn png_1x1() -> ([(header::HeaderName, &'static str); 1], &'static [u8]) {
+    ([(header::CONTENT_TYPE, "image/png")], include_bytes!("../assets/1x1.png"))
 }
 
 #[debug_handler]
