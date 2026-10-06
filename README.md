@@ -11,8 +11,12 @@ Even if you do not adopt the framework directly, you can use its implementation 
 
 ## Environment Setup
 
+to compile framework_kafka
+
 On macOS, install `librdkafka` and `pkgconf` using Homebrew:
 
 ```sh
 brew install pkgconf librdkafka
 ```
+
+On Linux, install `cmake`, `libcurl4-openssl-dev`

@@ -1,4 +1,5 @@
 use std::any::type_name;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
@@ -178,10 +179,14 @@ where
                 let mut handles = Vec::with_capacity(topic_messages.len());
                 for (topic, messages) in topic_messages {
                     if let Some(handler) = self.handlers.get(topic.as_str()) {
-                        handles.push(tokio::spawn(handler(state.clone(), messages)));
+                        handles.push(tokio::spawn(handler(state.clone(), messages)).map(move |result| (topic, result)));
                     }
                 }
-                join_all(handles).await;
+                for (topic, result) in join_all(handles).await {
+                    if let Err(e) = result {
+                        console!("ERROR message handler panicked, topic={topic}, error={e:?}");
+                    }
+                }
                 if let Err(e) = consumer.commit_consumer_state(CommitMode::Async) {
                     console!("ERROR failed to commit messages, error={e:?}");
                 }
@@ -245,11 +250,7 @@ async fn handle_bulk_messages<H, S, M, Fut>(
 {
     // acquired outside the action, so the wait is not counted in its elapsed
     let _permit = semaphore.acquire().await.expect("semaphore should not close");
-    let ref_id = raw_messages
-        .iter()
-        .map(|raw| header(raw, REF_ID).map(str::to_owned))
-        .collect::<Option<HashSet<String>>>()
-        .map(|set| set.into_iter().collect::<Vec<String>>());
+    let ref_id = header_values(&raw_messages, REF_ID);
 
     let _result = log::action("message", ref_id, async move {
         let _counter = counter.increase();
@@ -262,7 +263,7 @@ async fn handle_bulk_messages<H, S, M, Fut>(
             log!("[message] key={:?}, payload={}", key, payload);
             bytes += payload.len();
             match from_json::<M>(&payload) {
-                Ok(payload) => messages.push(Message { key, payload }),
+                Ok(payload) => messages.push(Message { key: key.map(Cow::into_owned), payload }),
                 Err(e) => {
                     log!(
                         exception = exception!("failed to decode message", code = "KAFKA_INVALID_MESSAGE", source = e)
@@ -278,12 +279,7 @@ async fn handle_bulk_messages<H, S, M, Fut>(
                 stats!(kafka_consumer_lag = lag);
             }
         }
-        if let Some(clients) = raw_messages
-            .iter()
-            .map(|raw| header(raw, CLIENT).map(str::to_owned))
-            .collect::<Option<HashSet<String>>>()
-            .map(|set| set.into_iter().collect::<Vec<String>>())
-        {
+        if let Some(clients) = header_values(&raw_messages, CLIENT) {
             context!(client = clients);
         }
         handler(state, messages).await
@@ -310,7 +306,7 @@ async fn handle_messages<H, S, M, Fut>(
     let mut groups: Vec<Vec<OwnedMessage>> = Vec::new();
     for message in messages {
         if let Some(key) = key(&message) {
-            key_groups.entry(key).or_default().push(message);
+            key_groups.entry(key.into_owned()).or_default().push(message);
         } else {
             groups.push(vec![message]);
         }
@@ -330,7 +326,12 @@ async fn handle_messages<H, S, M, Fut>(
             }
         });
     }
-    handles.join_all().await;
+    // not join_all, which re-panics on the first panicked group and aborts the others mid-flight
+    while let Some(result) = handles.join_next().await {
+        if let Err(e) = result {
+            console!("ERROR message handler panicked, topic={topic}, error={e:?}");
+        }
+    }
 }
 
 fn handle_message<H, S, M, Fut>(
@@ -346,11 +347,11 @@ where
 {
     let ref_id = header(&raw_message, REF_ID).map(|id| vec![id.to_owned()]);
     log::action("message", ref_id, async move {
-        let key = key(&raw_message);
+        let key = key(&raw_message).map(Cow::into_owned);
         let payload = payload(&raw_message);
         context!(topic = topic, key = format!("{:?}", key), fn = type_name::<H>());
         log!("[message] payload={}", payload);
-        stats!(kafka_read_entries = 1, kafka_read_bytes = payload.len());
+        stats!(kafka_read_messages = 1, kafka_read_bytes = payload.len());
         if let Some(timestamp) = timestamp(&raw_message) {
             log!("[message] timestamp={}", timestamp.to_rfc3339());
             let lag = (DateTime::now() - timestamp).as_nanos();
@@ -379,12 +380,19 @@ fn header<'a>(message: &'a OwnedMessage, name: &str) -> Option<&'a str> {
         .map(|data| from_utf8(data).unwrap_or_default())
 }
 
-fn key(message: &OwnedMessage) -> Option<String> {
-    message.key().map(|data| String::from_utf8_lossy(data).to_string())
+// distinct values across the batch, messages without the header are skipped
+fn header_values(messages: &[OwnedMessage], name: &str) -> Option<Vec<String>> {
+    let values: HashSet<&str> = messages.iter().filter_map(|message| header(message, name)).collect();
+    (!values.is_empty()).then(|| values.into_iter().map(str::to_owned).collect())
 }
 
-fn payload(message: &OwnedMessage) -> String {
-    message.payload().map(|data| String::from_utf8_lossy(data).to_string()).unwrap_or_default()
+// lossy utf8 borrows valid text, so the logged and parsed payload is never copied
+fn key(message: &OwnedMessage) -> Option<Cow<'_, str>> {
+    message.key().map(String::from_utf8_lossy)
+}
+
+fn payload(message: &OwnedMessage) -> Cow<'_, str> {
+    message.payload().map(String::from_utf8_lossy).unwrap_or_default()
 }
 
 fn timestamp(message: &OwnedMessage) -> Option<DateTime> {

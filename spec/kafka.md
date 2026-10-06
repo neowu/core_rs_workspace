@@ -11,9 +11,13 @@ Code: [`framework_kafka/src/consumer.rs`](../lib/framework_kafka/src/consumer.rs
 - Offsets are committed manually (`enable.auto.commit = false`), only after the whole batch is
   handled. Messages already polled when a poll error or shutdown occurs are still handled and
   committed; after a poll error the loop backs off 5s.
+- Handler errors, including undecodable messages, are logged in the message action and are not
+  retried: the batch is still committed. A panicking handler is logged too; it does not cancel the
+  other key groups or topics of the batch.
 - `add_handler`: messages with the same key are handled sequentially in partition order; each key
   group (and each unkeyed message) runs in its own task. `add_bulk_handler`: one call per topic per
-  batch.
+  batch; its action's ref ids / clients are the distinct `ref_id` / `client` headers of the
+  messages that carry them.
 
 ## Design decisions
 
@@ -42,3 +46,8 @@ it occupies one task for the whole batch.
   (hitting ES / DB) or tasks.
 - Bulk: the permit is acquired before `log::action` is built, so the queue wait is not counted in
   the action's `elapsed`.
+
+### A payload is decoded to text once
+
+Same as nats: the lossy utf-8 view that the message log line prints is the one `from_json` parses,
+so a valid payload is borrowed from the detached message, never copied again.
