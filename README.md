@@ -19,4 +19,6 @@ On macOS, install `librdkafka` and `pkgconf` using Homebrew:
 brew install pkgconf librdkafka
 ```
 
+`openssl@3` (a librdkafka dependency) is keg-only, so `.cargo/config.toml` sets `PKG_CONFIG_PATH` to `/opt/homebrew/opt/openssl@3/lib/pkgconfig`.
+
 On Linux, install `cmake`, `libcurl4-openssl-dev`

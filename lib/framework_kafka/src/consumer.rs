@@ -179,11 +179,14 @@ where
                 let mut handles = Vec::with_capacity(topic_messages.len());
                 for (topic, messages) in topic_messages {
                     if let Some(handler) = self.handlers.get(topic.as_str()) {
-                        handles.push(tokio::spawn(handler(state.clone(), messages)).map(move |result| (topic, result)));
+                        handles.push(
+                            tokio::spawn(handler(state.clone(), messages))
+                                .map(move |handle_result| (topic, handle_result)),
+                        );
                     }
                 }
-                for (topic, result) in join_all(handles).await {
-                    if let Err(e) = result {
+                for (topic, handle_result) in join_all(handles).await {
+                    if let Err(e) = handle_result {
                         console!("ERROR message handler panicked, topic={topic}, error={e:?}");
                     }
                 }
