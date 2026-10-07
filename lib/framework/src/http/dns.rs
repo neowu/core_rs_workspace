@@ -7,6 +7,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
+use std::time::Instant;
 use std::vec;
 
 use hyper_util::client::legacy::connect::dns::Name;
@@ -23,8 +25,15 @@ use crate::warn;
 // e.g. GKE dns briefly drops service records and the cloud run resolver caches NXDOMAIN for the SOA ttl (300s)
 #[derive(Clone, Default)]
 pub struct FallbackDnsResolver {
-    resolved: Arc<Mutex<HashMap<String, Vec<SocketAddr>>>>,
+    resolved: Arc<Mutex<HashMap<String, DnsRecord>>>,
 }
+
+struct DnsRecord {
+    addrs: Vec<SocketAddr>,
+    resolved_at: Instant,
+}
+
+const TTL: Duration = Duration::from_hours(1);
 
 impl FallbackDnsResolver {
     // port is 0, the http client replaces it with the port of the url, same as getaddrinfo resolver of hyper
@@ -36,12 +45,23 @@ impl FallbackDnsResolver {
             .flatten();
         match result {
             Ok(addrs) => {
-                self.resolved.lock().unwrap().insert(host.to_owned(), Vec::clone(&addrs));
+                self.resolved
+                    .lock()
+                    .unwrap()
+                    .insert(host.to_owned(), DnsRecord { addrs: Vec::clone(&addrs), resolved_at: Instant::now() });
                 Ok(addrs)
             }
             Err(err) => {
-                let Some(addrs) = self.resolved.lock().unwrap().get(host).cloned() else {
-                    return Err(err);
+                let addrs = {
+                    let mut resolved = self.resolved.lock().unwrap();
+                    match resolved.get(host) {
+                        Some(entry) if entry.resolved_at.elapsed() < TTL => entry.addrs.clone(),
+                        Some(_) => {
+                            resolved.remove(host);
+                            return Err(err);
+                        }
+                        None => return Err(err),
+                    }
                 };
                 warn!(
                     error_code = "DNS_RESOLVE_FAILED",
@@ -92,8 +112,26 @@ mod tests {
         resolver.lookup(host).await.unwrap_err();
 
         let addr: SocketAddr = "10.0.0.1:0".parse().unwrap();
-        resolver.resolved.lock().unwrap().insert(host.to_owned(), vec![addr]);
+        resolver
+            .resolved
+            .lock()
+            .unwrap()
+            .insert(host.to_owned(), DnsRecord { addrs: vec![addr], resolved_at: Instant::now() });
         assert_eq!(resolver.lookup(host).await.unwrap(), vec![addr]);
+    }
+
+    #[tokio::test]
+    async fn expired_fallback_removed() {
+        let resolver = FallbackDnsResolver::default();
+        let host = "service.invalid";
+        let addr: SocketAddr = "10.0.0.1:0".parse().unwrap();
+        resolver.resolved.lock().unwrap().insert(
+            host.to_owned(),
+            DnsRecord { addrs: vec![addr], resolved_at: Instant::now().checked_sub(TTL).unwrap() },
+        );
+
+        resolver.lookup(host).await.unwrap_err();
+        assert!(resolver.resolved.lock().unwrap().get(host).is_none());
     }
 
     #[tokio::test]
@@ -101,6 +139,6 @@ mod tests {
         let resolver = FallbackDnsResolver::default();
         let addrs = resolver.lookup("localhost").await.unwrap();
         assert!(!addrs.is_empty());
-        assert_eq!(resolver.resolved.lock().unwrap().get("localhost"), Some(&addrs));
+        assert_eq!(resolver.resolved.lock().unwrap().get("localhost").map(|entry| &entry.addrs), Some(&addrs));
     }
 }

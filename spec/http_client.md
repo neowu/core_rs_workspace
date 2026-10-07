@@ -13,7 +13,11 @@ Code: [`lib/framework/src/http.rs`](../lib/framework/src/http.rs),
   remembers the result per host.
 - Only when the lookup fails are the last good addrs reused, with a `DNS_RESOLVE_FAILED` warning.
   A successful lookup always replaces them, so an IP change is picked up as soon as DNS answers.
+- Fallback addrs expire 1 hour after the last successful lookup; an expired entry is removed lazily
+  when a failed lookup finds it, and the error is returned as is.
 - A host never resolved since process start has no fallback; the error is returned as is.
+- All resolved addrs are kept (not just the first), so the connector can still try the next addr /
+  the other IP family; memory is a few `SocketAddr`s per host.
 
 Motivation: a GKE control-plane upgrade dropped service DNS records for ~14s, and the Cloud Run
 resolver cached the NXDOMAIN for the zone's SOA negative TTL (300s), so Cloud Run clients failed
