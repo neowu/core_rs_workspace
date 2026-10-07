@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::mem;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
@@ -30,6 +31,9 @@ use crate::span;
 use crate::stats;
 use crate::warn;
 
+mod dns;
+pub use dns::FallbackDnsResolver;
+
 #[derive(Clone)]
 pub struct HttpClient {
     client: reqwest::Client,
@@ -50,6 +54,8 @@ pub struct HttpClientConfig {
     pub timeout: Duration,
     pub retry: RetryConfig,
     pub prefer_http2: bool,
+    // reuse the last resolved addrs when dns fails, for stable service ips, refer to FallbackDnsResolver
+    pub enable_fallback_dns_cache: bool,
 }
 
 impl Default for HttpClientConfig {
@@ -61,6 +67,7 @@ impl Default for HttpClientConfig {
             timeout: Duration::from_secs(30),
             retry: RetryConfig { max_attempts: 1, interval: Duration::from_millis(500) },
             prefer_http2: false,
+            enable_fallback_dns_cache: false,
         }
     }
 }
@@ -74,6 +81,7 @@ impl HttpClientConfig {
             timeout: Duration::from_secs(30),
             retry: RetryConfig { max_attempts: 3, interval: Duration::from_millis(500) },
             prefer_http2: true,
+            enable_fallback_dns_cache: false,
         }
     }
 }
@@ -121,6 +129,10 @@ impl HttpClient {
 
         if config.prefer_http2 {
             builder = builder.http2_prior_knowledge();
+        }
+
+        if config.enable_fallback_dns_cache {
+            builder = builder.dns_resolver(Arc::new(FallbackDnsResolver::default()));
         }
 
         if let Some(certs) = config.accept_certs {

@@ -3,6 +3,8 @@
 Code: [`app/log_processor/src/kafka`](../app/log_processor/src/kafka),
 [`elasticsearch.rs`](../app/log_processor/src/elasticsearch.rs).
 
+- Both ClickHouse and Elasticsearch clients reuse the last resolved IP when DNS fails, see
+  [http client](http_client.md#fallback-dns-cache).
 - Kafka batches are written to ClickHouse, when configured, before Elasticsearch. A failed
   ClickHouse insert prevents Elasticsearch indexing for that batch.
 - Both outputs borrow strings and collections from the original messages. Elasticsearch consumes

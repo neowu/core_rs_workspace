@@ -22,7 +22,13 @@ pub(crate) struct Elasticsearch {
 
 impl Elasticsearch {
     pub(crate) fn new(uri: String) -> Self {
-        Self { uri, client: HttpClient::new(HttpClientConfig::default()) }
+        Self {
+            uri,
+            client: HttpClient::new(HttpClientConfig {
+                enable_fallback_dns_cache: true,
+                ..HttpClientConfig::default()
+            }),
+        }
     }
 
     pub(crate) async fn put_index_template(&self, name: &str, template: String) -> Result<(), Exception> {

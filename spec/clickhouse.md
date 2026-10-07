@@ -128,6 +128,9 @@ extra allocations and hashing.
 - **Every statement opens a `clickhouse` span** and records `clickhouse_write_rows` /
   `clickhouse_write_bytes` on a write, `clickhouse_read_rows` on a read, so a slow or oversized
   query is visible in the action that issued it without extra instrumentation.
+- **DNS failure falls back to the last resolved addrs.** The http client is the crate's default
+  (keepalive 60s, pool idle 2s, http + https via rustls) with its resolver replaced by
+  `FallbackDnsResolver`, always on; see [http client](http_client.md#fallback-dns-cache).
 - **One batch is one insert.** `Inserter` is created per call and ended in the same call; there is
   no cross-call buffering that could outlive the caller.
 - **An error message carries only a short name, the trace carries the rest.** Every statement

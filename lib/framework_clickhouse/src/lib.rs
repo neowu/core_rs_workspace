@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::time::Duration;
 
 pub use clickhouse;
 use clickhouse::_priv::RowKind;
@@ -12,11 +13,18 @@ use clickhouse::query::Query;
 use framework::console;
 use framework::exception;
 use framework::exception::Exception;
+use framework::http::FallbackDnsResolver;
 use framework::log;
 use framework::span;
 use framework::stats;
 pub use framework_macro::Enum8;
+use hyper_rustls::HttpsConnector;
+use hyper_util::client::legacy::Client as HyperClient;
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::rt::TokioExecutor;
+use rustls::crypto::aws_lc_rs;
 use serde::Serialize;
+
 pub mod types;
 
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
@@ -38,7 +46,10 @@ pub struct ClickHouse {
 impl ClickHouse {
     pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
         console!("create clickhouse client, uri={uri}, user={user}, db={database:?}");
-        let client = Client::default().with_url(uri).with_user(user).with_password(password);
+        // same as clickhouse's default http client, only with FallbackDnsResolver; clickhouse server keep_alive_timeout is 3s by default
+        let http_client =
+            HyperClient::builder(TokioExecutor::new()).pool_idle_timeout(Duration::from_secs(2)).build(connector());
+        let client = Client::with_http_client(http_client).with_url(uri).with_user(user).with_password(password);
         let client = if let Some(database) = database { client.with_database(database) } else { client };
 
         Self { client }
@@ -137,6 +148,18 @@ impl ClickHouse {
         stats!(clickhouse_write_rows = quantities.rows, clickhouse_write_bytes = quantities.bytes);
         Ok(())
     }
+}
+
+fn connector() -> HttpsConnector<HttpConnector<FallbackDnsResolver>> {
+    let mut connector = HttpConnector::new_with_resolver(FallbackDnsResolver::default());
+    connector.set_keepalive(Some(Duration::from_secs(60)));
+    connector.enforce_http(false);
+    hyper_rustls::HttpsConnectorBuilder::new()
+        .with_provider_and_webpki_roots(aws_lc_rs::default_provider())
+        .expect("failed to load tls provider")
+        .https_or_http()
+        .enable_http1()
+        .wrap_connector(connector)
 }
 
 // the full error goes to the trace via source, the message only carries a short name to keep sql/schema out of responses

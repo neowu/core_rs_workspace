@@ -21,6 +21,9 @@ axum-extra = { version = "*", features = ["cookie"] }
 tower-http = {version ="*", features = ["fs"]}
 
 reqwest = { version = "0", features = ["stream"] }
+# for FallbackDnsResolver to be used as hyper resolver
+hyper-util = { version = "*", features = ["client-legacy"] }
+tower-service = "*"
 
 # dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
 tracing = { version = "*", features = ["release_max_level_off"] }

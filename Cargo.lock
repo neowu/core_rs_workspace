@@ -716,6 +716,7 @@ dependencies = [
  "bytes",
  "futures",
  "http",
+ "hyper-util",
  "libc",
  "log",
  "memchr",
@@ -731,6 +732,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower-http",
+ "tower-service",
  "tracing",
 ]
 
@@ -741,6 +743,9 @@ dependencies = [
  "clickhouse",
  "framework",
  "framework_macro",
+ "hyper-rustls",
+ "hyper-util",
+ "rustls",
  "serde",
 ]
 
