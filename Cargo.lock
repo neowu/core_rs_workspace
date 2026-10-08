@@ -761,6 +761,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "framework_http"
+version = "0.9.7"
+dependencies = [
+ "bytes",
+ "framework",
+ "futures",
+ "http",
+ "http-body",
+ "http-body-util",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "percent-encoding",
+ "serde",
+ "serde_html_form",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "framework_http_test"
+version = "1.0.0"
+dependencies = [
+ "framework",
+ "framework_http",
+ "framework_macro",
+ "futures",
+ "reqwest",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "framework_kafka"
 version = "0.9.7"
 dependencies = [
@@ -2031,6 +2064,8 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "serde",
+ "serde_json",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

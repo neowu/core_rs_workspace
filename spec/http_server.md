@@ -2,7 +2,8 @@
 
 Code: [`web/server.rs`](../lib/framework/src/web/server.rs) · siblings:
 [`http_server_api.md`](http_server_api.md), [`action_log.md`](action_log.md),
-[`metrics.md`](metrics.md), [`test/http.md`](test/http.md)
+[`metrics.md`](metrics.md), [`test/http.md`](test/http.md),
+[`framework_http.md`](framework_http.md) (hyper based replacement)
 
 ## Startup
 
