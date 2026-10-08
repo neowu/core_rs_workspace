@@ -46,8 +46,8 @@ Quote and escape identifiers consistently across generated SQL and condition/upd
 
 ## Smaller simplifications
 
-- Derive placeholder numbers from `params.len() + 1` instead of maintaining a separate mutable counter.
-- Add `is_null()` alongside `not_null()`. `eq(None)` currently generates SQL equality with NULL, which never matches.
+- Done: placeholder numbers are derived from `params.len()` after push; the mutable counter is removed.
+- Done: added `is_null()` alongside `not_null()`. `eq(None)` still generates SQL equality with NULL, which never matches.
 
 ## Validation and follow-up
 

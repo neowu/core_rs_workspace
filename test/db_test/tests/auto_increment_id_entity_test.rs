@@ -65,9 +65,19 @@ async fn auto_increment_id_entity() -> Result<(), Exception> {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, Some(id));
 
+    let rows = repository::select_all(&db, vec![AutoIncrementIdEntity::TEXT_COL.is_null()]).await?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, Some(id2));
+
     let rows = repository::select_all(&db, vec![AutoIncrementIdEntity::TEXT_COL.eq(Some("hello".to_owned()))]).await?;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, Some(id));
+
+    let rows = repository::select_all(&db, vec![AutoIncrementIdEntity::ID.is_in(vec![id, id2, -1])?]).await?;
+    assert_eq!(rows.len(), 2);
+
+    // empty updates is rejected
+    assert!(repository::update(&db, vec![], vec![AutoIncrementIdEntity::ID.eq(id)]).await.is_err());
 
     // update
     let updated = repository::update(

@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use framework::console;
@@ -19,6 +21,7 @@ pub(crate) struct Connection {
     pub client: Client,
     cancel_token: CancelToken,
     statement_cache: HashMap<String, Statement>,
+    broken: AtomicBool,
 }
 
 impl Connection {
@@ -45,6 +48,8 @@ impl Connection {
         match result {
             Ok(result) => result.map_err(|err| exception!("failed to call db", source = err)),
             Err(_elapsed) => {
+                // the timed out query is still in flight and cancel is racy, never reuse this connection
+                self.broken.store(true, Ordering::Relaxed);
                 log!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
@@ -76,7 +81,7 @@ impl ResourceManager for ConnectionManager {
 
         let cancel_token = client.cancel_token();
 
-        Ok(Connection { client, cancel_token, statement_cache: HashMap::new() })
+        Ok(Connection { client, cancel_token, statement_cache: HashMap::new(), broken: AtomicBool::new(false) })
     }
 
     async fn is_valid(item: &Self::Target) -> bool {
@@ -84,6 +89,6 @@ impl ResourceManager for ConnectionManager {
     }
 
     fn is_closed(item: &Self::Target) -> bool {
-        item.client.is_closed()
+        item.client.is_closed() || item.broken.load(Ordering::Relaxed)
     }
 }

@@ -79,7 +79,7 @@ where
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = T::__select_sql().to_owned();
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params);
     log!("select_one, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let row = conn.with_timeout(conn.client.query_opt(&statement, &params), database.query_timeout).await?;
@@ -95,7 +95,7 @@ where
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = T::__select_sql().to_owned();
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params);
     log!("select, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.query(&statement, &params), database.query_timeout).await?;
@@ -112,12 +112,14 @@ pub async fn update<T: Entity>(
     conditions: Vec<Cond<T>>,
 ) -> Result<u64, Exception> {
     let _span = span!("db");
+    if updates.is_empty() {
+        return Err(exception!("updates must not be empty"));
+    }
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = format!("UPDATE \"{}\"", T::__table_name());
     let mut params: Vec<&QueryParam> = vec![];
-    let mut param_index = 1;
-    build_update(&updates, &mut sql, &mut params, &mut param_index);
-    build_conditions(&conditions, &mut sql, &mut params, &mut param_index);
+    build_update(&updates, &mut sql, &mut params);
+    build_conditions(&conditions, &mut sql, &mut params);
     log!("update, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
@@ -130,7 +132,7 @@ pub async fn delete<T: Entity>(database: &Database, conditions: Vec<Cond<T>>) ->
     let mut conn = database.pool.get_with_timeout().await?;
     let mut sql = format!("DELETE FROM \"{}\"", T::__table_name());
     let mut params: Vec<&QueryParam> = vec![];
-    build_conditions(&conditions, &mut sql, &mut params, &mut 1);
+    build_conditions(&conditions, &mut sql, &mut params);
     log!("delete, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(&sql).await?;
     let rows = conn.with_timeout(conn.client.execute(&statement, &params), database.query_timeout).await?;
