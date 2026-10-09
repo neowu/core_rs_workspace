@@ -1,0 +1,2 @@
+- unify sse event structure shared by both server/client
+- replace reqwest with hyper
