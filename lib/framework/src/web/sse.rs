@@ -24,7 +24,7 @@ use crate::exception::Exception;
 use crate::json;
 use crate::log;
 use crate::metrics::Counter;
-use crate::web::server::panic_message;
+use crate::web::panic_message;
 
 // below common LB idle timeouts (ALB / nginx 60s)
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);

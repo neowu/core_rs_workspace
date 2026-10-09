@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use http::HeaderName;
 
 pub mod api;
@@ -10,3 +12,11 @@ pub mod sse;
 
 const REF_ID: HeaderName = HeaderName::from_static("ref-id");
 const CLIENT: HeaderName = HeaderName::from_static("client");
+
+fn panic_message(panic: &(dyn Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("unknown")
+}

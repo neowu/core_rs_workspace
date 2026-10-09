@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::panic::AssertUnwindSafe;
@@ -31,6 +30,7 @@ use crate::metrics::Counter;
 use crate::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
+use crate::web::panic_message;
 use crate::web::request::Request;
 use crate::web::request::cookies;
 use crate::web::response::Body;
@@ -265,14 +265,6 @@ fn log_request(request: &Request) {
     if let Some(length) = request.header(header::CONTENT_LENGTH).and_then(|v| v.parse::<u64>().ok()) {
         stats!(request_content_length = length);
     }
-}
-
-pub(crate) fn panic_message(panic: &(dyn Any + Send)) -> &str {
-    panic
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("unknown")
 }
 
 fn header_str(headers: &HeaderMap, name: HeaderName) -> Option<&str> {
