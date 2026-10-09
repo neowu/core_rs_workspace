@@ -1,15 +1,13 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use axum::Router;
 use framework::appender::TraceAppender;
 use framework::exception::Exception;
 use framework::system::DefaultEnv;
 use framework::system::System;
-use framework::web::body::Json;
-use framework::web::body::Query;
-use framework::web::route::get;
-use framework::web::route::post;
+use framework::web::request::Request;
+use framework::web::response::Response;
+use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_db::Database;
@@ -37,14 +35,12 @@ async fn main() {
     // collected before serving, so the shell commands behind it never run during a measured phase
     LazyLock::force(&MACHINE);
 
-    let app = Router::new();
-    let app = app.route("/benchmark/get", get(get_benchmark));
-    let app = app.route("/benchmark/post", post(post_benchmark));
-
     // the pool connects lazily, so the non db scenarios run without postgres
     let database = db::database();
     system.add_metrics(database.metrics());
-    let app = app.merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl { database })));
+    let app = Router::new()
+        .state(Arc::new(()), |r| r.get("/benchmark/get", get_benchmark).post("/benchmark/post", post_benchmark))
+        .merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl { database })));
 
     // the default binds 0.0.0.0:8080, a benchmark host keeps that port free
     let http_server = HttpServer::new(HttpServerConfig::default());
@@ -62,12 +58,14 @@ async fn main() {
 static MACHINE: LazyLock<MachineInfo> = LazyLock::new(MachineInfo::collect);
 
 // controllers do no work on purpose, what is measured is everything around them
-async fn get_benchmark(Query(request): Query<GetRequest>) -> Json<GetResponse> {
-    Json(GetResponse::new(&request))
+async fn get_benchmark(_state: Arc<()>, request: Request) -> Result<Response, Exception> {
+    let request: GetRequest = request.query()?;
+    Response::json(&GetResponse::new(&request))
 }
 
-async fn post_benchmark(Json(request): Json<PostRequest>) -> Json<PostResponse> {
-    Json(PostResponse::new(&request))
+async fn post_benchmark(_state: Arc<()>, mut request: Request) -> Result<Response, Exception> {
+    let request: PostRequest = request.json().await?;
+    Response::json(&PostResponse::new(&request))
 }
 
 struct BenchmarkServiceImpl {

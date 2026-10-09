@@ -2,10 +2,7 @@ use std::any::TypeId;
 use std::fmt::Debug;
 use std::mem::transmute_copy;
 
-use axum::response::IntoResponse as _;
-use axum::response::Response;
 use http::Method;
-use http::StatusCode;
 use http::header;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -21,25 +18,16 @@ use crate::string::intern;
 use crate::system;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
-use crate::web::body::Json;
-use crate::web::error::HttpError;
+use crate::web::response::Response;
 
 #[doc(hidden)] // disable auto complete, it's used by framework
 #[inline]
-pub fn __into_response<T>(result: Result<T, Exception>) -> Response
+pub fn __into_response<T>(result: Result<T, Exception>) -> Result<Response, Exception>
 where
     T: Serialize + Debug + 'static,
 {
-    match result {
-        Ok(response) => {
-            if TypeId::of::<T>() == TypeId::of::<()>() {
-                StatusCode::NO_CONTENT.into_response()
-            } else {
-                Json(response).into_response()
-            }
-        }
-        Err(err) => HttpError::from(err).into_response(),
-    }
+    let response = result?;
+    if TypeId::of::<T>() == TypeId::of::<()>() { Ok(Response::empty()) } else { Response::json(&response) }
 }
 
 pub struct ApiClient {

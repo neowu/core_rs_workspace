@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use framework::exception::Exception;
-use framework_http::request::Request;
-use framework_http::response::Response;
-use framework_http::router::Router;
-use framework_http_test::GreetRequest;
-use framework_http_test::GreetResponse;
-use framework_http_test::TestServer;
+use framework::web::request::Request;
+use framework::web::response::Response;
+use framework::web::router::Router;
 use framework_macro::integration_test;
 use futures::future::try_join_all;
+use http_test::GreetRequest;
+use http_test::GreetResponse;
+use http_test::TestServer;
 use reqwest::Version;
 
 async fn greet(_state: Arc<()>, mut request: Request) -> Result<Response, Exception> {
@@ -22,7 +22,7 @@ async fn version(_state: Arc<()>, request: Request) -> Result<Response, Exceptio
 
 #[integration_test]
 async fn h2c() -> Result<(), Exception> {
-    let router = Router::new(Arc::new(())).post("/greet", greet).get("/version", version);
+    let router = Router::new().state(Arc::new(()), |r| r.post("/greet", greet).get("/version", version));
     let mut server = TestServer::start(router).await;
 
     let response = server.h2c.get(server.url("/version")).send().await?;

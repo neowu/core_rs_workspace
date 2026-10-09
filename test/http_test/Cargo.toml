@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 framework = { workspace = true }
 framework_macro = { workspace = true }
-axum.workspace = true
 serde.workspace = true
 tokio.workspace = true
+reqwest = { version = "0", features = ["http2", "json"] }
+futures = "*"

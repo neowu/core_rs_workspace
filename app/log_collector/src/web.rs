@@ -2,14 +2,6 @@ use std::collections::HashMap;
 use std::result::Result;
 use std::sync::Arc;
 
-use axum::Extension;
-use axum::Router;
-use axum::debug_handler;
-use axum::extract::Path;
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::http::HeaderValue;
-use axum::http::header;
 use framework::exception;
 use framework::exception::Exception;
 use framework::exception::error_code;
@@ -21,74 +13,61 @@ use framework::time::DateTime;
 use framework::validate::Validator as _;
 use framework::validation_error;
 use framework::warn;
-use framework::web::body::TextBody;
-use framework::web::client_info::ClientInfo;
-use framework::web::error::HttpResult;
-use framework::web::route::get;
-use framework::web::route::options;
-use framework::web::route::post;
+use framework::web::request::Request;
+use framework::web::response::Response;
+use framework::web::router::Router;
 use framework_macro::Validate;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
+use http::header;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::AppState;
 use crate::kafka::EventMessage;
 
+const EVENT_PATH: &str = "/event/";
+
 pub(super) fn routes(state: Arc<AppState>) -> Router {
-    Router::new()
-        .route("/robots.txt", get(robots_txt))
-        .route("/1x1.png", get(png_1x1))
-        .route("/event/{app}", options(event_options))
-        .route("/event/{app}", post(event_post))
-        .with_state(state)
+    Router::new().state(state, |r| {
+        r.get("/robots.txt", robots_txt)
+            .get("/1x1.png", png_1x1)
+            .prefix(Method::OPTIONS, EVENT_PATH, event_options)
+            .prefix(Method::POST, EVENT_PATH, event_post)
+    })
 }
 
-#[debug_handler]
-async fn robots_txt() -> (HeaderMap, &'static str) {
-    let mut headers = HeaderMap::new();
-    headers.append(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=2592000"), // 30 days
-    );
-    (
-        headers,
-        "User-agent: *
-Disallow: /",
-    )
+async fn robots_txt(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
+    Ok(Response::text("User-agent: *\nDisallow: /")
+        .header(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=2592000"))) // 30 days
 }
 
-#[debug_handler]
-async fn png_1x1() -> ([(header::HeaderName, &'static str); 1], &'static [u8]) {
-    ([(header::CONTENT_TYPE, "image/png")], include_bytes!("../assets/1x1.png"))
+async fn png_1x1(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
+    Ok(Response::bytes(&include_bytes!("../assets/1x1.png")[..], HeaderValue::from_static("image/png")))
 }
 
-#[debug_handler]
-async fn event_options(headers: HeaderMap) -> HttpResult<HeaderMap> {
-    let mut response_headers = HeaderMap::new();
-
-    let origin = headers
+async fn event_options(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
+    event_app(&request)?;
+    let origin = request
+        .headers()
         .get(header::ORIGIN)
         .ok_or_else(|| exception!("access denied", severity = Severity::Warn, code = error_code::FORBIDDEN))?;
-    response_headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone());
 
-    response_headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("POST, PUT, OPTIONS"));
-    response_headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Accept, Content-Type"));
-    response_headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
-
-    Ok(response_headers)
+    Ok(Response::empty()
+        .status(StatusCode::OK)
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone())
+        .header(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("POST, PUT, OPTIONS"))
+        .header(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Accept, Content-Type"))
+        .header(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true")))
 }
 
 // event will be sent via ajax or navigator.sendBeacon(), refer to https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
-#[debug_handler]
-async fn event_post(
-    State(state): State<Arc<AppState>>,
-    Path(app): Path<String>,
-    headers: HeaderMap,
-    Extension(client_info): Extension<Arc<ClientInfo>>,
-    body: TextBody,
-) -> HttpResult<HeaderMap> {
+async fn event_post(state: Arc<AppState>, mut request: Request) -> Result<Response, Exception> {
+    let app = event_app(&request)?.to_owned();
+    let body = request.text().await?;
     if !body.is_empty() {
-        let request: SendEventRequest = json::from_json(&body).map_err(|err| {
+        let event_request: SendEventRequest = json::from_json(&body).map_err(|err| {
             exception!(
                 "failed to parse json body",
                 severity = Severity::Warn,
@@ -96,27 +75,38 @@ async fn event_post(
                 source = err
             )
         })?;
-        request.validate()?;
-        process_events(state, &app, request, client_info).await?;
+        event_request.validate()?;
+        process_events(&state, &app, event_request, &request).await?;
     }
 
-    let origin = headers.get(header::ORIGIN);
-    let mut response_headers = HeaderMap::new();
-    if let Some(origin) = origin {
-        response_headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone());
-        response_headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+    let mut response = Response::empty().status(StatusCode::OK);
+    if let Some(origin) = request.headers().get(header::ORIGIN) {
+        response = response
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone())
+            .header(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
     }
-    Ok(response_headers)
+    Ok(response)
+}
+
+// same as the former `/event/{app}` route, one non empty segment
+fn event_app(request: &Request) -> Result<&str, Exception> {
+    request.path().strip_prefix(EVENT_PATH).filter(|app| !app.is_empty() && !app.contains('/')).ok_or_else(|| {
+        exception!(
+            format!("not found, path={}", request.path()),
+            severity = Severity::Warn,
+            code = error_code::NOT_FOUND
+        )
+    })
 }
 
 async fn process_events(
-    state: Arc<AppState>,
+    state: &AppState,
     app: &str,
-    request: SendEventRequest,
-    client_info: Arc<ClientInfo>,
-) -> HttpResult<()> {
+    event_request: SendEventRequest,
+    request: &Request,
+) -> Result<(), Exception> {
     let now = DateTime::now();
-    for event in request.events {
+    for event in event_request.events {
         if let Err(error) = event.custom_validate() {
             warn!(error_code = "INVALID_EVENT", "skip invalid event, error={error}");
             continue;
@@ -137,11 +127,11 @@ async fn process_events(
             info: event.info,
         };
 
-        if let Some(ref user_agent) = client_info.user_agent {
+        if let Some(user_agent) = request.user_agent() {
             message.context.insert("user_agent".to_owned(), user_agent.to_owned());
         }
 
-        message.context.insert("client_ip".to_owned(), client_info.client_ip.clone());
+        message.context.insert("client_ip".to_owned(), request.client_ip().to_owned());
 
         state.producer.send(&state.topics.event, None, &message).await?;
     }

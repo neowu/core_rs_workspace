@@ -26,16 +26,16 @@ buffer, and the whole thing leaves the request path over a channel.
 
 ## The record
 
-| field | source | notes |
-|---|---|---|
-| `id` | `id_generator::next_id` | 20 hex chars, timestamp + machine id + counter |
-| `kind` | `log::action(kind, ..)` | `"http"`, `"message"`, `"task"`, `"nats"`, `"test"` |
-| `timestamp`, `stats.elapsed` | the action's own clock | `elapsed` is nanos, always stats slot 0 |
-| `severity`, `error_code`, `error_message` | promoted from log lines and exceptions | see severity promotion |
-| `ref_ids` | the caller's id, off the transport header | how a call chain is reassembled |
-| `context` | `context!(key = value)` | ordered key → **list** of values, queryable dimensions |
-| `stats` | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes`/`poll_elapsed`/`poll_count` always |
-| `logs` | `log!`, `warn!`, `error!`, `span!` | the trace buffer, emitted only when it is worth keeping |
+| field                                     | source                                         | notes                                                                                                    |
+| ----------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `id`                                      | `id_generator::next_id`                        | 20 hex chars, timestamp + machine id + counter                                                           |
+| `kind`                                    | `log::action(kind, ..)`                        | `"http"`, `"message"`, `"task"`, `"nats"`, `"test"`                                                      |
+| `timestamp`, `stats.elapsed`              | the action's own clock                         | `elapsed` is nanos, always stats slot 0                                                                  |
+| `severity`, `error_code`, `error_message` | promoted from log lines and exceptions         | see severity promotion                                                                                   |
+| `ref_ids`                                 | the caller's id, off the transport header      | how a call chain is reassembled                                                                          |
+| `context`                                 | `context!(key = value)`                        | ordered key → **list** of values, queryable dimensions                                                   |
+| `stats`                                   | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes`/`poll_elapsed`/`poll_count` always |
+| `logs`                                    | `log!`, `warn!`, `error!`, `span!`             | the trace buffer, emitted only when it is worth keeping                                                  |
 
 ## Lifecycle
 
@@ -64,7 +64,7 @@ the record itself.
 
 `RefCell<Action>` rather than `Mutex`: an action belongs to one task, contention is impossible, and
 a borrow panic would mean a genuine reentrancy bug. The one real hazard is documented at the macro
-itself — never call `log!` from a `Display` impl that is being passed *as an argument to* `log!`,
+itself — never call `log!` from a `Display` impl that is being passed _as an argument to_ `log!`,
 which borrows the `RefCell` twice.
 
 ### Logging adapters own messages; Action owns context storage
@@ -80,7 +80,7 @@ benefit warranted the extra call-site code. See [HTTP tuning](../plan/http_tunin
 
 ### Three shapes, because they are read three different ways
 
-`context` is **dimensions you filter and group by** (uri, client_ip, matched_path). `stats` are
+`context` is **dimensions you filter and group by** (uri, client_ip, path). `stats` are
 **numbers that sum and average** (elapsed, bytes, span counts). The trace is **prose you read when
 something already went wrong**. Collapsing them into one bag of strings would mean the query side
 has to guess which is which, so they stay separate all the way to storage —
@@ -163,12 +163,12 @@ than from the count `time`'s `format_into` returns, which leaves out the subseco
 
 ### Every limit truncates in place and says so
 
-| limit | value | applies to |
-|---|---|---|
-| `MAX_LOG_BYTES` | 512 KB | the whole trace buffer, **soft** |
-| `MAX_LOG_MESSAGE_LEN` | 10,000 | one log line's message |
-| `MAX_CONTEXT_VALUE_LEN` | 1,000 | one context value |
-| `MAX_ERROR_MESSAGE_LEN` | 200 | the record's `error_message` |
+| limit                   | value  | applies to                       |
+| ----------------------- | ------ | -------------------------------- |
+| `MAX_LOG_BYTES`         | 512 KB | the whole trace buffer, **soft** |
+| `MAX_LOG_MESSAGE_LEN`   | 10,000 | one log line's message           |
+| `MAX_CONTEXT_VALUE_LEN` | 1,000  | one context value                |
+| `MAX_ERROR_MESSAGE_LEN` | 200    | the record's `error_message`     |
 
 All of them cut on a char boundary and append `...(truncated)`, which is appended **only when
 something was actually cut**, so a value at exactly the limit is not misreported as truncated.
@@ -228,7 +228,7 @@ vectors are then **moved** into the message rather than rebuilt.
 This is the one place the record's shape is driven by cost rather than by how it is read. Everything
 it borrows is already `'static` or process-lifetime: keys come from `stringify!`/`concat!`, `kind`
 is a `&'static str`, and the system `Context` (`app`, `host`) is set once at `System::init` and
-lives until exit. The `Cow` is what lets a *deserialized* message still own its strings, which is
+lives until exit. The `Cow` is what lets a _deserialized_ message still own its strings, which is
 what `log_processor_rs` receives off nats.
 
 Per action this removes `2·(scalar contexts) + (stats keys) + 5` allocations — one vector and one
@@ -269,11 +269,11 @@ consumer would then have to handle — for a saving that only defers an allocati
 
 ## Downstream
 
-| appender | output |
-|---|---|
-| `ConsoleAppender` | one `ACTION: ..` line on stdout, trace on stderr |
-| `TraceAppender` | nothing but the trace, on stderr — used where the record is not wanted |
-| `NatsAppender` | the `ActionMessage` json on `log.action`, plus console output for errors |
+| appender          | output                                                                   |
+| ----------------- | ------------------------------------------------------------------------ |
+| `ConsoleAppender` | one `ACTION: ..` line on stdout, trace on stderr                         |
+| `TraceAppender`   | nothing but the trace, on stderr — used where the record is not wanted   |
+| `NatsAppender`    | the `ActionMessage` json on `log.action`, plus console output for errors |
 
 Apps use `NatsAppender`; `ConsoleAppender` is only for `log_processor` / `log_processor_rs`, which
 cannot ship their own logs through the pipeline they run. The daemon writes stdout synchronously

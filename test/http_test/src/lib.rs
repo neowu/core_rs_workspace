@@ -1,17 +1,18 @@
 use std::time::Duration;
 
-use axum::Router;
-use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::system::CancellationToken;
+use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_macro::Validate;
+use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -28,21 +29,35 @@ pub struct GreetResponse {
 }
 
 pub struct TestServer {
-    pub client: HttpClient,
     pub url: String,
+    /// framework client, for #[api] clients
+    pub client: HttpClient,
+    pub http1: Client,
+    pub h2c: Client,
     shutdown_signal: CancellationToken,
     task: JoinHandle<()>,
 }
 
 impl TestServer {
-    pub async fn start(router: Router) -> Result<Self, Exception> {
-        let http_server =
-            HttpServer::new(HttpServerConfig { bind_address: "127.0.0.1:8081".to_owned(), ..Default::default() });
+    pub async fn start(router: Router) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("failed to bind");
+        let url = format!("http://{}", listener.local_addr().expect("failed to get local address"));
         let shutdown_signal = CancellationToken::new();
-        let task = tokio::spawn(http_server.start(router, shutdown_signal.clone()));
+        let http_server = HttpServer::new(HttpServerConfig { max_body_size: 1024, ..Default::default() });
+        let task = tokio::spawn(http_server.start_with_listener(listener, router, shutdown_signal.clone()));
         let server = Self {
+            url,
             client: HttpClient::new(HttpClientConfig { timeout: Duration::from_secs(2), ..Default::default() }),
-            url: "http://127.0.0.1:8081".to_owned(),
+            http1: Client::builder()
+                .http1_only()
+                .timeout(Duration::from_secs(2))
+                .build()
+                .expect("failed to build client"),
+            h2c: Client::builder()
+                .http2_prior_knowledge()
+                .timeout(Duration::from_secs(2))
+                .build()
+                .expect("failed to build client"),
             shutdown_signal,
             task,
         };
@@ -50,9 +65,8 @@ impl TestServer {
         timeout(Duration::from_secs(5), async {
             loop {
                 assert!(!server.task.is_finished(), "http server exited before becoming ready");
-                let request = server.request(Method::GET, "/health-check");
-                if let Ok(response) = server.client.execute(request).await
-                    && response.status == 200
+                if let Ok(response) = server.http1.get(server.url("/health-check")).send().await
+                    && response.status() == 200
                 {
                     return;
                 }
@@ -62,11 +76,15 @@ impl TestServer {
         .await
         .expect("http server did not start");
 
-        Ok(server)
+        server
+    }
+
+    pub fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.url)
     }
 
     pub fn request(&self, method: Method, path: &str) -> HttpRequest {
-        HttpRequest::new(method, format!("{}{path}", self.url))
+        HttpRequest::new(method, self.url(path))
     }
 
     pub async fn shutdown(&mut self) {

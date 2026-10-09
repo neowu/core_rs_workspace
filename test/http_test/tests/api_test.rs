@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use axum::http::header;
 use framework::api::ErrorResponse;
 use framework::exception;
 use framework::exception::Exception;
@@ -13,6 +12,7 @@ use framework_macro::integration_test;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
+use reqwest::header;
 
 #[api]
 trait GreetingService {
@@ -63,7 +63,7 @@ impl GreetingService for GreetingServiceImpl {
 
 #[integration_test]
 async fn api() -> Result<(), Exception> {
-    let mut server = TestServer::start(GreetingService::route(Arc::new(GreetingServiceImpl))).await?;
+    let mut server = TestServer::start(GreetingService::route(Arc::new(GreetingServiceImpl))).await;
     let client = GreetingServiceClient::new(server.client.clone(), server.url.clone());
 
     let response = client.greet(GreetRequest { name: "world & 世界 + ?".to_owned() }).await?;

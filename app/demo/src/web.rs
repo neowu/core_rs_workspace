@@ -1,31 +1,28 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-use axum::http::StatusCode;
 use framework::asset_path;
+use framework::exception::Exception;
 use framework::log::trace;
-use framework::web::route::get;
-use framework::web::server::ServeDir;
-use framework::web::server::ServeFile;
+use framework::web::request::Request;
+use framework::web::response::Response;
+use framework::web::router::Router;
+use http::StatusCode;
 use tokio::time::sleep;
 
 pub(crate) fn routes() -> Router {
-    let router = Router::new();
-    let router = router.route("/503", get(http_503));
-    let router = router.route("/long", get(long));
-    let router = router
-        .route_service("/", ServeFile::new(asset_path!("assets/web/index.html")))
-        .route_service("/static/{*path}", ServeDir::new(asset_path!("assets/web/")));
-    //     .fallback_service(ServeFile::new(asset_path!("assets/web/index.html")))
-    router
+    Router::new()
+        .state(Arc::new(()), |r| r.get("/503", http_503).get("/long", long))
+        .file("/", asset_path!("assets/web/index.html"))
+        .dir("/static/", asset_path!("assets/web/"))
 }
 
-async fn http_503() -> StatusCode {
+async fn http_503(_state: Arc<()>, _request: Request) -> Result<Response, Exception> {
     trace();
-    StatusCode::SERVICE_UNAVAILABLE
+    Ok(Response::empty().status(StatusCode::SERVICE_UNAVAILABLE))
 }
 
-async fn long() -> StatusCode {
+async fn long(_state: Arc<()>, _request: Request) -> Result<Response, Exception> {
     sleep(Duration::from_secs(20)).await;
-    StatusCode::OK
+    Ok(Response::empty().status(StatusCode::OK))
 }

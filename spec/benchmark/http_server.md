@@ -10,7 +10,7 @@ The workflow here is shared by every benchmark; the nats one is in [`nats_api_se
 
 Finds framework bottlenecks and compares designs. **Not micro benchmarks**: the unit is a whole
 request over a real socket, so a run measures the framework path an app pays for (accept, http
-layer, action log, routing, extractor, controller, serialization).
+layer, action log, routing, request parsing, controller, serialization).
 
 | process | role |
 |---|---|
@@ -153,7 +153,7 @@ children) and `report profile` stores the top methods under `profile` in the res
 
 ## Known gaps
 
-- No bare-axum baseline to separate framework cost from axum/hyper.
+- No bare-hyper baseline to separate framework cost from hyper.
 - Nothing compares runs automatically.
 - DB scenarios: the framework pool holds at most 50 connections, a higher `--concurrency` queues
   on checkout. Postgres shares the server host, its cpu is not in the server's `cpu_us_per_request`

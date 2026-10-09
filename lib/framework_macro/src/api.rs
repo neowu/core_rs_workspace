@@ -44,23 +44,21 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     }
 
     trait_def.items.push(TraitItem::Fn(parse_quote! {
-        fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
+        fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
         where
             Self: Sized + Send + Sync + 'static,
         {
             use std::sync::Arc;
 
-            use axum::Router;
-            use axum::routing::MethodFilter;
-            use axum::routing::on;
-            use framework::context;
+            use framework::http::Method;
             use framework::web::api::__into_response;
-            use framework::web::body::Json;
-            use framework::web::body::Query;
+            use framework::web::request::Request;
+            use framework::web::router::Router;
 
-            let router = Router::new();
-            #(#route_statements)*
-            router
+            Router::new().state(service, |router| {
+                #(#route_statements)*
+                router
+            })
         }
     }));
 
@@ -89,8 +87,10 @@ struct MethodModel {
     request_type: Option<Type>,
     response_type: Type,
 
-    filter: TokenStream,
-    extractor: TokenStream,
+    http_method: TokenStream,
+    // binding and parsing of the framework request, `mut` only to read the body
+    request_binding: TokenStream,
+    parse_request: TokenStream,
     client_call: Ident,
 }
 
@@ -105,23 +105,30 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
         return Err(Error::new_spanned(method, "method name `route` is reserved by #[api]"));
     }
 
-    let mut http_method = None;
+    let mut method_attr = None;
     let mut path = None;
 
     for attr in &method.attrs {
         let attr_path = attr.path();
         if attr_path.is_ident("get") {
-            http_method = Some((quote!(MethodFilter::GET), quote!(Query), format_ident!("__get")));
+            method_attr =
+                Some((quote!(Method::GET), quote!(request), quote!(request.query()?), format_ident!("__get")));
         } else if attr_path.is_ident("post") {
-            http_method = Some((quote!(MethodFilter::POST), quote!(Json), format_ident!("__post")));
+            method_attr = Some((
+                quote!(Method::POST),
+                quote!(mut request),
+                quote!(request.json().await?),
+                format_ident!("__post"),
+            ));
         } else if attr_path.is_ident("put") {
-            http_method = Some((quote!(MethodFilter::PUT), quote!(Json), format_ident!("__put")));
+            method_attr =
+                Some((quote!(Method::PUT), quote!(mut request), quote!(request.json().await?), format_ident!("__put")));
         } else if attr_path.is_ident("path") {
             path = Some(attr.parse_args::<LitStr>()?);
         }
     }
 
-    let (filter, extractor, client_call) = http_method.ok_or_else(|| {
+    let (http_method, request_binding, parse_request, client_call) = method_attr.ok_or_else(|| {
         Error::new_spanned(method, "missing HTTP method attribute, expected #[get], #[post] or #[put]")
     })?;
     let path = path.ok_or_else(|| Error::new_spanned(method, "missing #[path(\"...\")] attribute"))?;
@@ -149,46 +156,47 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     };
     let response_type = (**return_type).clone();
 
-    Ok(MethodModel { method_ident, path, request_type, response_type, filter, extractor, client_call })
+    Ok(MethodModel {
+        method_ident,
+        path,
+        request_type,
+        response_type,
+        http_method,
+        request_binding,
+        parse_request,
+        client_call,
+    })
 }
 
 fn build_route_statement(model: &MethodModel) -> TokenStream {
     let method_ident = &model.method_ident;
-    let filter = &model.filter;
+    let http_method = &model.http_method;
     let path = &model.path;
     let fn_format = format!("{{}}::{method_ident}");
 
     let handler = if let Some(request_type) = &model.request_type {
-        let extractor = &model.extractor;
+        let request_binding = &model.request_binding;
+        let parse_request = &model.parse_request;
         // spanned to request type, so missing Validator impl is reported on the trait method
         let validate = quote_spanned! {request_type.span()=> framework::validate::Validator::validate(&req)};
         quote! {
-            async move |#extractor(req): #extractor<#request_type>| {
-                context!(fn = fn_name);
-                let result = match #validate {
-                    Ok(()) => svc.#method_ident(req).await,
-                    Err(error) => Err(error),
-                };
-                __into_response(result)
+            |service: Arc<Self>, #request_binding: Request| async move {
+                let req: #request_type = #parse_request;
+                #validate?;
+                __into_response(service.#method_ident(req).await)
             }
         }
     } else {
         quote! {
-            async move || {
-                context!(fn = fn_name);
-                let result = svc.#method_ident().await;
-                __into_response(result)
+            |service: Arc<Self>, _request: Request| async move {
+                __into_response(service.#method_ident().await)
             }
         }
     };
 
     quote! {
-        let svc = Arc::clone(&service);
         let fn_name: &'static str = format!(#fn_format, std::any::type_name::<Self>()).leak();
-        let router = router.route(
-            #path,
-            on(#filter, #handler),
-        );
+        let router = router.__route(#http_method, #path, fn_name, #handler);
     }
 }
 
@@ -252,61 +260,38 @@ mod tests {
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<CreateUserResponse, Exception> > + Send;
                     fn update(&self, request: UpdateUserRequest) -> impl ::core::future::Future<Output = Result<UpdateUserResponse, Exception> > + Send;
 
-                    fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
                     where
                         Self: Sized + Send + Sync + 'static,
                     {
                         use std::sync::Arc;
 
-                        use axum::Router;
-                        use axum::routing::MethodFilter;
-                        use axum::routing::on;
-                        use framework::context;
+                        use framework::http::Method;
                         use framework::web::api::__into_response;
-                        use framework::web::body::Json;
-                        use framework::web::body::Query;
+                        use framework::web::request::Request;
+                        use framework::web::router::Router;
 
-                        let router = Router::new();
-                        let svc = Arc::clone(&service);
+                        Router::new().state(service, |router| {
                         let fn_name: &'static str = format!("{}::search", std::any::type_name::<Self>()).leak();
-                        let router = router.route(
-                            "/user/search",
-                            on(MethodFilter::GET, async move |Query(req): Query<SearchUserRequest>| {
-                                context!(fn = fn_name);
-                                let result = match framework::validate::Validator::validate(&req) {
-                                    Ok(()) => svc.search(req).await,
-                                    Err(error) => Err(error),
-                                };
-                                __into_response(result)
-                            }),
-                        );
-                        let svc = Arc::clone(&service);
+                        let router = router.__route(Method::GET, "/user/search", fn_name, |service: Arc<Self>, request: Request| async move {
+                            let req: SearchUserRequest = request.query()?;
+                            framework::validate::Validator::validate(&req)?;
+                            __into_response(service.search(req).await)
+                        });
                         let fn_name: &'static str = format!("{}::create", std::any::type_name::<Self>()).leak();
-                        let router = router.route(
-                            "/user/create",
-                            on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = fn_name);
-                                let result = match framework::validate::Validator::validate(&req) {
-                                    Ok(()) => svc.create(req).await,
-                                    Err(error) => Err(error),
-                                };
-                                __into_response(result)
-                            }),
-                        );
-                        let svc = Arc::clone(&service);
+                        let router = router.__route(Method::POST, "/user/create", fn_name, |service: Arc<Self>, mut request: Request| async move {
+                            let req: CreateUserRequest = request.json().await?;
+                            framework::validate::Validator::validate(&req)?;
+                            __into_response(service.create(req).await)
+                        });
                         let fn_name: &'static str = format!("{}::update", std::any::type_name::<Self>()).leak();
-                        let router = router.route(
-                            "/user/update",
-                            on(MethodFilter::PUT, async move |Json(req): Json<UpdateUserRequest>| {
-                                context!(fn = fn_name);
-                                let result = match framework::validate::Validator::validate(&req) {
-                                    Ok(()) => svc.update(req).await,
-                                    Err(error) => Err(error),
-                                };
-                                __into_response(result)
-                            }),
-                        );
+                        let router = router.__route(Method::PUT, "/user/update", fn_name, |service: Arc<Self>, mut request: Request| async move {
+                            let req: UpdateUserRequest = request.json().await?;
+                            framework::validate::Validator::validate(&req)?;
+                            __into_response(service.update(req).await)
+                        });
                         router
+                        })
                     }
                 }
 
@@ -364,45 +349,30 @@ mod tests {
                     fn get_all(&self) -> impl ::core::future::Future<Output = Result<GetAllUserResponse, Exception> > + Send;
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
 
-                    fn route(service: ::std::sync::Arc<Self>) -> ::axum::Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
                     where
                         Self: Sized + Send + Sync + 'static,
                     {
                         use std::sync::Arc;
 
-                        use axum::Router;
-                        use axum::routing::MethodFilter;
-                        use axum::routing::on;
-                        use framework::context;
+                        use framework::http::Method;
                         use framework::web::api::__into_response;
-                        use framework::web::body::Json;
-                        use framework::web::body::Query;
+                        use framework::web::request::Request;
+                        use framework::web::router::Router;
 
-                        let router = Router::new();
-                        let svc = Arc::clone(&service);
+                        Router::new().state(service, |router| {
                         let fn_name: &'static str = format!("{}::get_all", std::any::type_name::<Self>()).leak();
-                        let router = router.route(
-                            "/user/get_all",
-                            on(MethodFilter::GET, async move | | {
-                                context!(fn = fn_name);
-                                let result = svc.get_all().await;
-                                __into_response(result)
-                            }),
-                        );
-                        let svc = Arc::clone(&service);
+                        let router = router.__route(Method::GET, "/user/get_all", fn_name, |service: Arc<Self>, _request: Request| async move {
+                            __into_response(service.get_all().await)
+                        });
                         let fn_name: &'static str = format!("{}::create", std::any::type_name::<Self>()).leak();
-                        let router = router.route(
-                            "/user/create",
-                            on(MethodFilter::POST, async move |Json(req): Json<CreateUserRequest>| {
-                                context!(fn = fn_name);
-                                let result = match framework::validate::Validator::validate(&req) {
-                                    Ok(()) => svc.create(req).await,
-                                    Err(error) => Err(error),
-                                };
-                                __into_response(result)
-                            }),
-                        );
+                        let router = router.__route(Method::POST, "/user/create", fn_name, |service: Arc<Self>, mut request: Request| async move {
+                            let req: CreateUserRequest = request.json().await?;
+                            framework::validate::Validator::validate(&req)?;
+                            __into_response(service.create(req).await)
+                        });
                         router
+                        })
                     }
                 }
 

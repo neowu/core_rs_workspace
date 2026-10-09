@@ -11,7 +11,7 @@ framework_macro.workspace = true
 
 serde.workspace = true
 tokio.workspace = true
-axum.workspace = true
+http = "*"
 
 [lints]
 workspace = true

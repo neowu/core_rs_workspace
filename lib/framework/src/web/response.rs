@@ -7,12 +7,6 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use framework::api::ErrorResponse;
-use framework::exception::Exception;
-use framework::exception::error_code;
-use framework::json;
-use framework::log;
-use framework::stats;
 use futures::Stream as _;
 use http::HeaderMap;
 use http::HeaderName;
@@ -22,7 +16,14 @@ use http::header;
 use http_body::Frame;
 use http_body::SizeHint;
 use tokio::fs::File;
+use tokio::io::AsyncReadExt as _;
+use tokio::io::Take;
 use tokio_util::io::ReaderStream;
+
+use crate::api::ErrorResponse;
+use crate::exception::Exception;
+use crate::exception::error_code;
+use crate::json;
 
 const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
 const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
@@ -93,7 +94,8 @@ impl Response {
     }
 
     pub(crate) fn file(file: fs::File, length: u64) -> Self {
-        let stream = ReaderStream::with_capacity(File::from_std(file), 64 * 1024);
+        // limit to the stat length, a growing file must not exceed content-length
+        let stream = ReaderStream::with_capacity(File::from_std(file).take(length), 64 * 1024);
         Self { status: StatusCode::OK, headers: HeaderMap::new(), body: Body::File { stream, remaining: length } }
     }
 
@@ -128,6 +130,12 @@ impl Response {
         self
     }
 
+    pub(crate) fn without_content(mut self) -> Self {
+        self.headers.remove(header::CONTENT_LENGTH);
+        self.body = Body::Empty;
+        self
+    }
+
     pub(crate) fn into_http(self) -> http::Response<Body> {
         let mut response = http::Response::new(self.body);
         *response.status_mut() = self.status;
@@ -140,7 +148,7 @@ impl Response {
 pub(crate) enum Body {
     Empty,
     Full(Bytes),
-    File { stream: ReaderStream<File>, remaining: u64 },
+    File { stream: ReaderStream<Take<File>>, remaining: u64 },
 }
 
 impl http_body::Body for Body {
@@ -186,11 +194,10 @@ impl http_body::Body for Body {
 
 #[cfg(test)]
 mod tests {
-    use framework::exception;
-    use framework::log::Severity;
     use http_body_util::BodyExt as _;
 
     use super::*;
+    use crate::log::Severity;
 
     #[tokio::test]
     async fn json() {

@@ -10,7 +10,6 @@ version = "0.9.7"
 framework = { path = "lib/framework" }
 framework_clickhouse = { path = "lib/framework_clickhouse" }
 framework_db = { path = "lib/framework_db" }
-framework_http = { path = "lib/framework_http" }
 framework_kafka = { path = "lib/framework_kafka" }
 framework_nats = { path = "lib/framework_nats" }
 framework_macro = { path = "lib/framework_macro" }
@@ -19,7 +18,6 @@ serde = { version = "*", features = ["derive"] }
 uuid = { version = "*", features = ["v7", "serde"] }
 
 tokio = { version = "*", features = ["full"] }
-axum = { version = "*", features = ["macros", "http2"] }
 
 [profile.dev]
 debug = "none"

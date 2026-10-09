@@ -9,7 +9,7 @@ Code: [`framework_macro/src/api.rs`](../lib/framework_macro/src/api.rs),
 `#[api]` on a trait generates both sides of one HTTP contract from the trait definition:
 
 - server: a provided `route(Arc<Self>) -> Router` that registers every method on its
-  `#[path]` with its HTTP method.
+  `#[path]` with its HTTP method, the service is the bound state, merge it into the server router.
 - client: `{Trait}Client` wrapping `ApiClient`, implementing the same trait over `HttpClient`.
 
 Method rules, enforced at expansion time:
@@ -25,8 +25,10 @@ multi-threaded runtime without the caller boxing.
 
 Wire format:
 
-- `GET` sends the request as query string (`Query` / `serde_html_form`), `POST` / `PUT` as JSON body.
-- `Ok(())` maps to `204 No Content`, other `Ok` to JSON, `Err` goes through `HttpError`.
+- `GET` sends the request as query string (`request.query()` / `serde_html_form`), `POST` / `PUT` as JSON body
+  (`request.json()`).
+- `Ok(())` maps to `204 No Content`, other `Ok` to JSON, `Err` is returned to the server, which logs it and
+  maps it to `ErrorResponse`, see [`http_server.md`](http_server.md#controller).
 - the client sends `client` (app name) and `ref_id` (current action id) headers to link action logs;
   a non-2xx JSON `ErrorResponse` is rebuilt into an `Exception` keeping `severity` and `code`.
 
@@ -34,16 +36,18 @@ Wire format:
 
 ### `fn` context name is built once per route, not per request
 
-Each handler logs `context!(fn = "{type_name::<Self>()}::{method}")`. The name depends on the
-implementing type, which is only known at monomorphization, and `type_name` is not `const` on
-stable, so it can't be a compile-time literal.
+The `fn` context is `"{type_name::<Self>()}::{method}"`. The name depends on the implementing type,
+which is only known at monomorphization, and `type_name` is not `const` on stable, so it can't be a
+compile-time literal. The handler is a closure, its own type name is meaningless.
 
-`route()` formats it once and leaks it to `&'static str`, captured by the handler closure:
+`route()` formats it once, leaks it to `&'static str` and registers it with the route through the
+hidden `StateRouter::__route(method, path, name, handler)`; the server sets `context!(fn = ..)` like for
+any other route:
 
 - formatting per request cost a `format!` plus a realloc (empty first piece → zero initial
   capacity).
-- capturing a `String` is worse: axum clones the handler per request, so it would allocate twice.
 - the leak is bounded — one small string per route per `route()` call, normally once at startup.
+- the handler closure captures nothing, the service comes in as the bound state `Arc<Self>`.
 
 One allocation per request remains because `ContextValues` stores `String`; removing it means
 changing `ContextValues` to `Cow<'static, str>`, not a macro change.

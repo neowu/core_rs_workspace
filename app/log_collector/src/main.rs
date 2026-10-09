@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use axum::Router;
 use framework::load_config;
 use framework::system::DefaultEnv;
 use framework::system::System;
@@ -40,8 +39,7 @@ async fn main() {
         producer: Producer::new(config.kafka_uri),
     });
 
-    let app = Router::new();
-    let app = app.merge(web::routes(state));
+    let app = web::routes(state);
     let http_server = HttpServer::new(HttpServerConfig::default());
     system.add_metrics(http_server.metrics());
 

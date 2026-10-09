@@ -1,37 +1,20 @@
 use std::fs;
 use std::io;
 use std::io::ErrorKind;
-use std::io::Read as _;
-use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
-use bytes::Bytes;
-use framework::exception;
-use framework::exception::Exception;
-use framework::exception::error_code;
-use framework::log::Severity;
 use http::HeaderValue;
-use http::StatusCode;
 use http::header;
 use percent_encoding::percent_decode_str;
 use tokio::task::spawn_blocking;
 
-use crate::request::Request;
-use crate::response::Response;
-
-// read in one blocking call, larger files are streamed in chunks
-const MAX_INLINE_SIZE: u64 = 1024 * 1024;
-
-enum Content {
-    NotModified,
-    Full(Bytes),
-    Stream(fs::File, u64),
-}
+use crate::exception::Exception;
+use crate::exception::error_code;
+use crate::log::Severity;
+use crate::web::request::Request;
+use crate::web::response::Response;
 
 pub(crate) async fn serve_dir(prefix: &'static str, root: Arc<Path>, request: Request) -> Result<Response, Exception> {
     let relative = request.path().strip_prefix(prefix).unwrap_or_default();
@@ -46,12 +29,9 @@ pub(crate) async fn serve_file(file: Arc<Path>, request: Request) -> Result<Resp
 }
 
 async fn serve(path: PathBuf, request: &Request) -> Result<Response, Exception> {
-    let if_modified_since =
-        request.header(header::IF_MODIFIED_SINCE).and_then(|value| httpdate::parse_http_date(value).ok());
     let content_type = content_type(&path);
-
-    // open, stat and read in one blocking task, tokio::fs would hop to the blocking pool per call
-    let (content, modified) = match spawn_blocking(move || read(&path, if_modified_since)).await? {
+    // open and stat in one blocking task, tokio::fs would hop to the blocking pool per call
+    let (file, length) = match spawn_blocking(move || open(&path)).await? {
         Ok(result) => result,
         Err(err)
             if matches!(
@@ -63,58 +43,31 @@ async fn serve(path: PathBuf, request: &Request) -> Result<Response, Exception> 
         }
         Err(err) => return Err(err.into()),
     };
-
-    let mut response = match content {
-        Content::NotModified => Response::empty().status(StatusCode::NOT_MODIFIED),
-        Content::Full(bytes) => Response::bytes(bytes, HeaderValue::from_static(content_type)),
-        Content::Stream(file, length) => {
-            Response::file(file, length).header(header::CONTENT_TYPE, HeaderValue::from_static(content_type))
-        }
-    };
-    if let Some(modified) = modified
-        && let Ok(value) = HeaderValue::try_from(httpdate::fmt_http_date(modified))
-    {
-        response.headers_mut().insert(header::LAST_MODIFIED, value);
-    }
-    Ok(response)
+    Ok(Response::file(file, length).header(header::CONTENT_TYPE, HeaderValue::from_static(content_type)))
 }
 
-fn read(path: &Path, if_modified_since: Option<SystemTime>) -> io::Result<(Content, Option<SystemTime>)> {
+// regular files only, directories / devices / fifos are not found
+fn open(path: &Path) -> io::Result<(fs::File, u64)> {
     let file = fs::File::open(path)?;
     let metadata = file.metadata()?;
-    if metadata.is_dir() {
-        return Err(ErrorKind::IsADirectory.into());
+    if !metadata.is_file() {
+        return Err(ErrorKind::NotFound.into());
     }
-    // http date has second precision
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| UNIX_EPOCH + Duration::from_secs(duration.as_secs()));
-    if let Some(modified) = modified
-        && let Some(since) = if_modified_since
-        && modified <= since
-    {
-        return Ok((Content::NotModified, Some(modified)));
-    }
-
-    let length = metadata.len();
-    if length > MAX_INLINE_SIZE {
-        return Ok((Content::Stream(file, length), modified));
-    }
-    let mut buffer = Vec::with_capacity(length as usize);
-    file.take(MAX_INLINE_SIZE).read_to_end(&mut buffer)?;
-    Ok((Content::Full(Bytes::from(buffer)), modified))
+    Ok((file, metadata.len()))
 }
 
-// only normal components are allowed, rejects "..", "." and absolute path
+// rejects any empty or dot segment (".", "..", hidden files), absolute path, backslash or nul after decoding,
+// instead of normalizing
 fn resolve(root: &Path, relative: &str) -> Option<PathBuf> {
     let decoded = percent_decode_str(relative).decode_utf8().ok()?;
     let mut path = root.to_path_buf();
-    for component in Path::new(decoded.as_ref()).components() {
-        match component {
-            Component::Normal(name) => path.push(name),
-            Component::Prefix(_) | Component::RootDir | Component::CurDir | Component::ParentDir => return None,
+    if !decoded.is_empty() {
+        let dir = decoded.strip_suffix('/').unwrap_or(&decoded);
+        for segment in dir.split('/') {
+            if segment.is_empty() || segment.starts_with('.') || segment.contains(['\\', '\0']) {
+                return None;
+            }
+            path.push(segment);
         }
     }
     if decoded.is_empty() || decoded.ends_with('/') {
@@ -182,6 +135,23 @@ mod tests {
         assert_eq!(resolve(root, "%2E%2E/etc/passwd"), None);
         assert_eq!(resolve(root, "%2Fetc/passwd"), None);
         assert_eq!(resolve(root, "%FF"), None);
+        for path in [
+            "/",
+            ".",
+            "./a.js",
+            ".env",
+            ".git/config",
+            "a/.hidden/b.js",
+            "a/./b.js",
+            "a/.",
+            "a//b.js",
+            "a/../b.js",
+            "a\\b.js",
+            "a%00.js",
+            "%2E%2Fa.js",
+        ] {
+            assert_eq!(resolve(root, path), None, "path={path}");
+        }
     }
 
     #[test]

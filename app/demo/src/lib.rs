@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use axum::Router;
 use framework::appender::ConsoleAppender;
 use framework::config::EnvString;
 use framework::load_config;
@@ -10,6 +9,7 @@ use framework::system::System;
 use framework::task::start_executor;
 use framework::time::Offset;
 use framework::time::SignedDuration;
+use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_db::Database;
@@ -56,12 +56,7 @@ pub async fn run() {
 
     let mut scheduler = Scheduler::new(Offset::new(8, 0));
     scheduler.schedule_fixed_rate("demo", demo_job, SignedDuration::from_hours(1));
-    let scheduler_routes = scheduler.routes(state);
-
-    let app = Router::new();
-    let app = app.merge(scheduler_routes);
-    let app = app.merge(user::web::routes(state));
-    let app = app.merge(web::routes());
+    let app = Router::new().merge(scheduler.routes(state)).merge(user::web::routes(state)).merge(web::routes());
     let http_server = HttpServer::new(HttpServerConfig { shutdown_delay: Duration::ZERO, ..Default::default() });
     system.add_metrics(http_server.metrics());
 

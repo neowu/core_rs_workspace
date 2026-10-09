@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
 use framework::appender::ConsoleAppender;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
@@ -31,11 +30,9 @@ pub async fn main() {
         daily_job,
         DateTime::now().add_duration(SignedDuration::from_secs(5)).expect("value must be valid").time(),
     );
-    let scheduler_routes = scheduler.routes(state.clone());
+    let app = scheduler.routes(Arc::clone(&state));
     system.start_service(|token| scheduler.start(state, token));
 
-    let app = Router::new();
-    let app = app.merge(scheduler_routes);
     let http_server = HttpServer::new(HttpServerConfig::default());
     system.start_service(|token| http_server.start(app, token));
 

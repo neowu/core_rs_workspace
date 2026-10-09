@@ -404,20 +404,21 @@ the console output and explain each field.
 task-local is borrowed twice and it panics (there is a comment saying exactly this in `log.rs`);
 `span!` takes a **literal** because the name becomes a compile-time stats key.
 
-### Session 11 — HTTP: axum, routes, `#[api]`, validation
+### Session 11 — HTTP: server, routes, `#[api]`, validation
 
 **Goal:** add an endpoint with proper request/response types, validation and error mapping.
 
 **Content**
 
-- `HttpServer` / `HttpServerConfig`, the `http_server_layer` middleware (what it logs, the
-  `/health-check` short-circuit, client IP resolution via `max_forwarded_ips`).
-- Routing: `framework::web::route::{get, post, ..}` wrap axum's so the handler's name lands in
-  `context!(fn = ..)`. `ServeDir`/`ServeFile` for static assets.
-- Extractors and bodies: `web::body::{Json, TextBody}`, `client_info`, and how a rejection becomes an
+- `HttpServer` / `HttpServerConfig` on hyper: what each request logs, the `/health-check`
+  short-circuit, client IP resolution via `max_forwarded_ips`, HTTP/1.1 and h2c on one port.
+- Routing: `Router::new().state(Arc::new(state), |r| r.get(path, handler))`, static paths plus `prefix` routes, the
+  handler's name lands in `context!(fn = ..)`; `dir` / `file` for static assets; `merge` routers.
+- One controller signature `async fn(Arc<S>, Request) -> Result<Response, Exception>`:
+  `request.query()` / `json()` / `text()` / `client_ip()`, and how a parse failure becomes an
   `Exception` with `BAD_REQUEST`.
-- `HttpError` / `HttpResult<T>` and the code → status mapping in `web/error.rs`.
-- **`#[api]`** on a trait generates _both_ the axum router (`UserService::route(Arc::new(impl))`) and
+- `Response::json` / `text` / `empty`, and the error code → status mapping of a returned `Exception`.
+- **`#[api]`** on a trait generates _both_ the router (`UserService::route(Arc::new(impl))`) and
   a typed HTTP client (`UserServiceClient`) — one declaration, two sides of the wire. Compare with
   Spring's `@RestController` + Feign, or a TS route file + a generated OpenAPI client.
 - **`#[derive(Validate)]`** — `#[not_blank]`, `#[range(min, max)]`, `#[length(min, max)]`,

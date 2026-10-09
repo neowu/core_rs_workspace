@@ -1,3 +1,4 @@
+use std::future::Ready;
 use std::sync::Arc;
 
 use framework::api::ErrorResponse;
@@ -5,15 +6,16 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::exception::error_code;
 use framework::log::Severity;
-use framework_http::request::Request;
-use framework_http::response::Response;
-use framework_http::router::Router;
-use framework_http_test::GreetRequest;
-use framework_http_test::GreetResponse;
-use framework_http_test::TestServer;
+use framework::web::request::Request;
+use framework::web::response::Response;
+use framework::web::router::Router;
 use framework_macro::integration_test;
+use http_test::GreetRequest;
+use http_test::GreetResponse;
+use http_test::TestServer;
 use reqwest::StatusCode;
 use reqwest::header;
+use reqwest::header::HeaderValue;
 
 struct AppState {
     prefix: &'static str,
@@ -47,20 +49,33 @@ async fn panic(_state: Arc<AppState>, _request: Request) -> Result<Response, Exc
     panic!("expected panic")
 }
 
+// panics before returning the future
+fn panic_sync(_state: Arc<AppState>, _request: Request) -> Ready<Result<Response, Exception>> {
+    panic!("expected panic")
+}
+
 async fn ping(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
     Ok(Response::empty())
 }
 
+async fn no_content(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
+    Ok(Response::text("ignored").status(StatusCode::NO_CONTENT))
+}
+
 #[integration_test]
 async fn request_response() -> Result<(), Exception> {
-    let router = Router::new(Arc::new(AppState { prefix: "hello" }))
-        .get("/greet", greet_query)
-        .post("/greet", greet_json)
-        .post("/echo", echo)
-        .get("/whoami", whoami)
-        .get("/fail", fail)
-        .get("/panic", panic)
-        .merge(Router::new(Arc::new(AppState { prefix: "unused" })).get("/ping", ping));
+    let router = Router::new()
+        .state(Arc::new(AppState { prefix: "hello" }), |r| {
+            r.get("/greet", greet_query)
+                .post("/greet", greet_json)
+                .post("/echo", echo)
+                .get("/whoami", whoami)
+                .get("/fail", fail)
+                .get("/panic", panic)
+                .get("/panic-sync", panic_sync)
+                .get("/no-content", no_content)
+        })
+        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" }), |r| r.get("/ping", ping)));
     let mut server = TestServer::start(router).await;
     let client = &server.http1;
 
@@ -70,6 +85,15 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
     let body: GreetResponse = response.json().await?;
     assert_eq!(body.greeting, "hello, world & friends");
+
+    // a non text `client` header is skipped in the context, the request still reaches the handler
+    let response = client
+        .get(server.url("/greet?name=world"))
+        .header("client", HeaderValue::from_bytes("café".as_bytes()).expect("header value must be valid"))
+        .send()
+        .await?;
+    let body: GreetResponse = response.json().await?;
+    assert_eq!(body.greeting, "hello, world");
 
     let response = client.post(server.url("/greet")).json(&GreetRequest { name: "世界".to_owned() }).send().await?;
     let body: GreetResponse = response.json().await?;
@@ -119,10 +143,19 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
     assert_eq!(error.message, "expected failure");
 
-    let response = client.get(server.url("/panic")).send().await?;
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let error: ErrorResponse = response.json().await?;
-    assert_eq!(error.message, "handler panicked, error=expected panic");
+    for path in ["/panic", "/panic-sync"] {
+        let response = client.get(server.url(path)).send().await?;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR, "path={path}");
+        let error: ErrorResponse = response.json().await?;
+        assert_eq!(error.message, "handler panicked, error=expected panic");
+    }
+
+    for client in [&server.http1, &server.h2c] {
+        let response = client.get(server.url("/no-content")).send().await?;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(response.headers().get(header::CONTENT_LENGTH).is_none());
+        assert_eq!(response.bytes().await?.len(), 0);
+    }
 
     let response = client.get(server.url("/unknown")).send().await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -130,7 +163,7 @@ async fn request_response() -> Result<(), Exception> {
 
     let response = client.put(server.url("/greet")).send().await?;
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-    assert_eq!(response.headers()[header::ALLOW], "GET, POST");
+    assert!(response.headers().get(header::ALLOW).is_none());
 
     server.shutdown().await;
     assert!(server.http1.get(server.url("/health-check")).send().await.is_err(), "request succeeded after shutdown");

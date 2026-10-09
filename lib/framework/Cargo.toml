@@ -9,20 +9,21 @@ serde_json = "*"
 serde_html_form = "*"
 smallvec = { version = "1", features = ["serde"] }
 
-time = { version = "*", features = ["formatting", "parsing"] }
+time = { version = "*", features = ["formatting", "parsing", "macros"] }
 
 tokio.workspace = true
-tokio-util = { version = "*", features = ["rt"] }
+tokio-util = { version = "*", features = ["rt", "io"] }
 tokio-stream = "*"
 
 http = "*"
-axum.workspace = true
-axum-extra = { version = "*", features = ["cookie"] }
-tower-http = {version ="*", features = ["fs"]}
+http-body = "*"
+http-body-util = "*"
+hyper = { version = "*", features = ["server", "http1", "http2"] }
+hyper-util = { version = "*", features = ["tokio", "server-auto", "server-graceful", "client-legacy"] }
+percent-encoding = "*"
 
 reqwest = { version = "0", features = ["stream"] }
 # for FallbackDnsResolver to be used as hyper resolver
-hyper-util = { version = "*", features = ["client-legacy"] }
 tower-service = "*"
 
 # dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md

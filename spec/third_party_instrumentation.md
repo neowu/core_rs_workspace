@@ -4,7 +4,7 @@ Code: [`lib/framework/Cargo.toml`](../lib/framework/Cargo.toml),
 [`lib/framework/src/lib.rs`](../lib/framework/src/lib.rs) · measured by
 [`spec/benchmark/http_server.md`](benchmark/http_server.md)
 
-`axum`, `hyper`, `h2`, `tower` and `reqwest` are instrumented with `tracing`. This framework never
+`hyper`, `h2`, `tower` and `reqwest` are instrumented with `tracing`. This framework never
 reads any of it: it installs no tracing subscriber and no `log` logger, because it has its own
 action log and appenders. The instrumentation therefore runs on every request and its output is
 discarded — it measured **~8% of server cpu per request** on the http benchmark.
@@ -34,8 +34,9 @@ The bridge is a separate path on purpose: `tracing`'s own docs state that its st
 features do *not* control the `log` records emitted when `tracing/log` is on, so that a binary can
 compile out tracing entirely and still collect `log` records. Here nothing collects them.
 
-Nothing in this workspace asks for `tracing/log` directly — `axum`'s default `tower-log` feature
-pulls it in through `tower/log`.
+Nothing in this workspace enables `tracing/log` since axum (its default `tower-log` feature pulled it
+in through `tower/log`) was replaced; `log/release_max_level_off` stays as a guard in case a dependency
+enables it again.
 
 ## Why `release_max_level_*` and not `max_level_*`
 
