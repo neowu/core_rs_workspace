@@ -39,7 +39,12 @@ async fn main() {
     let database = db::database();
     system.add_metrics(database.metrics());
     let app = Router::new()
-        .state(Arc::new(()), |r| r.get("/benchmark/get", get_benchmark).post("/benchmark/post", post_benchmark))
+        .merge(
+            Router::new()
+                .state(Arc::new(()))
+                .get("/benchmark/get", get_benchmark)
+                .post("/benchmark/post", post_benchmark),
+        )
         .merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl { database })));
 
     // the default binds 0.0.0.0:8080, a benchmark host keeps that port free

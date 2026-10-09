@@ -50,6 +50,6 @@ where
     pub fn routes(&self, state: S) -> Router {
         let schedules = self.schedules.iter().map(|schedule| (schedule.name, Arc::clone(schedule))).collect();
         let state = JobState { state, timezone: self.timezone, schedules, executor: Arc::clone(&self.executor) };
-        Router::new().state(Arc::new(state), |r| r.put("/_sys/job/trigger", trigger_job))
+        Router::new().state(Arc::new(state)).put("/_sys/job/trigger", trigger_job).into()
     }
 }

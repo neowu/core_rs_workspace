@@ -24,10 +24,14 @@ use crate::api::ErrorResponse;
 use crate::exception::Exception;
 use crate::exception::error_code;
 use crate::json;
+use crate::web::sse::SseBody;
+use crate::web::sse::SseChannel;
 
 const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
 const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
 const TEXT_HTML: HeaderValue = HeaderValue::from_static("text/html; charset=utf-8");
+const TEXT_EVENT_STREAM: HeaderValue = HeaderValue::from_static("text/event-stream");
+const NO_CACHE: HeaderValue = HeaderValue::from_static("no-cache");
 
 pub struct Response {
     status: StatusCode,
@@ -67,6 +71,20 @@ impl Response {
         let mut headers = HeaderMap::with_capacity(1);
         headers.insert(header::CONTENT_TYPE, content_type);
         Self { status: StatusCode::OK, headers, body: Body::Full(body.into()) }
+    }
+
+    /// 200 `text/event-stream`, after the http action `handler` runs as the `sse` action for the whole stream:
+    /// the stream ends when it returns, it is dropped when the stream closes (client disconnected or shutdown).
+    /// Reject the request (e.g. auth) by returning an error from the controller before this.
+    pub fn sse<F, Fut>(handler: F) -> Self
+    where
+        F: FnOnce(SseChannel) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), Exception>> + Send + 'static,
+    {
+        let mut headers = HeaderMap::with_capacity(2);
+        headers.insert(header::CONTENT_TYPE, TEXT_EVENT_STREAM);
+        headers.insert(header::CACHE_CONTROL, NO_CACHE);
+        Self { status: StatusCode::OK, headers, body: Body::Sse(SseBody::new(handler)) }
     }
 
     #[must_use]
@@ -136,6 +154,13 @@ impl Response {
         self
     }
 
+    pub(crate) const fn sse_body(&mut self) -> Option<&mut SseBody> {
+        match &mut self.body {
+            Body::Sse(body) => Some(body),
+            Body::Empty | Body::Full(_) | Body::File { .. } => None,
+        }
+    }
+
     pub(crate) fn into_http(self) -> http::Response<Body> {
         let mut response = http::Response::new(self.body);
         *response.status_mut() = self.status;
@@ -149,6 +174,7 @@ pub(crate) enum Body {
     Empty,
     Full(Bytes),
     File { stream: ReaderStream<Take<File>>, remaining: u64 },
+    Sse(SseBody),
 }
 
 impl http_body::Body for Body {
@@ -172,6 +198,7 @@ impl http_body::Body for Body {
                 Poll::Ready(None) => Poll::Ready(None),
                 Poll::Pending => Poll::Pending,
             },
+            Body::Sse(body) => body.poll_frame(cx),
         }
     }
 
@@ -180,6 +207,7 @@ impl http_body::Body for Body {
             Body::Empty => true,
             Body::Full(bytes) => bytes.is_empty(),
             Body::File { remaining, .. } => *remaining == 0,
+            Body::Sse(body) => body.is_end_stream(),
         }
     }
 
@@ -188,6 +216,7 @@ impl http_body::Body for Body {
             Body::Empty => SizeHint::with_exact(0),
             Body::Full(bytes) => SizeHint::with_exact(bytes.len() as u64),
             Body::File { remaining, .. } => SizeHint::with_exact(*remaining),
+            Body::Sse(_) => SizeHint::default(),
         }
     }
 }

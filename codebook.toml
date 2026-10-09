@@ -1,10 +1,12 @@
 words = [
     "Cpu",
     "NATS",
+    "Sse",
     "addrs",
     "clickhouse",
     "duckdb",
     "jetstream",
+    "keepalive",
     "kibana",
     "serde",
 ]

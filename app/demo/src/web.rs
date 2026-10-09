@@ -12,9 +12,12 @@ use tokio::time::sleep;
 
 pub(crate) fn routes() -> Router {
     Router::new()
-        .state(Arc::new(()), |r| r.get("/503", http_503).get("/long", long))
         .file("/", asset_path!("assets/web/index.html"))
         .dir("/static/", asset_path!("assets/web/"))
+        .state(Arc::new(()))
+        .get("/503", http_503)
+        .get("/long", long)
+        .into()
 }
 
 async fn http_503(_state: Arc<()>, _request: Request) -> Result<Response, Exception> {

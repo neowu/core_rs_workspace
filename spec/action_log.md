@@ -29,7 +29,7 @@ buffer, and the whole thing leaves the request path over a channel.
 | field                                     | source                                         | notes                                                                                                    |
 | ----------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `id`                                      | `id_generator::next_id`                        | 20 hex chars, timestamp + machine id + counter                                                           |
-| `kind`                                    | `log::action(kind, ..)`                        | `"http"`, `"message"`, `"task"`, `"nats"`, `"test"`                                                      |
+| `kind`                                    | `log::action(kind, ..)`                        | `"http"`, `"sse"`, `"message"`, `"task"`, `"nats"`, `"test"`                                             |
 | `timestamp`, `stats.elapsed`              | the action's own clock                         | `elapsed` is nanos, always stats slot 0                                                                  |
 | `severity`, `error_code`, `error_message` | promoted from log lines and exceptions         | see severity promotion                                                                                   |
 | `ref_ids`                                 | the caller's id, off the transport header      | how a call chain is reassembled                                                                          |
@@ -140,7 +140,8 @@ collection has to be cheap, which is what the cost section below is about.
 
 ### One `String` buffer, not a `Vec<String>`
 
-Lines are appended into a single `String` (initial capacity 1 KB) separated by `'\n'`. Emitting it
+Lines are appended into a single `String` (initial capacity 2 KB, fits a typical http action with browser
+request headers, so it does not realloc and copy) separated by `'\n'`. Emitting it
 is then a move, not a join, and a trace of 200 lines costs one growing buffer instead of 200
 allocations. Consumers that want lines back split on `'\n'`; `ConsoleAppender` writes the whole buffer to stderr
 in one write.

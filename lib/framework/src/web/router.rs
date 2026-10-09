@@ -76,7 +76,7 @@ impl Routes {
     }
 }
 
-/// Static path router, state is bound per group of handlers by `state`.
+/// Static path router, state is bound to handlers by `state`.
 #[derive(Default)]
 pub struct Router {
     pub(crate) routes: Routes,
@@ -87,14 +87,13 @@ impl Router {
         Self::default()
     }
 
-    /// Handlers registered in `f` take `state` as first argument.
+    /// Handlers registered on the returned router take `state` as first argument, convert back with `into()`.
     #[must_use]
-    pub fn state<S>(self, state: Arc<S>, f: impl FnOnce(StateRouter<S>) -> StateRouter<S>) -> Self
+    pub fn state<S>(self, state: Arc<S>) -> StateRouter<S>
     where
         S: Send + Sync + 'static,
     {
-        let StateRouter { routes, .. } = f(StateRouter { state, routes: self.routes });
-        Self { routes }
+        StateRouter { state, routes: self.routes }
     }
 
     /// Serves files under `root` for GET / HEAD requests whose path starts with `prefix`,
@@ -118,7 +117,8 @@ impl Router {
 
     /// Takes routes of another router, panics on duplicate routes.
     #[must_use]
-    pub fn merge(mut self, other: Router) -> Self {
+    pub fn merge(mut self, other: impl Into<Router>) -> Self {
+        let other = other.into();
         for (path, routes) in other.routes.exact {
             for (method, route) in routes {
                 self.routes.add(method, path, route);
@@ -137,6 +137,12 @@ impl Router {
 pub struct StateRouter<S> {
     state: Arc<S>,
     routes: Routes,
+}
+
+impl<S> From<StateRouter<S>> for Router {
+    fn from(router: StateRouter<S>) -> Self {
+        Self { routes: router.routes }
+    }
 }
 
 impl<S> StateRouter<S>
@@ -244,12 +250,13 @@ mod tests {
     #[test]
     fn find() {
         let router = Router::new()
-            .state(Arc::new(()), |r| {
-                r.get("/hello", hello).post("/hello", hello).prefix(Method::POST, "/event/", hello)
-            })
             .dir("/static/", "static")
             .dir("/static/js/", "js")
-            .file("/favicon.ico", "favicon.ico");
+            .file("/favicon.ico", "favicon.ico")
+            .state(Arc::new(()))
+            .get("/hello", hello)
+            .post("/hello", hello)
+            .prefix(Method::POST, "/event/", hello);
         let routes = &router.routes;
 
         assert_eq!(matched(routes, &Method::GET, "/hello"), Some("/hello"));
@@ -269,7 +276,7 @@ mod tests {
 
     #[test]
     fn handler_name() {
-        let router = Router::new().state(Arc::new(()), |r| r.get("/hello", hello));
+        let router = Router::new().state(Arc::new(())).get("/hello", hello);
         let Matched::Found(_, route) = router.routes.find(&Method::GET, "/hello") else {
             panic!("expected route");
         };
@@ -280,7 +287,7 @@ mod tests {
     #[should_panic(expected = "duplicate route")]
     fn merge_duplicate() {
         let _router = Router::new()
-            .state(Arc::new(()), |r| r.get("/hello", hello))
-            .merge(Router::new().state(Arc::new(()), |r| r.get("/hello", hello)));
+            .merge(Router::new().state(Arc::new(())).get("/hello", hello))
+            .merge(Router::new().state(Arc::new(())).get("/hello", hello));
     }
 }

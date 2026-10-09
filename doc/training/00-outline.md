@@ -412,7 +412,7 @@ task-local is borrowed twice and it panics (there is a comment saying exactly th
 
 - `HttpServer` / `HttpServerConfig` on hyper: what each request logs, the `/health-check`
   short-circuit, client IP resolution via `max_forwarded_ips`, HTTP/1.1 and h2c on one port.
-- Routing: `Router::new().state(Arc::new(state), |r| r.get(path, handler))`, static paths plus `prefix` routes, the
+- Routing: `Router::new().state(Arc::new(state)).get(path, handler)`, static paths plus `prefix` routes, the
   handler's name lands in `context!(fn = ..)`; `dir` / `file` for static assets; `merge` routers.
 - One controller signature `async fn(Arc<S>, Request) -> Result<Response, Exception>`:
   `request.query()` / `json()` / `text()` / `client_ip()`, and how a parse failure becomes an

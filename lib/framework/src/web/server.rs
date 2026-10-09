@@ -63,25 +63,32 @@ impl Default for HttpServerConfig {
 pub struct HttpServer {
     config: HttpServerConfig,
     counter: Arc<Counter>,
+    sse_counter: Arc<Counter>,
 }
 
 struct Shared {
     routes: Routes,
     counter: Arc<Counter>,
+    sse_counter: Arc<Counter>,
+    // cancelled when acceptance stops, closes all sse streams
+    sse_shutdown: CancellationToken,
     max_forwarded_ips: usize,
     max_body_size: usize,
 }
 
 impl HttpServer {
     pub fn new(config: HttpServerConfig) -> Self {
-        Self { config, counter: Arc::default() }
+        Self { config, counter: Arc::default(), sse_counter: Arc::default() }
     }
 
-    /// Peak active handlers between collections, excluding health checks and response body streaming.
+    /// Peak active handlers (excluding health checks and response body streaming) and open sse streams
+    /// between collections.
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
         let counter = Arc::clone(&self.counter);
+        let sse_counter = Arc::clone(&self.sse_counter);
         move |metrics| {
             metrics.add_stat("active_http_requests", counter.max() as u64);
+            metrics.add_stat("active_sse_streams", sse_counter.max() as u64);
         }
     }
 
@@ -96,6 +103,8 @@ impl HttpServer {
         let shared = Arc::new(Shared {
             routes: router.routes,
             counter: self.counter,
+            sse_counter: self.sse_counter,
+            sse_shutdown: CancellationToken::new(),
             max_forwarded_ips: self.config.max_forwarded_ips,
             max_body_size: self.config.max_body_size,
         });
@@ -135,10 +144,8 @@ impl HttpServer {
             let _nodelay = stream.set_nodelay(true);
 
             let shared = Arc::clone(&shared);
-            let service = service_fn(move |request| {
-                let shared = Arc::clone(&shared);
-                async move { Ok::<_, Infallible>(handle(shared, peer_addr, request).await) }
-            });
+            let service =
+                service_fn(move |request| handle(Arc::clone(&shared), peer_addr, request).map(Ok::<_, Infallible>));
             let io = TokioIo::new(stream);
             let connection = graceful.watch(builder.serve_connection(io, service).into_owned());
             tokio::spawn(async move {
@@ -148,40 +155,55 @@ impl HttpServer {
         }
 
         drop(listener);
+        shared.sse_shutdown.cancel();
         graceful.shutdown().await;
         console!("http server stopped");
     }
 }
 
-async fn handle(shared: Arc<Shared>, peer_addr: SocketAddr, request: http::Request<Incoming>) -> http::Response<Body> {
-    // skip log for health check, gce lb health check requires to return 200
-    if request.uri().path() == "/health-check" {
-        return Response::empty().status(StatusCode::OK).into_http();
-    }
+// not an async fn, its params would be held twice (upvar and local), this future is spawned per h2 stream and moved
+// by value several times, keep it small
+#[allow(clippy::manual_async_fn)]
+fn handle(
+    shared: Arc<Shared>,
+    peer_addr: SocketAddr,
+    request: http::Request<Incoming>,
+) -> impl Future<Output = http::Response<Body>> {
+    async move {
+        // skip log for health check, gce lb health check requires to return 200
+        if request.uri().path() == "/health-check" {
+            return Response::empty().status(StatusCode::OK).into_http();
+        }
 
-    let head = request.method() == Method::HEAD;
-    let ref_ids = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(|id| vec![id.to_owned()]);
-    let _counter = shared.counter.increase();
+        let head = request.method() == Method::HEAD;
+        let ref_ids = request.headers().get(REF_ID).and_then(|v| v.to_str().ok()).map(|id| vec![id.to_owned()]);
+        let _counter = shared.counter.increase();
 
-    let result = log::action("http", ref_ids, async {
-        let (parts, body) = request.into_parts();
-        Ok::<_, Exception>(
-            process(&shared, Request::new(parts, body, peer_addr, shared.max_forwarded_ips, shared.max_body_size))
-                .await,
-        )
-    })
-    .await;
-    let response = match result {
-        Ok(response) => response,
-        Err(err) => Response::error(&err),
-    };
-    match response.status_code() {
-        // hyper h2 still sends the body of 204 / 304 responses, which must not have content
-        StatusCode::NO_CONTENT | StatusCode::NOT_MODIFIED => response.without_content(),
-        _ if head => response.without_body(),
-        _ => response,
+        // boxed for the same reason, one malloc instead of moving the whole action future
+        let result = Box::pin(log::action("http", ref_ids, async {
+            let (parts, body) = request.into_parts();
+            Ok::<_, Exception>(
+                process(&shared, Request::new(parts, body, peer_addr, shared.max_forwarded_ips, shared.max_body_size))
+                    .await,
+            )
+        }))
+        .await;
+        let response = match result {
+            Ok(response) => response,
+            Err(err) => Response::error(&err),
+        };
+        let mut response = match response.status_code() {
+            // hyper h2 still sends the body of 204 / 304 responses, which must not have content
+            StatusCode::NO_CONTENT | StatusCode::NOT_MODIFIED => response.without_content(),
+            _ if head => response.without_body(),
+            _ => response,
+        };
+        // after the http action and the HEAD check, the sse handler runs as its own action
+        if let Some(sse) = response.sse_body() {
+            sse.start(&shared.sse_shutdown, &shared.sse_counter);
+        }
+        response.into_http()
     }
-    .into_http()
 }
 
 async fn process(shared: &Shared, request: Request) -> Response {
@@ -191,7 +213,7 @@ async fn process(shared: &Shared, request: Request) -> Response {
         Matched::Found(path, route) => {
             context!(path = path, fn = route.name);
             // invoke inside the async block, a handler may panic before returning its future
-            match AssertUnwindSafe(async { (route.handler)(request).await }).catch_unwind().await {
+            let mut response = match AssertUnwindSafe(async { (route.handler)(request).await }).catch_unwind().await {
                 Ok(Ok(response)) => response,
                 Ok(Err(err)) => {
                     log!(exception = err);
@@ -202,7 +224,11 @@ async fn process(shared: &Shared, request: Request) -> Response {
                     log!(exception = err);
                     Response::error(&err)
                 }
+            };
+            if let Some(sse) = response.sse_body() {
+                sse.route(path, route.name);
             }
+            response
         }
         Matched::NotFound => Response::empty().status(StatusCode::NOT_FOUND),
         // no Allow header, these requests are mostly from vulnerability scans, don't hint available methods
@@ -241,7 +267,7 @@ fn log_request(request: &Request) {
     }
 }
 
-fn panic_message(panic: &(dyn Any + Send)) -> &str {
+pub(crate) fn panic_message(panic: &(dyn Any + Send)) -> &str {
     panic
         .downcast_ref::<&str>()
         .copied()

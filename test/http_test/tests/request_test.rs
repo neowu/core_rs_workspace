@@ -65,17 +65,19 @@ async fn no_content(_state: Arc<AppState>, _request: Request) -> Result<Response
 #[integration_test]
 async fn request_response() -> Result<(), Exception> {
     let router = Router::new()
-        .state(Arc::new(AppState { prefix: "hello" }), |r| {
-            r.get("/greet", greet_query)
+        .merge(
+            Router::new()
+                .state(Arc::new(AppState { prefix: "hello" }))
+                .get("/greet", greet_query)
                 .post("/greet", greet_json)
                 .post("/echo", echo)
                 .get("/whoami", whoami)
                 .get("/fail", fail)
                 .get("/panic", panic)
                 .get("/panic-sync", panic_sync)
-                .get("/no-content", no_content)
-        })
-        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" }), |r| r.get("/ping", ping)));
+                .get("/no-content", no_content),
+        )
+        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).get("/ping", ping));
     let mut server = TestServer::start(router).await;
     let client = &server.http1;
 

@@ -30,12 +30,13 @@ use crate::kafka::EventMessage;
 const EVENT_PATH: &str = "/event/";
 
 pub(super) fn routes(state: Arc<AppState>) -> Router {
-    Router::new().state(state, |r| {
-        r.get("/robots.txt", robots_txt)
-            .get("/1x1.png", png_1x1)
-            .prefix(Method::OPTIONS, EVENT_PATH, event_options)
-            .prefix(Method::POST, EVENT_PATH, event_post)
-    })
+    Router::new()
+        .state(state)
+        .get("/robots.txt", robots_txt)
+        .get("/1x1.png", png_1x1)
+        .prefix(Method::OPTIONS, EVENT_PATH, event_options)
+        .prefix(Method::POST, EVENT_PATH, event_post)
+        .into()
 }
 
 async fn robots_txt(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {

@@ -55,10 +55,9 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             use framework::web::request::Request;
             use framework::web::router::Router;
 
-            Router::new().state(service, |router| {
-                #(#route_statements)*
-                router
-            })
+            let router = Router::new().state(service);
+            #(#route_statements)*
+            router.into()
         }
     }));
 
@@ -271,7 +270,7 @@ mod tests {
                         use framework::web::request::Request;
                         use framework::web::router::Router;
 
-                        Router::new().state(service, |router| {
+                        let router = Router::new().state(service);
                         let fn_name: &'static str = format!("{}::search", std::any::type_name::<Self>()).leak();
                         let router = router.__route(Method::GET, "/user/search", fn_name, |service: Arc<Self>, request: Request| async move {
                             let req: SearchUserRequest = request.query()?;
@@ -290,8 +289,7 @@ mod tests {
                             framework::validate::Validator::validate(&req)?;
                             __into_response(service.update(req).await)
                         });
-                        router
-                        })
+                        router.into()
                     }
                 }
 
@@ -360,7 +358,7 @@ mod tests {
                         use framework::web::request::Request;
                         use framework::web::router::Router;
 
-                        Router::new().state(service, |router| {
+                        let router = Router::new().state(service);
                         let fn_name: &'static str = format!("{}::get_all", std::any::type_name::<Self>()).leak();
                         let router = router.__route(Method::GET, "/user/get_all", fn_name, |service: Arc<Self>, _request: Request| async move {
                             __into_response(service.get_all().await)
@@ -371,8 +369,7 @@ mod tests {
                             framework::validate::Validator::validate(&req)?;
                             __into_response(service.create(req).await)
                         });
-                        router
-                        })
+                        router.into()
                     }
                 }
 
