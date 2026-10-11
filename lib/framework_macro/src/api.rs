@@ -69,7 +69,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         }
 
         impl #client_ident {
-            #trait_vis fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+            #trait_vis fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
                 Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
             }
         }
@@ -298,7 +298,7 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
                         Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }
@@ -378,7 +378,7 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::framework::http::HttpClient, api_url: String) -> Self {
+                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
                         Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }

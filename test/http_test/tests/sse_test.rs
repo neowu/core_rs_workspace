@@ -6,12 +6,15 @@ use framework::api::ErrorResponse;
 use framework::exception;
 use framework::exception::Exception;
 use framework::exception::error_code;
+use framework::http::HeaderName;
+use framework::http::Method;
 use framework::log::Severity;
+use framework::web::Event;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
-use framework::web::sse::Event;
 use framework_macro::integration_test;
+use futures::TryStreamExt as _;
 use http_test::TestServer;
 use reqwest::Client;
 use reqwest::StatusCode;
@@ -38,8 +41,11 @@ impl Drop for Finished {
 async fn events(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
     let last_event_id = request.header("last-event-id").unwrap_or_default().to_owned();
     Ok(Response::sse(move |channel| async move {
-        channel.send(&Event::new(&format!("a\nb{last_event_id}")).id("1")).await;
-        channel.send(&Event::json(&vec!["x"])?.event("list")).await;
+        let event = Event { id: Some("1".to_owned()), event_type: None, data: format!("a\nb{last_event_id}") };
+        channel.send(&event).await;
+        let mut event = Event::json(&vec!["x"])?;
+        event.event_type = Some("list".to_owned());
+        channel.send(&event).await;
         Ok(())
     }))
 }
@@ -50,7 +56,7 @@ async fn forbidden(_state: Arc<AppState>, _request: Request) -> Result<Response,
 
 async fn fail(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
     Ok(Response::sse(|channel| async move {
-        channel.send(&Event::new("before")).await;
+        channel.send(&Event::new("before".to_owned())).await;
         Err(exception!("handler failed"))
     }))
 }
@@ -58,7 +64,7 @@ async fn fail(_state: Arc<AppState>, _request: Request) -> Result<Response, Exce
 async fn ticks(state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
     Ok(Response::sse(move |channel| async move {
         let _finished = Finished(state.signal.clone(), "ticks");
-        while channel.send(&Event::new("tick")).await {
+        while channel.send(&Event::new("tick".to_owned())).await {
             sleep(Duration::from_millis(10)).await;
         }
         Ok(())
@@ -68,7 +74,7 @@ async fn ticks(state: Arc<AppState>, _request: Request) -> Result<Response, Exce
 async fn hold(state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
     Ok(Response::sse(move |channel| async move {
         let _finished = Finished(state.signal.clone(), "hold");
-        channel.send(&Event::new("hello")).await;
+        channel.send(&Event::new("hello".to_owned())).await;
         pending::<()>().await;
         Ok(())
     }))
@@ -114,7 +120,7 @@ async fn sse() -> Result<(), Exception> {
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache");
         assert!(response.headers().get(header::CONTENT_LENGTH).is_none());
         // the stream ends when the handler returns
-        assert_eq!(response.text().await?, "data: a\ndata: b0\nid: 1\n\ndata: [\"x\"]\nevent: list\n\n");
+        assert_eq!(response.text().await?, "id: 1\ndata: a\ndata: b0\n\nevent: list\ndata: [\"x\"]\n\n");
 
         // the controller rejects before the stream starts, a normal error response
         let response = client.get(server.url("/forbidden")).send().await?;
@@ -140,6 +146,19 @@ async fn sse() -> Result<(), Exception> {
         drop(response);
         assert_eq!(next_signal(&mut signals).await, "ticks");
     }
+
+    // the framework client parses back what the server writes
+    let mut request = server.request(Method::GET, "/events")?;
+    request.header(HeaderName::from_static("last-event-id"), "0")?;
+    let events: Vec<_> = server.client.sse(request).await?.try_collect().await?;
+    let events: Vec<_> = events.into_iter().map(|event| (event.id, event.event_type, event.data)).collect();
+    assert_eq!(
+        events,
+        [
+            (Some("1".to_owned()), None, "a\nb0".to_owned()),
+            (Some("1".to_owned()), Some("list".to_owned()), "[\"x\"]".to_owned())
+        ]
+    );
 
     let send = |client: &Client, path: &str| client.get(server.url(path)).send();
     let hold_responses = [send(&server.http1, "/hold").await?, send(&server.h2c, "/hold").await?];

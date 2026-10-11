@@ -123,9 +123,10 @@ A regular controller returns `Response::sse(|channel| async move { .. })`, the c
   `try_send` fails when full (broadcast without waiting on a slow client). Both return `false` once the stream
   is closed. An event is encoded and logged as `[sse]` in the sender's action only once the buffer accepts it,
   accepted is not delivered.
-- `Event::new(data)` writes one `data:` line per CR / LF / CRLF line, a trailing line break keeps a trailing
-  empty `data:` line so the client gets the same text back, `Event::json`, `id` / `event` builders panic on
-  line breaks (programmer supplied values).
+- `web::Event { id, event_type, data }` is shared with the http client `EventSource`, plain public fields,
+  `Event::new(data)` / `Event::json`. Encoded as `id:`, `event:`, then one `data:` line per CR / LF / CRLF
+  line, a trailing line break keeps a trailing empty `data:` line so the client gets the same text back;
+  sending panics on line breaks in `id` / `event_type` (programmer supplied values).
 - `:` comment keepalive after 15s without an event, below common LB idle timeouts. GCP HTTP(S) LB backend
   timeout caps the whole response duration, it has to be raised for long streams, clients reconnect.
 - Shutdown: when acceptance stops, closures are dropped right away, every stream discards queued events, sends

@@ -10,7 +10,7 @@ Code: [`framework_macro/src/api.rs`](../lib/framework_macro/src/api.rs),
 
 - server: a provided `route(Arc<Self>) -> Router` that registers every method on its
   `#[path]` with its HTTP method, the service is the bound state, merge it into the server router.
-- client: `{Trait}Client` wrapping `ApiClient`, implementing the same trait over `HttpClient`.
+- client: `{Trait}Client` wrapping `ApiClient`, implementing the same trait over `Arc<HttpClient>`.
 
 Method rules, enforced at expansion time:
 

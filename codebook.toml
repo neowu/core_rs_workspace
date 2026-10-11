@@ -9,4 +9,5 @@ words = [
     "keepalive",
     "kibana",
     "serde",
+    "tls",
 ]

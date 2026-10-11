@@ -14,17 +14,16 @@ time = { version = "*", features = ["formatting", "parsing", "macros"] }
 tokio.workspace = true
 tokio-util = { version = "*", features = ["rt", "io"] }
 tokio-stream = "*"
+tokio-rustls = "*"
+rustls-platform-verifier = "*"
 
 http = "*"
 http-body = "*"
 http-body-util = "*"
-hyper = { version = "*", features = ["server", "http1", "http2"] }
-hyper-util = { version = "*", features = ["tokio", "server-auto", "server-graceful", "client-legacy"] }
+hyper = { version = "*", features = ["server", "client", "http1", "http2"] }
+hyper-util = { version = "*", features = ["tokio", "server-auto", "server-graceful"] }
 percent-encoding = "*"
-
-reqwest = { version = "0", features = ["stream"] }
-# for FallbackDnsResolver to be used as hyper resolver
-tower-service = "*"
+socket2 = "*"
 
 # dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
 tracing = { version = "*", features = ["release_max_level_off"] }

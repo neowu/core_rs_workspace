@@ -64,7 +64,7 @@ impl GreetingService for GreetingServiceImpl {
 #[integration_test]
 async fn api() -> Result<(), Exception> {
     let mut server = TestServer::start(GreetingService::route(Arc::new(GreetingServiceImpl))).await;
-    let client = GreetingServiceClient::new(server.client.clone(), server.url.clone());
+    let client = GreetingServiceClient::new(Arc::clone(&server.client), server.url.clone());
 
     let response = client.greet(GreetRequest { name: "world & 世界 + ?".to_owned() }).await?;
     assert_eq!(response.greeting, "hello, world & 世界 + ?");
@@ -74,7 +74,7 @@ async fn api() -> Result<(), Exception> {
     assert_eq!(response.greeting, "updated, world");
     client.ping().await?;
 
-    let response = server.client.execute(server.request(Method::GET, "/api/ping")).await?;
+    let response = server.client.execute(server.request(Method::GET, "/api/ping")?).await?;
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty(), "unit response must have an empty body");
 
@@ -91,7 +91,7 @@ async fn api() -> Result<(), Exception> {
     assert!(error.message.contains("status=500"), "message={}", error.message);
     assert!(error.message.contains("expected failure"), "message={}", error.message);
 
-    let response = server.client.execute(server.request(Method::POST, "/api/fail")).await?;
+    let response = server.client.execute(server.request(Method::POST, "/api/fail")?).await?;
     assert_eq!(response.status, 500);
     assert_eq!(response.headers.get(&header::CONTENT_TYPE).map(String::as_str), Some("application/json"));
     let error: ErrorResponse = json::from_json(&response.body)?;
@@ -99,7 +99,7 @@ async fn api() -> Result<(), Exception> {
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
     assert_eq!(error.message, "expected failure");
 
-    let missing_client = GreetingServiceClient::new(server.client.clone(), format!("{}/unknown", server.url));
+    let missing_client = GreetingServiceClient::new(Arc::clone(&server.client), format!("{}/unknown", server.url));
     let error = missing_client.ping().await.unwrap_err();
     assert!(error.message.contains("status=404"), "message={}", error.message);
 

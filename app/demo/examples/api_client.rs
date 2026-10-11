@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use demo::user::CreateUserRequest;
@@ -22,8 +23,10 @@ async fn main() {
 
     let system = system.start_logger(ConsoleAppender);
 
-    let client =
-        UserServiceClient::new(HttpClient::new(HttpClientConfig::default()), "http://127.0.0.1:8080".to_owned());
+    let client = UserServiceClient::new(
+        Arc::new(HttpClient::new(HttpClientConfig::default())),
+        "http://127.0.0.1:8080".to_owned(),
+    );
 
     spawn_action!("client", async move {
         log::trace();

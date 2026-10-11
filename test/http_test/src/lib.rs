@@ -1,5 +1,7 @@
+use std::sync::Arc;
 use std::time::Duration;
 
+use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
@@ -31,7 +33,7 @@ pub struct GreetResponse {
 pub struct TestServer {
     pub url: String,
     /// framework client, for #[api] clients
-    pub client: HttpClient,
+    pub client: Arc<HttpClient>,
     pub http1: Client,
     pub h2c: Client,
     shutdown_signal: CancellationToken,
@@ -47,7 +49,10 @@ impl TestServer {
         let task = tokio::spawn(http_server.start_with_listener(listener, router.into(), shutdown_signal.clone()));
         let server = Self {
             url,
-            client: HttpClient::new(HttpClientConfig { timeout: Duration::from_secs(2), ..Default::default() }),
+            client: Arc::new(HttpClient::new(HttpClientConfig {
+                timeout: Duration::from_secs(2),
+                ..Default::default()
+            })),
             http1: Client::builder()
                 .http1_only()
                 .timeout(Duration::from_secs(2))
@@ -83,7 +88,7 @@ impl TestServer {
         format!("{}{path}", self.url)
     }
 
-    pub fn request(&self, method: Method, path: &str) -> HttpRequest {
+    pub fn request(&self, method: Method, path: &str) -> Result<HttpRequest, Exception> {
         HttpRequest::new(method, self.url(path))
     }
 

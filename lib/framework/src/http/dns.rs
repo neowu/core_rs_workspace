@@ -2,22 +2,12 @@ use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs as _;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
-use std::vec;
 
-use hyper_util::client::legacy::connect::dns::Name;
-use reqwest::dns::Addrs;
-use reqwest::dns::Name as ReqwestName;
-use reqwest::dns::Resolve;
-use reqwest::dns::Resolving;
 use tokio::task;
-use tower_service::Service;
 
 use crate::warn;
 
@@ -37,7 +27,7 @@ const TTL: Duration = Duration::from_hours(1);
 
 impl FallbackDnsResolver {
     // port is 0, the http client replaces it with the port of the url, same as getaddrinfo resolver of hyper
-    async fn lookup(&self, host: &str) -> Result<Vec<SocketAddr>, io::Error> {
+    pub async fn lookup(&self, host: &str) -> Result<Vec<SocketAddr>, io::Error> {
         let name = host.to_owned();
         let result = task::spawn_blocking(move || (name.as_str(), 0).to_socket_addrs().map(Iterator::collect))
             .await
@@ -70,33 +60,6 @@ impl FallbackDnsResolver {
                 Ok(addrs)
             }
         }
-    }
-}
-
-// for reqwest
-impl Resolve for FallbackDnsResolver {
-    fn resolve(&self, name: ReqwestName) -> Resolving {
-        let resolver = self.clone();
-        Box::pin(async move {
-            let addrs = resolver.lookup(name.as_str()).await?;
-            Ok(Box::new(addrs.into_iter()) as Addrs)
-        })
-    }
-}
-
-// for hyper HttpConnector::new_with_resolver
-impl Service<Name> for FallbackDnsResolver {
-    type Response = vec::IntoIter<SocketAddr>;
-    type Error = io::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, name: Name) -> Self::Future {
-        let resolver = self.clone();
-        Box::pin(async move { Ok(resolver.lookup(name.as_str()).await?.into_iter()) })
     }
 }
 

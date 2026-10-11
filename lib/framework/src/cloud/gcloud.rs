@@ -39,7 +39,7 @@ impl Env for CloudRunEnv {
 async fn instance_id() -> Result<String, Exception> {
     let client = HttpClient::new(HttpClientConfig { timeout: Duration::from_secs(3), ..HttpClientConfig::default() });
 
-    let mut request = HttpRequest::new(Method::GET, "http://metadata.google.internal/computeMetadata/v1/instance/id");
+    let mut request = HttpRequest::new(Method::GET, "http://metadata.google.internal/computeMetadata/v1/instance/id")?;
     request.header(HeaderName::from_static("metadata-flavor"), "Google")?;
 
     let response = client.execute(request).await?;

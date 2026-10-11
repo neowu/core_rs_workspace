@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::io;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
@@ -21,71 +20,44 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::sync::WaitForCancellationFutureOwned;
 
 use crate::exception::Exception;
-use crate::json;
 use crate::log;
 use crate::metrics::Counter;
+use crate::web::Event;
 use crate::web::panic_message;
 
 // below common LB idle timeouts (ALB / nginx 60s)
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 const BUFFER_SIZE: usize = 16;
 
-/// One server-sent event.
-pub struct Event {
-    value: String,
-}
-
-impl Event {
-    /// `data` is split into one `data:` line per line, CR / LF / CRLF, a trailing line break keeps an empty line.
-    pub fn new(data: &str) -> Self {
-        let mut value = String::with_capacity(data.len() + 8);
-        let mut rest = data;
-        loop {
-            let end = rest.find(['\r', '\n']);
-            value.push_str("data: ");
-            value.push_str(&rest[..end.unwrap_or(rest.len())]);
-            value.push('\n');
-            let Some(end) = end else { break };
-            let separator = if rest[end..].starts_with("\r\n") { 2 } else { 1 };
-            rest = &rest[end + separator..];
-        }
-        Self { value }
-    }
-
-    pub fn json<T>(data: &T) -> Result<Self, Exception>
-    where
-        T: serde::Serialize + Debug,
-    {
-        Ok(Self::new(&json::to_json(data)?))
-    }
-
-    /// Panics if `id` contains CR, LF or NUL.
-    #[must_use]
-    pub fn id(mut self, id: &str) -> Self {
+/// `data` is split into one `data:` line per line, CR / LF / CRLF, a trailing line break keeps an empty line.
+/// Panics if `id` contains CR, LF or NUL, or `event_type` contains CR or LF.
+fn encode(event: &Event) -> Bytes {
+    let mut value = String::with_capacity(event.data.len() + 16);
+    if let Some(id) = &event.id {
         assert!(!id.contains(['\r', '\n', '\0']), "invalid sse event id, id={id:?}");
-        self.value.push_str("id: ");
-        self.value.push_str(id);
-        self.value.push('\n');
-        self
+        value.push_str("id: ");
+        value.push_str(id);
+        value.push('\n');
     }
-
-    /// Panics if `name` contains CR or LF.
-    #[must_use]
-    pub fn event(mut self, name: &str) -> Self {
-        assert!(!name.contains(['\r', '\n']), "invalid sse event name, name={name:?}");
-        self.value.push_str("event: ");
-        self.value.push_str(name);
-        self.value.push('\n');
-        self
+    if let Some(event_type) = &event.event_type {
+        assert!(!event_type.contains(['\r', '\n']), "invalid sse event type, type={event_type:?}");
+        value.push_str("event: ");
+        value.push_str(event_type);
+        value.push('\n');
     }
-
-    fn to_bytes(&self) -> Bytes {
-        log!("[sse] {:?}", self.value);
-        let mut bytes = Vec::with_capacity(self.value.len() + 1);
-        bytes.extend_from_slice(self.value.as_bytes());
-        bytes.push(b'\n');
-        Bytes::from(bytes)
+    let mut rest = event.data.as_str();
+    loop {
+        let end = rest.find(['\r', '\n']);
+        value.push_str("data: ");
+        value.push_str(&rest[..end.unwrap_or(rest.len())]);
+        value.push('\n');
+        let Some(end) = end else { break };
+        let separator = if rest[end..].starts_with("\r\n") { 2 } else { 1 };
+        rest = &rest[end + separator..];
     }
+    log!("[sse] {value:?}");
+    value.push('\n');
+    Bytes::from(value)
 }
 
 /// Sends events to one SSE stream, clones can be kept to broadcast, see `Response::sse`.
@@ -112,7 +84,7 @@ impl SseChannel {
 
     // encodes and logs only once the event is accepted by the buffer
     fn write(&self, permit: mpsc::Permit<'_, Bytes>, event: &Event) {
-        let bytes = event.to_bytes();
+        let bytes = encode(event);
         self.written.add(bytes.len());
         permit.send(bytes);
     }
@@ -129,13 +101,13 @@ impl SseChannel {
 
 #[derive(Default)]
 pub(crate) struct Written {
-    pub(crate) entries: AtomicU64,
+    pub(crate) events: AtomicU64,
     pub(crate) bytes: AtomicU64,
 }
 
 impl Written {
     fn add(&self, length: usize) {
-        self.entries.fetch_add(1, Ordering::Relaxed);
+        self.events.fetch_add(1, Ordering::Relaxed);
         self.bytes.fetch_add(length as u64, Ordering::Relaxed);
     }
 }
@@ -220,7 +192,7 @@ impl SseBody {
             };
             stream.cancel();
             stats!(
-                sse_write_entries = written.entries.load(Ordering::Relaxed),
+                sse_write_events = written.events.load(Ordering::Relaxed),
                 sse_write_bytes = written.bytes.load(Ordering::Relaxed)
             );
             result
@@ -283,7 +255,7 @@ mod tests {
     use super::*;
 
     fn text(event: &Event) -> String {
-        String::from_utf8(event.to_bytes().to_vec()).unwrap()
+        String::from_utf8(encode(event).to_vec()).unwrap()
     }
 
     async fn next(body: &mut SseBody) -> Option<Bytes> {
@@ -292,27 +264,28 @@ mod tests {
 
     #[test]
     fn event() {
-        assert_eq!(text(&Event::new("hello")), "data: hello\n\n");
-        assert_eq!(text(&Event::new("")), "data: \n\n");
-        assert_eq!(text(&Event::new("a\nb\r\nc\rd\n")), "data: a\ndata: b\ndata: c\ndata: d\ndata: \n\n");
-        assert_eq!(text(&Event::new("a\r")), "data: a\ndata: \n\n");
-        assert_eq!(text(&Event::new("\r")), "data: \ndata: \n\n");
-        assert_eq!(text(&Event::new("a\r\r\nb\n\rc")), "data: a\ndata: \ndata: b\ndata: \ndata: c\n\n");
-        assert_eq!(text(&Event::new("x").id("1").event("update")), "data: x\nid: 1\nevent: update\n\n");
+        assert_eq!(text(&Event::new("hello".to_owned())), "data: hello\n\n");
+        assert_eq!(text(&Event::new(String::new())), "data: \n\n");
+        assert_eq!(text(&Event::new("a\nb\r\nc\rd\n".to_owned())), "data: a\ndata: b\ndata: c\ndata: d\ndata: \n\n");
+        assert_eq!(text(&Event::new("a\r".to_owned())), "data: a\ndata: \n\n");
+        assert_eq!(text(&Event::new("\r".to_owned())), "data: \ndata: \n\n");
+        assert_eq!(text(&Event::new("a\r\r\nb\n\rc".to_owned())), "data: a\ndata: \ndata: b\ndata: \ndata: c\n\n");
+        let event = Event { id: Some("1".to_owned()), event_type: Some("update".to_owned()), data: "x".to_owned() };
+        assert_eq!(text(&event), "id: 1\nevent: update\ndata: x\n\n");
         assert_eq!(text(&Event::json(&vec!["a"]).unwrap()), "data: [\"a\"]\n\n");
     }
 
     #[test]
     #[should_panic(expected = "invalid sse event id")]
     fn invalid_id() {
-        let _event = Event::new("x").id("1\n2");
+        text(&Event { id: Some("1\n2".to_owned()), event_type: None, data: "x".to_owned() });
     }
 
     #[tokio::test]
     async fn shutdown() {
         let (closed_sender, closed) = oneshot::channel::<()>();
         let mut body = SseBody::new(|channel| async move {
-            channel.send(&Event::new("a")).await;
+            channel.send(&Event::new("a".to_owned())).await;
             // dropped with the handler when the stream closes
             let _closed_sender = closed_sender;
             pending::<()>().await;
@@ -337,20 +310,20 @@ mod tests {
         let (sender, receiver) = mpsc::channel(BUFFER_SIZE);
         let channel = SseChannel { sender, written: Arc::default() };
         for _ in 0..BUFFER_SIZE {
-            assert!(channel.try_send(&Event::new("a")));
+            assert!(channel.try_send(&Event::new("a".to_owned())));
         }
-        assert!(!channel.try_send(&Event::new("a")));
-        assert_eq!(channel.written.entries.load(Ordering::Relaxed), BUFFER_SIZE as u64);
+        assert!(!channel.try_send(&Event::new("a".to_owned())));
+        assert_eq!(channel.written.events.load(Ordering::Relaxed), BUFFER_SIZE as u64);
 
         drop(receiver);
-        assert!(!channel.send(&Event::new("a")).await);
+        assert!(!channel.send(&Event::new("a".to_owned())).await);
     }
 
     #[tokio::test]
     async fn handler_finished() {
         let (clone_sender, clone) = oneshot::channel();
         let mut body = SseBody::new(|channel| async move {
-            channel.send(&Event::new("a")).await;
+            channel.send(&Event::new("a".to_owned())).await;
             // a clone kept elsewhere doesn't hold the stream open
             let _sent = clone_sender.send(channel.clone());
             Ok(())
