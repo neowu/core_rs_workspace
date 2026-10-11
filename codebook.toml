@@ -3,6 +3,7 @@ words = [
     "NATS",
     "Sse",
     "addrs",
+    "appender",
     "clickhouse",
     "duckdb",
     "jetstream",
