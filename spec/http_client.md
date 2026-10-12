@@ -28,6 +28,8 @@ Built directly on `hyper::client::conn` (no reqwest / tower), TLS via `tokio-rus
 - No redirects, no proxy env vars, no decompression; urls must be valid `http::Uri` (already encoded),
   an explicit port must be a valid u16 (`http::Uri` doesn't check it); the url is parsed in
   `HttpRequest::new`, which returns an error for an invalid url, so it fails before sending.
+- `HttpResponse.headers` is the response `HeaderMap` as received: repeated headers (e.g. `set-cookie`)
+  are kept, and a non-UTF-8 header value doesn't fail the request.
 
 ## SSE
 

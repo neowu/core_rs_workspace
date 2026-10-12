@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use bytes::Bytes;
 use futures::TryStreamExt as _;
-use http::HeaderMap;
+pub use http::HeaderMap;
 pub use http::HeaderName;
 use http::HeaderValue;
 pub use http::Method;
@@ -40,7 +40,6 @@ pub use tokio_stream::StreamExt;
 
 use crate::exception::Exception;
 use crate::log;
-use crate::log::Severity;
 use crate::span;
 use crate::stats;
 use crate::warn;
@@ -67,14 +66,12 @@ pub struct HttpClient {
     pool: Mutex<HashMap<String, Vec<IdleConnection>>>,
 }
 
-#[allow(unused)]
 #[derive(Clone)]
 pub struct RetryConfig {
     pub max_attempts: u32,
     pub interval: Duration,
 }
 
-#[allow(unused)]
 pub struct HttpClientConfig {
     pub accept_invalid_cert: bool,
     // only trust these certs instead of platform roots
@@ -180,7 +177,7 @@ impl HttpRequest {
 
 pub struct HttpResponse {
     pub status: u16,
-    pub headers: HashMap<HeaderName, String>,
+    pub headers: HeaderMap,
     pub body: String,
 }
 
@@ -194,6 +191,28 @@ impl Connection {
         match self {
             Connection::Http1(sender) => sender.send_request(request).await,
             Connection::Http2(sender) => sender.send_request(request).await,
+        }
+    }
+
+    async fn ready(&mut self) -> Result<(), hyper::Error> {
+        match self {
+            Connection::Http1(sender) => sender.ready().await,
+            Connection::Http2(sender) => sender.ready().await,
+        }
+    }
+
+    fn is_closed(&self) -> bool {
+        match self {
+            Connection::Http1(sender) => sender.is_closed(),
+            Connection::Http2(sender) => sender.is_closed(),
+        }
+    }
+
+    // http2 multiplexes requests on one connection, can be shared via pool while in use
+    fn shared(&self) -> Option<Connection> {
+        match self {
+            Connection::Http1(_) => None,
+            Connection::Http2(sender) => Some(Connection::Http2(sender.clone())),
         }
     }
 }
@@ -244,16 +263,9 @@ impl HttpClient {
                 }
                 Err(err) => {
                     if request.method.is_idempotent() && attempt < max_attempts {
-                        // TODO: refactor, log exception with warn! like warn!(exception = )?
                         warn!(
                             error_code = "HTTP_REQUEST_FAILED",
-                            "{}",
-                            exception!(
-                                "http request failed, retry soon",
-                                severity = Severity::Warn,
-                                code = "HTTP_REQUEST_FAILED",
-                                source = err
-                            )
+                            "http request failed, retry soon, attempt={attempt}, error={err}"
                         );
                         sleep(interval * attempt).await;
                         continue;
@@ -266,18 +278,21 @@ impl HttpClient {
         let status = response.status().as_u16();
         log!("[response] status={status}");
 
-        let headers = parse_headers(&response)?;
+        let (parts, body) = response.into_parts();
+        let headers = parts.headers;
+        log_headers(&headers);
 
-        let body = timeout_at(deadline, response.into_body().collect())
+        let body = timeout_at(deadline, body.collect())
             .await
             .map_err(|err| exception!("http request timeout", source = err))??
             .to_bytes();
         // http1 connection is reusable only after response body is fully read
-        if let Connection::Http1(sender) = connection {
-            self.release(&request.key, Connection::Http1(sender));
+        if matches!(connection, Connection::Http1(_)) {
+            self.release(&request.key, connection);
         }
-        let body = String::from_utf8_lossy(&body).into_owned();
-        if let Some(content_type) = headers.get(&header::CONTENT_TYPE)
+        let body = String::from_utf8(Vec::from(body))
+            .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned());
+        if let Some(content_type) = headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok())
             && (content_type.contains("json") || content_type.contains("text"))
         {
             log!("[response] body={body}");
@@ -300,11 +315,12 @@ impl HttpClient {
         let status = response.status().as_u16();
         log!("[response] status={status}");
 
-        let headers = parse_headers(&response)?;
+        log_headers(response.headers());
 
+        let content_type = response.headers().get(header::CONTENT_TYPE).cloned();
         if status == 200
-            && let Some(content_type) = headers.get(&header::CONTENT_TYPE)
-            && content_type.starts_with("text/event-stream")
+            && let Some(ref content_type) = content_type
+            && content_type.as_bytes().starts_with(b"text/event-stream")
         {
             let stream = BodyDataStream::new(response.into_body());
             Ok(EventSource::new(Box::pin(stream.map_err(Exception::from))))
@@ -314,50 +330,34 @@ impl HttpClient {
                 .map_err(|err| exception!("http request timeout", source = err))??
                 .to_bytes();
             log!("[response] body={}", String::from_utf8_lossy(&body));
-            let content_type = headers.get(&header::CONTENT_TYPE);
             Err(exception!(format!("invalid sse response, status={status}, content_type={content_type:?}")))
         }
     }
 
     async fn send(&self, request: &HttpRequest) -> Result<(Connection, Response<Incoming>), Exception> {
-        if let Some(mut connection) = self.checkout(&request.key).await {
+        loop {
+            let (mut connection, pooled) = match self.checkout(&request.key).await {
+                Some(connection) => (connection, true),
+                None => (self.connect(request).await?, false),
+            };
+            if let Some(shared) = connection.shared() {
+                self.release(&request.key, shared);
+            }
             let http_request = create_request(request, matches!(connection, Connection::Http2(_)))?;
             match connection.send(http_request).await {
                 Ok(response) => return Ok((connection, response)),
-                // pooled connection was closed by peer before request was sent, safe to retry with new connection
-                Err(err) if err.is_canceled() => {}
+                // pooled connection was closed by peer before request was sent, safe to retry
+                Err(err) if pooled && err.is_canceled() => {}
                 Err(err) => return Err(err.into()),
             }
         }
-
-        let mut connection = self.connect(request).await?;
-        // http2 multiplexes requests on one connection, share it via pool right away
-        if let Connection::Http2(sender) = &connection {
-            self.release(&request.key, Connection::Http2(sender.clone()));
-        }
-        let http_request = create_request(request, matches!(connection, Connection::Http2(_)))?;
-        let response = connection.send(http_request).await?;
-        Ok((connection, response))
     }
 
     async fn checkout(&self, key: &str) -> Option<Connection> {
         loop {
-            let IdleConnection { connection, idle_at } = self.pool.lock().unwrap().get_mut(key)?.pop()?;
-            if idle_at.elapsed() >= POOL_IDLE_TIMEOUT {
-                continue;
-            }
-            match connection {
-                Connection::Http1(mut sender) => {
-                    if sender.ready().await.is_ok() {
-                        return Some(Connection::Http1(sender));
-                    }
-                }
-                Connection::Http2(mut sender) => {
-                    if sender.ready().await.is_ok() {
-                        self.release(key, Connection::Http2(sender.clone()));
-                        return Some(Connection::Http2(sender));
-                    }
-                }
+            let IdleConnection { mut connection, idle_at } = self.pool.lock().unwrap().get_mut(key)?.pop()?;
+            if idle_at.elapsed() < POOL_IDLE_TIMEOUT && connection.ready().await.is_ok() {
+                return Some(connection);
             }
         }
     }
@@ -365,13 +365,7 @@ impl HttpClient {
     fn release(&self, key: &str, connection: Connection) {
         let mut pool = self.pool.lock().unwrap();
         let connections = pool.entry(key.to_owned()).or_default();
-        connections.retain(|idle| {
-            let closed = match &idle.connection {
-                Connection::Http1(sender) => sender.is_closed(),
-                Connection::Http2(sender) => sender.is_closed(),
-            };
-            !closed && idle.idle_at.elapsed() < POOL_IDLE_TIMEOUT
-        });
+        connections.retain(|idle| !idle.connection.is_closed() && idle.idle_at.elapsed() < POOL_IDLE_TIMEOUT);
         if connections.len() >= POOL_MAX_IDLE_PER_ORIGIN {
             // evict the oldest, least likely to be reused as checkout pops the newest
             connections.remove(0);
@@ -421,14 +415,10 @@ where
     }
 }
 
-fn parse_headers(response: &Response<Incoming>) -> Result<HashMap<HeaderName, String>, Exception> {
-    let mut headers = HashMap::new();
-    for (key, value) in response.headers() {
-        let value = value.to_str()?;
+fn log_headers(headers: &HeaderMap) {
+    for (key, value) in headers {
         log!("[header] {key}={value:?}");
-        headers.insert(key.to_owned(), value.to_owned());
     }
-    Ok(headers)
 }
 
 fn create_request(request: &HttpRequest, http2: bool) -> Result<Request<Full<Bytes>>, Exception> {
@@ -444,9 +434,7 @@ fn create_request(request: &HttpRequest, http2: bool) -> Result<Request<Full<Byt
     };
     let mut http_request = builder.body(Full::new(request.body.clone().unwrap_or_default()))?;
     http_request.headers_mut().extend(request.headers.clone());
-    for (key, value) in http_request.headers() {
-        log!("[header] {key}={value:?}");
-    }
+    log_headers(http_request.headers());
     if let Some(ref body) = request.body {
         log!("[request] body={}", String::from_utf8_lossy(body));
         stats!(http_write_bytes = body.len());

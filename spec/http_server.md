@@ -80,8 +80,9 @@ extractors, per request handler clones and a tower middleware stack the framewor
 - `Err` is logged with the action and mapped to `ErrorResponse` JSON
   (`BAD_REQUEST` / `VALIDATION_ERROR` 400, `NOT_FOUND` 404, `FORBIDDEN` 403, else 500).
 - A panic in a controller is caught, logged as `handler panicked` error and returned as 500, so the
-  action is still logged and an HTTP/1.1 connection is not dropped. The handler is invoked inside the
-  caught future, covering handlers that panic before returning their future.
+  action is still logged and an HTTP/1.1 connection is not dropped. Only panics while polling are caught:
+  handlers are async fn / async closures, invoking one only creates the future, so the handler future is
+  passed in directly instead of wrapped in another async block (smaller future).
 - `fn` context is `type_name_of_val(&handler)`, a `&'static str` taken at registration; `#[api]` passes
   its own name, see [`http_server_api.md`](http_server_api.md).
 

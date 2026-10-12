@@ -1,6 +1,7 @@
-use std::any::Any;
 use std::fmt::Debug;
+use std::panic::AssertUnwindSafe;
 
+use futures::FutureExt as _;
 use http::HeaderName;
 
 use crate::exception::Exception;
@@ -38,10 +39,14 @@ impl Event {
     }
 }
 
-fn panic_message(panic: &(dyn Any + Send)) -> &str {
-    panic
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("unknown")
+// only catches panics while polling, handlers are async fn / async closures, invoking one only creates the future
+async fn catch_panic<T>(future: impl Future<Output = Result<T, Exception>>) -> Result<T, Exception> {
+    AssertUnwindSafe(future).catch_unwind().await.unwrap_or_else(|panic| {
+        let message = panic
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("unknown");
+        Err(exception!(format!("handler panicked, error={message}")))
+    })
 }

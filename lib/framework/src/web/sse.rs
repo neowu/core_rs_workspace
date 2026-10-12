@@ -1,5 +1,4 @@
 use std::io;
-use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -9,7 +8,6 @@ use std::task::Poll;
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::FutureExt as _;
 use http_body::Frame;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -23,7 +21,7 @@ use crate::exception::Exception;
 use crate::log;
 use crate::metrics::Counter;
 use crate::web::Event;
-use crate::web::panic_message;
+use crate::web::catch_panic;
 
 // below common LB idle timeouts (ALB / nginx 60s)
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
@@ -179,13 +177,10 @@ impl SseBody {
             }
             let _active = counter.increase();
             let written = Arc::clone(&task.channel.written);
-            // invoke inside the async block, a handler may panic before returning its future
-            let handler = AssertUnwindSafe(async { (task.handler)(task.channel).await }).catch_unwind();
+            let handler = catch_panic((task.handler)(task.channel));
             let result = tokio::select! {
                 biased;
-                result = handler => result.unwrap_or_else(|panic| {
-                    Err(exception!(format!("handler panicked, error={}", panic_message(panic.as_ref()))))
-                }),
+                result = handler => result,
                 () = stream.cancelled() => Ok(()),
                 // also when hyper stops polling the body, e.g. a client not reading on h2 flow control
                 () = shutdown.cancelled() => Ok(()),

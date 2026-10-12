@@ -1,6 +1,5 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,7 +29,7 @@ use crate::metrics::Counter;
 use crate::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
-use crate::web::panic_message;
+use crate::web::catch_panic;
 use crate::web::request::Request;
 use crate::web::request::cookies;
 use crate::web::response::Body;
@@ -212,15 +211,9 @@ async fn process(shared: &Shared, request: Request) -> Response {
     let response = match shared.routes.find(request.method(), request.path()) {
         Matched::Found(path, route) => {
             context!(path = path, fn = route.name);
-            // invoke inside the async block, a handler may panic before returning its future
-            let mut response = match AssertUnwindSafe(async { (route.handler)(request).await }).catch_unwind().await {
-                Ok(Ok(response)) => response,
-                Ok(Err(err)) => {
-                    log!(exception = err);
-                    Response::error(&err)
-                }
-                Err(panic) => {
-                    let err = exception!(format!("handler panicked, error={}", panic_message(panic.as_ref())));
+            let mut response = match catch_panic((route.handler)(request)).await {
+                Ok(response) => response,
+                Err(err) => {
                     log!(exception = err);
                     Response::error(&err)
                 }

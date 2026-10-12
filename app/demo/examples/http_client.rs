@@ -18,13 +18,22 @@ async fn main() {
     let system = system.start_logger(ConsoleAppender);
 
     let _result = log::action("test_http_client", None, async {
-        test_http().await
+        test_https().await
         // test_sse().await
     })
     .await;
 
     system.wait().await;
     system.shutdown_logger().await;
+}
+
+#[allow(unused)]
+async fn test_https() -> Result<(), Exception> {
+    let http_client = HttpClient::new(HttpClientConfig::default());
+    let mut request = HttpRequest::new(Method::GET, "https://www.google.com")?;
+    let _response = http_client.execute(request).await?;
+    trace();
+    Ok(())
 }
 
 #[allow(unused)]

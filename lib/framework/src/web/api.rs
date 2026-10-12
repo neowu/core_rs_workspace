@@ -1,6 +1,5 @@
 use std::any::TypeId;
 use std::fmt::Debug;
-use std::mem::transmute_copy;
 use std::sync::Arc;
 
 use http::Method;
@@ -45,46 +44,24 @@ impl ApiClient {
 
     #[doc(hidden)]
     #[inline]
-    pub async fn __get<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
+    pub async fn __call<Req, Res>(&self, method: Method, path: &'static str, request: Req) -> Result<Res, Exception>
     where
-        Req: Serialize + Debug + 'static,
-        Res: DeserializeOwned + 'static,
+        Req: Serialize + Debug,
+        Res: DeserializeOwned,
     {
-        let query_string = serde_html_form::to_string(&request)?;
-        let url = if query_string.is_empty() {
-            format!("{}{path}", self.api_url)
+        let mut http_request = if method == Method::GET {
+            let query_string = serde_html_form::to_string(&request)?;
+            let url = if query_string.is_empty() {
+                format!("{}{path}", self.api_url)
+            } else {
+                format!("{}{path}?{query_string}", self.api_url)
+            };
+            HttpRequest::new(method, url)?
         } else {
-            format!("{}{path}?{query_string}", self.api_url)
+            let mut http_request = HttpRequest::new(method, format!("{}{path}", self.api_url))?;
+            http_request.body(json::to_json(&request)?, "application/json");
+            http_request
         };
-        let mut http_request = HttpRequest::new(Method::GET, url)?;
-        link_context(&mut http_request)?;
-        let response = self.http_client.execute(http_request).await?;
-        parse_response(&response)
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub async fn __post<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
-    where
-        Req: Serialize + Debug,
-        Res: DeserializeOwned + 'static,
-    {
-        let mut http_request = HttpRequest::new(Method::POST, format!("{}{path}", self.api_url))?;
-        http_request.body(json::to_json(&request)?, "application/json");
-        link_context(&mut http_request)?;
-        let response = self.http_client.execute(http_request).await?;
-        parse_response(&response)
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub async fn __put<Req, Res>(&self, path: &'static str, request: Req) -> Result<Res, Exception>
-    where
-        Req: Serialize + Debug,
-        Res: DeserializeOwned + 'static,
-    {
-        let mut http_request = HttpRequest::new(Method::PUT, format!("{}{path}", self.api_url))?;
-        http_request.body(json::to_json(&request)?, "application/json");
         link_context(&mut http_request)?;
         let response = self.http_client.execute(http_request).await?;
         parse_response(&response)
@@ -103,17 +80,13 @@ fn link_context(http_request: &mut HttpRequest) -> Result<(), Exception> {
 
 fn parse_response<Res>(response: &HttpResponse) -> Result<Res, Exception>
 where
-    Res: DeserializeOwned + 'static,
+    Res: DeserializeOwned,
 {
     let status = response.status;
     if status < 300 {
-        if TypeId::of::<Res>() == TypeId::of::<()>() {
-            // SAFETY: We've verified Res is () via TypeId, so this transmute is sound.
-            Ok(unsafe { transmute_copy(&()) })
-        } else {
-            json::from_json(&response.body)
-        }
-    } else if let Some(content_type) = response.headers.get(&header::CONTENT_TYPE)
+        // empty body (204) deserializes to ()
+        json::from_json(if response.body.is_empty() { "null" } else { &response.body })
+    } else if let Some(content_type) = response.headers.get(header::CONTENT_TYPE)
         && content_type == "application/json"
         && let Ok(error) = json::from_json::<ErrorResponse>(&response.body)
     {

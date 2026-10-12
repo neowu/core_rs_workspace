@@ -185,19 +185,15 @@ impl http_body::Body for Body {
         let this = self.get_mut();
         match this {
             Body::Empty => Poll::Ready(None),
-            Body::Full(_) => {
-                let Body::Full(bytes) = mem::replace(this, Body::Empty) else { return Poll::Ready(None) };
+            Body::Full(bytes) => {
+                let bytes = mem::take(bytes);
+                *this = Body::Empty;
                 if bytes.is_empty() { Poll::Ready(None) } else { Poll::Ready(Some(Ok(Frame::data(bytes)))) }
             }
-            Body::File { stream, remaining } => match Pin::new(stream).poll_next(cx) {
-                Poll::Ready(Some(Ok(bytes))) => {
-                    *remaining = remaining.saturating_sub(bytes.len() as u64);
-                    Poll::Ready(Some(Ok(Frame::data(bytes))))
-                }
-                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
-                Poll::Ready(None) => Poll::Ready(None),
-                Poll::Pending => Poll::Pending,
-            },
+            Body::File { stream, remaining } => Pin::new(stream).poll_next(cx).map_ok(|bytes| {
+                *remaining = remaining.saturating_sub(bytes.len() as u64);
+                Frame::data(bytes)
+            }),
             Body::Sse(body) => body.poll_frame(cx),
         }
     }

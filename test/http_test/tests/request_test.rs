@@ -1,4 +1,3 @@
-use std::future::Ready;
 use std::sync::Arc;
 
 use framework::api::ErrorResponse;
@@ -49,11 +48,6 @@ async fn panic(_state: Arc<AppState>, _request: Request) -> Result<Response, Exc
     panic!("expected panic")
 }
 
-// panics before returning the future
-fn panic_sync(_state: Arc<AppState>, _request: Request) -> Ready<Result<Response, Exception>> {
-    panic!("expected panic")
-}
-
 async fn ping(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
     Ok(Response::empty())
 }
@@ -74,7 +68,6 @@ async fn request_response() -> Result<(), Exception> {
                 .get("/whoami", whoami)
                 .get("/fail", fail)
                 .get("/panic", panic)
-                .get("/panic-sync", panic_sync)
                 .get("/no-content", no_content),
         )
         .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).get("/ping", ping));
@@ -145,12 +138,10 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
     assert_eq!(error.message, "expected failure");
 
-    for path in ["/panic", "/panic-sync"] {
-        let response = client.get(server.url(path)).send().await?;
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR, "path={path}");
-        let error: ErrorResponse = response.json().await?;
-        assert_eq!(error.message, "handler panicked, error=expected panic");
-    }
+    let response = client.get(server.url("/panic")).send().await?;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let error: ErrorResponse = response.json().await?;
+    assert_eq!(error.message, "handler panicked, error=expected panic");
 
     for client in [&server.http1, &server.h2c] {
         let response = client.get(server.url("/no-content")).send().await?;

@@ -93,7 +93,7 @@ async fn api() -> Result<(), Exception> {
 
     let response = server.client.execute(server.request(Method::POST, "/api/fail")?).await?;
     assert_eq!(response.status, 500);
-    assert_eq!(response.headers.get(&header::CONTENT_TYPE).map(String::as_str), Some("application/json"));
+    assert_eq!(response.headers[header::CONTENT_TYPE], "application/json");
     let error: ErrorResponse = json::from_json(&response.body)?;
     assert_eq!(error.severity, Severity::Warn);
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));

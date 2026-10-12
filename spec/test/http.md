@@ -10,7 +10,7 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
 - `request_test`: query / JSON / text handling, Unicode and query escaping, cookie, user agent and
   `x-forwarded-for` accessors, a non-text `client` header still reaches the handler, `merge` of routers with
   different state, `204`, HEAD fallback with `content-length`, malformed input and body limit
-  (`400` / `BAD_REQUEST`), exceptions as `ErrorResponse`, panics (in the future or before returning it) as
+  (`400` / `BAD_REQUEST`), exceptions as `ErrorResponse`, panics as
   `500`, `204` with a body set sends none over both protocols, `404`, `405` without `Allow`, requests fail
   after shutdown.
 - `h2c_test`: responses are `HTTP/2`, the request sees `HTTP/2.0`, 50 concurrent streams on one connection.

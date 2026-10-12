@@ -58,5 +58,5 @@ client type is generated, so the name is a compile-time `concat!(module_path!(),
 
 ### `ApiClient` methods are macro-only
 
-`__new` / `__get` / `__post` / `__put` are `#[doc(hidden)]` and `__`-prefixed: they only exist to back the
+`__new` / `__call` are `#[doc(hidden)]` and `__`-prefixed: they only exist to back the
 generated `{Trait}Client`, so they stay out of auto-complete and aren't a public calling convention.

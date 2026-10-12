@@ -86,11 +86,8 @@ struct MethodModel {
     request_type: Option<Type>,
     response_type: Type,
 
-    http_method: TokenStream,
-    // binding and parsing of the framework request, `mut` only to read the body
-    request_binding: TokenStream,
-    parse_request: TokenStream,
-    client_call: Ident,
+    // GET, POST or PUT
+    http_method: Ident,
 }
 
 fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
@@ -104,30 +101,23 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
         return Err(Error::new_spanned(method, "method name `route` is reserved by #[api]"));
     }
 
-    let mut method_attr = None;
+    let mut http_method = None;
     let mut path = None;
 
     for attr in &method.attrs {
         let attr_path = attr.path();
         if attr_path.is_ident("get") {
-            method_attr =
-                Some((quote!(Method::GET), quote!(request), quote!(request.query()?), format_ident!("__get")));
+            http_method = Some(format_ident!("GET"));
         } else if attr_path.is_ident("post") {
-            method_attr = Some((
-                quote!(Method::POST),
-                quote!(mut request),
-                quote!(request.json().await?),
-                format_ident!("__post"),
-            ));
+            http_method = Some(format_ident!("POST"));
         } else if attr_path.is_ident("put") {
-            method_attr =
-                Some((quote!(Method::PUT), quote!(mut request), quote!(request.json().await?), format_ident!("__put")));
+            http_method = Some(format_ident!("PUT"));
         } else if attr_path.is_ident("path") {
             path = Some(attr.parse_args::<LitStr>()?);
         }
     }
 
-    let (http_method, request_binding, parse_request, client_call) = method_attr.ok_or_else(|| {
+    let http_method = http_method.ok_or_else(|| {
         Error::new_spanned(method, "missing HTTP method attribute, expected #[get], #[post] or #[put]")
     })?;
     let path = path.ok_or_else(|| Error::new_spanned(method, "missing #[path(\"...\")] attribute"))?;
@@ -155,16 +145,7 @@ fn parse_method(method: &TraitItemFn) -> Result<MethodModel> {
     };
     let response_type = (**return_type).clone();
 
-    Ok(MethodModel {
-        method_ident,
-        path,
-        request_type,
-        response_type,
-        http_method,
-        request_binding,
-        parse_request,
-        client_call,
-    })
+    Ok(MethodModel { method_ident, path, request_type, response_type, http_method })
 }
 
 fn build_route_statement(model: &MethodModel) -> TokenStream {
@@ -174,8 +155,12 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
     let fn_format = format!("{{}}::{method_ident}");
 
     let handler = if let Some(request_type) = &model.request_type {
-        let request_binding = &model.request_binding;
-        let parse_request = &model.parse_request;
+        // `mut` only to read the body
+        let (request_binding, parse_request) = if http_method == "GET" {
+            (quote!(request), quote!(request.query()?))
+        } else {
+            (quote!(mut request), quote!(request.json().await?))
+        };
         // spanned to request type, so missing Validator impl is reported on the trait method
         let validate = quote_spanned! {request_type.span()=> framework::validate::Validator::validate(&req)};
         quote! {
@@ -195,30 +180,25 @@ fn build_route_statement(model: &MethodModel) -> TokenStream {
 
     quote! {
         let fn_name: &'static str = format!(#fn_format, std::any::type_name::<Self>()).leak();
-        let router = router.__route(#http_method, #path, fn_name, #handler);
+        let router = router.__route(Method::#http_method, #path, fn_name, #handler);
     }
 }
 
 fn build_client_method(client_ident: &Ident, model: &MethodModel) -> TokenStream {
     let method_ident = &model.method_ident;
     let response_type = &model.response_type;
-    let client_call = &model.client_call;
+    let http_method = &model.http_method;
     let path = &model.path;
     let fn_suffix = format!("::{client_ident}::{method_ident}");
+    let (params, request) = match &model.request_type {
+        Some(request_type) => (quote!(, request: #request_type), quote!(request)),
+        None => (quote!(), quote!(())),
+    };
 
-    if let Some(request_type) = &model.request_type {
-        quote! {
-            async fn #method_ident(&self, request: #request_type) -> #response_type {
-                ::framework::log!(concat!("call http api, fn=", module_path!(), #fn_suffix));
-                self.client.#client_call(#path, request).await
-            }
-        }
-    } else {
-        quote! {
-            async fn #method_ident(&self) -> #response_type {
-                ::framework::log!(concat!("call http api, fn=", module_path!(), #fn_suffix));
-                self.client.#client_call(#path, ()).await
-            }
+    quote! {
+        async fn #method_ident(&self #params) -> #response_type {
+            ::framework::log!(concat!("call http api, fn=", module_path!(), #fn_suffix));
+            self.client.__call(::framework::http::Method::#http_method, #path, #request).await
         }
     }
 }
@@ -306,15 +286,15 @@ mod tests {
                 impl UserService for UserServiceClient {
                     async fn search(&self, request: SearchUserRequest) -> Result<SearchUserResponse, Exception> {
                         ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::search"));
-                        self.client.__get("/user/search", request).await
+                        self.client.__call(::framework::http::Method::GET, "/user/search", request).await
                     }
                     async fn create(&self, request: CreateUserRequest) -> Result<CreateUserResponse, Exception> {
                         ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::create"));
-                        self.client.__post("/user/create", request).await
+                        self.client.__call(::framework::http::Method::POST, "/user/create", request).await
                     }
                     async fn update(&self, request: UpdateUserRequest) -> Result<UpdateUserResponse, Exception> {
                         ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::update"));
-                        self.client.__put("/user/update", request).await
+                        self.client.__call(::framework::http::Method::PUT, "/user/update", request).await
                     }
                 }
             }
@@ -386,11 +366,11 @@ mod tests {
                 impl UserService for UserServiceClient {
                     async fn get_all(&self) -> Result<GetAllUserResponse, Exception> {
                         ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::get_all"));
-                        self.client.__get("/user/get_all", ()).await
+                        self.client.__call(::framework::http::Method::GET, "/user/get_all", ()).await
                     }
                     async fn create(&self, request: CreateUserRequest) -> Result<(), Exception> {
                         ::framework::log!(concat!("call http api, fn=", module_path!(), "::UserServiceClient::create"));
-                        self.client.__post("/user/create", request).await
+                        self.client.__call(::framework::http::Method::POST, "/user/create", request).await
                     }
                 }
             }
