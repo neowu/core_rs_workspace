@@ -194,42 +194,6 @@ where
         let state = Arc::clone(&self.state);
         Box::new(move |request| Box::pin(handler(Arc::clone(&state), request)))
     }
-
-    #[must_use]
-    pub fn get<F, Fut>(self, path: &'static str, handler: F) -> Self
-    where
-        F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
-    {
-        self.route(Method::GET, path, handler)
-    }
-
-    #[must_use]
-    pub fn post<F, Fut>(self, path: &'static str, handler: F) -> Self
-    where
-        F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
-    {
-        self.route(Method::POST, path, handler)
-    }
-
-    #[must_use]
-    pub fn put<F, Fut>(self, path: &'static str, handler: F) -> Self
-    where
-        F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
-    {
-        self.route(Method::PUT, path, handler)
-    }
-
-    #[must_use]
-    pub fn delete<F, Fut>(self, path: &'static str, handler: F) -> Self
-    where
-        F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
-    {
-        self.route(Method::DELETE, path, handler)
-    }
 }
 
 #[cfg(test)]
@@ -254,8 +218,8 @@ mod tests {
             .dir("/static/js/", "js")
             .file("/favicon.ico", "favicon.ico")
             .state(Arc::new(()))
-            .get("/hello", hello)
-            .post("/hello", hello)
+            .route(Method::GET, "/hello", hello)
+            .route(Method::POST, "/hello", hello)
             .prefix(Method::POST, "/event/", hello);
         let routes = &router.routes;
 
@@ -276,7 +240,7 @@ mod tests {
 
     #[test]
     fn handler_name() {
-        let router = Router::new().state(Arc::new(())).get("/hello", hello);
+        let router = Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello);
         let Matched::Found(_, route) = router.routes.find(&Method::GET, "/hello") else {
             panic!("expected route");
         };
@@ -287,7 +251,7 @@ mod tests {
     #[should_panic(expected = "duplicate route")]
     fn merge_duplicate() {
         let _router = Router::new()
-            .merge(Router::new().state(Arc::new(())).get("/hello", hello))
-            .merge(Router::new().state(Arc::new(())).get("/hello", hello));
+            .merge(Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello))
+            .merge(Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello));
     }
 }

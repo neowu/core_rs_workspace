@@ -105,12 +105,12 @@ async fn sse() -> Result<(), Exception> {
     let (signal, mut signals) = mpsc::unbounded_channel();
     let router = Router::new()
         .state(Arc::new(AppState { signal }))
-        .get("/events", events)
-        .get("/forbidden", forbidden)
-        .get("/fail", fail)
-        .get("/ticks", ticks)
-        .get("/hold", hold)
-        .get("/silent", silent);
+        .route(Method::GET, "/events", events)
+        .route(Method::GET, "/forbidden", forbidden)
+        .route(Method::GET, "/fail", fail)
+        .route(Method::GET, "/ticks", ticks)
+        .route(Method::GET, "/hold", hold)
+        .route(Method::GET, "/silent", silent);
     let mut server = TestServer::start(router).await;
 
     for client in [&server.http1, &server.h2c] {

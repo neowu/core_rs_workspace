@@ -12,6 +12,7 @@ use framework_macro::integration_test;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
+use reqwest::Method;
 use reqwest::StatusCode;
 use reqwest::header;
 use reqwest::header::HeaderValue;
@@ -62,15 +63,15 @@ async fn request_response() -> Result<(), Exception> {
         .merge(
             Router::new()
                 .state(Arc::new(AppState { prefix: "hello" }))
-                .get("/greet", greet_query)
-                .post("/greet", greet_json)
-                .post("/echo", echo)
-                .get("/whoami", whoami)
-                .get("/fail", fail)
-                .get("/panic", panic)
-                .get("/no-content", no_content),
+                .route(Method::GET, "/greet", greet_query)
+                .route(Method::POST, "/greet", greet_json)
+                .route(Method::POST, "/echo", echo)
+                .route(Method::GET, "/whoami", whoami)
+                .route(Method::GET, "/fail", fail)
+                .route(Method::GET, "/panic", panic)
+                .route(Method::GET, "/no-content", no_content),
         )
-        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).get("/ping", ping));
+        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).route(Method::GET, "/ping", ping));
     let mut server = TestServer::start(router).await;
     let client = &server.http1;
 

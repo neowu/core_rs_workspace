@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 
 use framework::appender::TraceAppender;
 use framework::exception::Exception;
+use framework::http::Method;
 use framework::system::DefaultEnv;
 use framework::system::System;
 use framework::web::request::Request;
@@ -39,12 +40,11 @@ async fn main() {
     let database = db::database();
     system.add_metrics(database.metrics());
     let app = Router::new()
-        .merge(
-            Router::new()
-                .state(Arc::new(()))
-                .get("/benchmark/get", get_benchmark)
-                .post("/benchmark/post", post_benchmark),
-        )
+        .merge(Router::new().state(Arc::new(())).route(Method::GET, "/benchmark/get", get_benchmark).route(
+            Method::POST,
+            "/benchmark/post",
+            post_benchmark,
+        ))
         .merge(BenchmarkService::route(Arc::new(BenchmarkServiceImpl { database })));
 
     // the default binds 0.0.0.0:8080, a benchmark host keeps that port free

@@ -7,6 +7,7 @@ use framework::log::trace;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
+use http::Method;
 use http::StatusCode;
 use tokio::time::sleep;
 
@@ -15,8 +16,8 @@ pub(crate) fn routes() -> Router {
         .file("/", asset_path!("assets/web/index.html"))
         .dir("/static/", asset_path!("assets/web/"))
         .state(Arc::new(()))
-        .get("/503", http_503)
-        .get("/long", long)
+        .route(Method::GET, "/503", http_503)
+        .route(Method::GET, "/long", long)
         .into()
 }
 

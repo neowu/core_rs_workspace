@@ -72,7 +72,7 @@ extractors, per request handler clones and a tower middleware stack the framewor
 - One fixed signature instead of dynamic extractors: easier to read, no per-request handler
   clone. `Result` allows `?` on request parsing.
 - `Router` has no state type: `Router::new().state(Arc<S>)` returns a `StateRouter<S>` carrying the routes so far,
-  handlers registered on it (`.get(..)`) are bound to that state, `into()` converts back to `Router`. Plain
+  handlers registered on it (`.route(Method::GET, ..)`, no per-method shortcuts so routes line up for review) are bound to that state, `into()` converts back to `Router`. Plain
   builder calls instead of a closure, easier to read at the call site. Each handler is type erased into
   `Box<dyn Fn(Request) -> Pin<Box<Future>>>` capturing a state clone. Routers built with different states
   are `merge`d into one (`merge` takes `impl Into<Router>`), the server and module fns only deal with `Router`;
