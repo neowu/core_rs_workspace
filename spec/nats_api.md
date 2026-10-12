@@ -44,5 +44,4 @@ The client side emits `log!("call nats api, fn={module_path}::{Trait}Client::{me
 ### handler is `Fn(Req) -> Fut`, not an async closure
 
 `__add_handler` stores the handler in an `Arc` and needs a `'static` future, so the generated closure
-clones the service `Arc` into each future. The handler itself is never cloned per request, unlike
-axum handlers.
+clones the service `Arc` into each future. The handler itself is never cloned per request.

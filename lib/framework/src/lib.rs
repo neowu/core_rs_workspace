@@ -1,4 +1,4 @@
-// axum/hyper/h2/tower carry `tracing` instrumentation this framework never reads: it installs no
+// h2 (via hyper http2) carries `tracing` instrumentation this framework never reads: it installs no
 // tracing subscriber and no `log` logger, it has its own action log and appenders. Depending on
 // both crates here only to turn on their `release_max_level_off` features, which compiles that
 // instrumentation out of release builds. Cargo features are additive, so this applies to every

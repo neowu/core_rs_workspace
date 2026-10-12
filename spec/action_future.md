@@ -182,6 +182,14 @@ only references save `48 + size_of::<S>()`.
    semaphore permit is acquired *before* construction, so no queue wait leaks into `elapsed` — the
    shift is spawn latency only.
 
+## `Box::pin` in the http server, a copy workaround not a size one
+
+`web/server.rs` `handle` boxes its `log::action(..)` future. The rejected `Box::pin` row above is about
+the `large_futures` limit; this one is about memcpy. hyper `tokio::spawn`s the service future per h2
+stream, and futures under tokio's box threshold are moved by value several times on spawn
+(`spawn_inner` → `new_task` → `Cell::new`) and again on `Core::set_stage`. At 2.5 KB that was ~5% of
+server cpu on the get benchmark; boxed, the spawned future is ~330 B for one malloc per request.
+
 ## Where `Box::pin` remains, and why it must
 
 Every surviving `Box::pin` in the consumers erases a generic future at a

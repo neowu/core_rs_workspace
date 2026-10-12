@@ -1,6 +1,12 @@
 use std::fmt::Debug;
+use std::io;
 use std::marker::PhantomData;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
+use std::vec;
 
 pub use clickhouse;
 use clickhouse::_priv::RowKind;
@@ -21,9 +27,11 @@ pub use framework_macro::Enum8;
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::Client as HyperClient;
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::dns::Name;
 use hyper_util::rt::TokioExecutor;
 use rustls::crypto::aws_lc_rs;
 use serde::Serialize;
+use tower_service::Service;
 
 pub mod types;
 
@@ -150,8 +158,8 @@ impl ClickHouse {
     }
 }
 
-fn connector() -> HttpsConnector<HttpConnector<FallbackDnsResolver>> {
-    let mut connector = HttpConnector::new_with_resolver(FallbackDnsResolver::default());
+fn connector() -> HttpsConnector<HttpConnector<Resolver>> {
+    let mut connector = HttpConnector::new_with_resolver(Resolver(FallbackDnsResolver::default()));
     connector.set_keepalive(Some(Duration::from_secs(60)));
     connector.enforce_http(false);
     hyper_rustls::HttpsConnectorBuilder::new()
@@ -160,6 +168,25 @@ fn connector() -> HttpsConnector<HttpConnector<FallbackDnsResolver>> {
         .https_or_http()
         .enable_http1()
         .wrap_connector(connector)
+}
+
+// for hyper HttpConnector::new_with_resolver
+#[derive(Clone)]
+struct Resolver(FallbackDnsResolver);
+
+impl Service<Name> for Resolver {
+    type Response = vec::IntoIter<SocketAddr>;
+    type Error = io::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
+        let resolver = self.0.clone();
+        Box::pin(async move { Ok(resolver.lookup(name.as_str()).await?.into_iter()) })
+    }
 }
 
 // the full error goes to the trace via source, the message only carries a short name to keep sql/schema out of responses

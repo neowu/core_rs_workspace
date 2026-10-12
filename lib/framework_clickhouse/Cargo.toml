@@ -13,6 +13,8 @@ serde.workspace = true
 hyper-util = { version = "*", features = ["client-legacy", "http1", "tokio"] }
 hyper-rustls = { version = "*", default-features = false, features = ["http1", "tls12", "aws-lc-rs", "webpki-tokio"] }
 rustls = { version = "*", default-features = false, features = ["aws_lc_rs"] }
+# for FallbackDnsResolver to be used as hyper-util legacy client resolver
+tower-service = "*"
 
 [lints]
 workspace = true

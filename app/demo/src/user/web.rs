@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use axum::Router;
 use framework::exception::Exception;
 use framework::time::DateTime;
+use framework::web::router::Router;
 use framework_db::Json;
 use framework_db::repository;
 use framework_db::types::Timestamp;
@@ -16,12 +16,12 @@ use crate::user::UpdateUserRequest;
 use crate::user::User;
 use crate::user::UserService;
 
-pub fn routes(state: &'static AppState) -> Router {
+pub(crate) fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { state };
     UserService::route(Arc::new(service))
 }
 
-struct UserServiceImpl {
+pub(crate) struct UserServiceImpl {
     state: &'static AppState,
 }
 

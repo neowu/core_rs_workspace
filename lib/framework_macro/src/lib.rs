@@ -44,7 +44,7 @@ pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     enum8::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// `#[api]` derives an axum route builder and an HTTP client from a trait.
+/// `#[api]` derives a `framework::web` router builder and an HTTP client from a trait.
 /// Each method must be `async fn`, annotated with one of `#[get]`, `#[post]`, `#[put]` plus `#[path("/...")]`,
 /// take `&self` and a single request parameter, and return `Result<..., Exception>`.
 /// The request type must implement `Validator` (`#[derive(Validate)]`), it's validated before calling the method.

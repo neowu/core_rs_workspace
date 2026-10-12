@@ -35,7 +35,7 @@ impl Elasticsearch {
         let _span = span!("es");
         log!("put index template, name={name}");
         let uri = &self.uri;
-        let mut request = HttpRequest::new(Method::PUT, format!("{uri}/_index_template/{name}"));
+        let mut request = HttpRequest::new(Method::PUT, format!("{uri}/_index_template/{name}"))?;
         request.body(template, "application/json");
         let response = self.client.execute(request).await?;
         if response.status != 200 {
@@ -55,7 +55,7 @@ impl Elasticsearch {
         let _span = span!("es");
         log!("bulk index, index={index}");
         let uri = &self.uri;
-        let mut request = HttpRequest::new(Method::POST, format!("{uri}/_bulk"));
+        let mut request = HttpRequest::new(Method::POST, format!("{uri}/_bulk"))?;
 
         let mut body = String::new();
         let mut count: usize = 0;
@@ -79,7 +79,7 @@ impl Elasticsearch {
     pub(crate) async fn state(&self) -> Result<ClusterStateResponse, Exception> {
         let _span = span!("es");
         let uri = &self.uri;
-        let request = HttpRequest::new(Method::GET, format!("{uri}/_cluster/state"));
+        let request = HttpRequest::new(Method::GET, format!("{uri}/_cluster/state"))?;
         let response = self.client.execute(request).await?;
         if response.status != 200 {
             return Err(exception!("failed to get state"));
@@ -91,7 +91,7 @@ impl Elasticsearch {
         let _span = span!("es");
         log!("close index, index={index}");
         let uri = &self.uri;
-        let request = HttpRequest::new(Method::POST, format!("{uri}/{index}/_close"));
+        let request = HttpRequest::new(Method::POST, format!("{uri}/{index}/_close"))?;
         let response = self.client.execute(request).await?;
         if response.status != 200 {
             return Err(exception!(format!("failed to close index, index={index}")));
@@ -103,7 +103,7 @@ impl Elasticsearch {
         let _span = span!("es");
         log!("delete index, index={index}");
         let uri = &self.uri;
-        let request = HttpRequest::new(Method::DELETE, format!("{uri}/{index}"));
+        let request = HttpRequest::new(Method::DELETE, format!("{uri}/{index}"))?;
         let response = self.client.execute(request).await?;
         if response.status != 200 {
             return Err(exception!(format!("failed to delete index, index={index}")));

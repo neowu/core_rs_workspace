@@ -10,5 +10,4 @@ framework_db.workspace = true
 
 serde.workspace = true
 tokio.workspace = true
-axum.workspace = true
 libc = "*"

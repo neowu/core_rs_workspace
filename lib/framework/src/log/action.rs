@@ -39,7 +39,8 @@ pub(crate) struct Error {
 
 impl Action {
     pub(crate) fn new(id: String, kind: &'static str, ref_ids: Option<Vec<String>>, timestamp: DateTime) -> Self {
-        let mut logs = String::with_capacity(1024);
+        // fits a typical http action (request headers, context and response), growing copies the whole buffer
+        let mut logs = String::with_capacity(2048);
         write_str!(logs, "# [action] id={id}, kind={kind}, date=");
         timestamp.write_rfc3339(&mut logs);
         write_str!(logs, ", ref_id={ref_ids:?}\n");

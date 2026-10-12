@@ -21,7 +21,7 @@ Instantaneous gauges such as tokio's `global_queue_depth` are left out for that 
 `active_http_requests` is the peak number of concurrent HTTP handlers, including middleware,
 and excludes health checks. A request leaves the count when its response is returned, before
 response body transmission finishes. Open connections and streaming downloads/SSE are not counted;
-see [`http_server.md`](http_server.md).
+see [`http_server.md`](http_server.md). Open SSE streams are counted separately as `active_sse_streams`.
 
 ## Framework stats
 

@@ -4,10 +4,15 @@ Code: [`lib/framework/Cargo.toml`](../lib/framework/Cargo.toml),
 [`lib/framework/src/lib.rs`](../lib/framework/src/lib.rs) · measured by
 [`spec/benchmark/http_server.md`](benchmark/http_server.md)
 
-`axum`, `hyper`, `h2`, `tower` and `reqwest` are instrumented with `tracing`. This framework never
-reads any of it: it installs no tracing subscriber and no `log` logger, because it has its own
-action log and appenders. The instrumentation therefore runs on every request and its output is
-discarded — it measured **~8% of server cpu per request** on the http benchmark.
+`h2`, which hyper uses for http2 on both the http server and the http client, is instrumented with
+`tracing` and creates spans per stream and per frame. This framework never reads any of it: it
+installs no tracing subscriber and no `log` logger, because it has its own action log and
+appenders. The instrumentation therefore runs on every request and its output is discarded — it
+measured **~8% of server cpu per request** on the http benchmark. `hyper` and `hyper-util` keep
+their own `tracing` features off.
+
+Because features are additive, the same switch also compiles out the `tracing` in other workspace
+dependencies, e.g. `async-nats` (`framework_nats`) and `clickhouse` (`framework_clickhouse`).
 
 `framework` depends on `tracing` and `log` for one reason, to turn on their compile time max level:
 
@@ -23,19 +28,18 @@ leaves the `log` *crate* unused, and trips the very lint it was written to satis
 
 ## Why both crates
 
-They gate two independent paths, and disabling only one leaves the other running:
+`tracing` is the one doing the work today; `log` is a guard.
 
 | feature | compiles out |
 |---|---|
 | `tracing/release_max_level_off` | span and event construction — `span!`, `trace!`, `record_all` |
-| `log/release_max_level_off` | the `tracing` → `log` bridge — `Span::log`, `__tracing_log!` |
+| `log/release_max_level_off` | the `tracing` → `log` bridge — `Span::log`, `__tracing_log!` — and direct `log` calls (`rustls`, `tokio-postgres`, `rdkafka`, ...) |
 
-The bridge is a separate path on purpose: `tracing`'s own docs state that its static max level
-features do *not* control the `log` records emitted when `tracing/log` is on, so that a binary can
-compile out tracing entirely and still collect `log` records. Here nothing collects them.
-
-Nothing in this workspace asks for `tracing/log` directly — `axum`'s default `tower-log` feature
-pulls it in through `tower/log`.
+The bridge is a separate path: `tracing`'s own docs state that its static max level features do
+*not* control the `log` records emitted when `tracing/log` is on. Nothing in this workspace enables
+`tracing/log` now (axum pulled it in via `tower/log` before the server was rewritten), so the `log`
+feature stays only in case a dependency enables it again. Direct `log` calls without a logger
+already bail after one atomic load, so compiling them out is a negligible extra.
 
 ## Why `release_max_level_*` and not `max_level_*`
 

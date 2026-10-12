@@ -51,7 +51,7 @@ impl SlackClient {
             attachments: [Attachment { color, text: message }],
         })?;
 
-        let mut request = HttpRequest::new(Method::POST, "https://slack.com/api/chat.postMessage");
+        let mut request = HttpRequest::new(Method::POST, "https://slack.com/api/chat.postMessage")?;
         request.header(header::AUTHORIZATION, &format!("Bearer {}", self.token))?;
         request.body(body, "application/json");
 
