@@ -61,7 +61,7 @@ impl Executor {
         let ref_ids = log::current_action_id().map(|id| vec![id]);
 
         let counter = Arc::clone(&self.counter);
-        self.executor.spawn(task_name, async move {
+        let spawned = self.executor.spawn(task_name, async move {
             let _counter = counter.increase();
             let _result = log::action("task", ref_ids, async {
                 context!(task = name, location = location);
@@ -69,6 +69,9 @@ impl Executor {
             })
             .await;
         });
+        if !spawned {
+            console!("WARN executor is shut down, task rejected, task={task_name}");
+        }
     }
 
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {
@@ -108,17 +111,25 @@ impl Drop for TaskGuard {
 impl TaskExecutor {
     // names come from a fixed set per app: a literal, or interned once at registration. nothing
     // builds one per spawn, which is what the &'static str bound is here to enforce.
-    pub fn spawn<F>(&self, name: &'static str, task: F)
+    // returns false if shutdown started, the task is dropped without running. the token is taken before the
+    // closed check, so a task admitted here is always one shutdown waits for
+    pub fn spawn<F>(&self, name: &'static str, task: F) -> bool
     where
         F: Future<Output = ()> + Send + 'static,
     {
+        let token = self.tracker.token();
+        if self.tracker.is_closed() {
+            return false;
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.tasks.lock().unwrap().insert(id, name);
         let tasks = Arc::clone(&self.tasks);
-        self.tracker.spawn(async move {
+        tokio::spawn(async move {
+            let _token = token;
             let _guard = TaskGuard { tasks, id };
             task.await;
         });
+        true
     }
 
     // tasks still running at the timeout are not aborted, only named; the runtime drops them on exit

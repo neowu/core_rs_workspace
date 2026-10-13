@@ -63,3 +63,10 @@ future. No nested transactions / savepoints, no isolation level options yet.
 A resource keeps its `created_time` across checkouts. `max_life_time` is its physical age: an
 expired resource is dropped at checkout and not returned to the pool at release. `max_valid_window`
 is idle time since the last return, past it the resource is validated before reuse.
+Within `max_valid_window` validation is skipped unless the resource was closed while idle
+(`is_closed`), then it goes through `is_valid` and is dropped.
+
+### Checkout timeout covers the whole checkout
+
+`checkout_timeout` bounds permit wait, creation and validation together. A connect stalled in auth
+or a validation hung on a half-open socket fails the checkout instead of holding a permit forever.

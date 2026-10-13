@@ -64,11 +64,17 @@ where
         }
     }
 
+    // the timeout covers the whole checkout, a stalled create or validation must not hold the permit forever
     pub async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
-        let permit = match time::timeout(self.checkout_timeout, Arc::clone(&self.semaphore).acquire_owned()).await {
-            Ok(Ok(permit)) => permit,
-            Ok(Err(_)) => return Err(exception!("pool is closed")),
-            Err(_) => return Err(exception!("timeout")),
+        match time::timeout(self.checkout_timeout, self.checkout()).await {
+            Ok(result) => result,
+            Err(_) => Err(exception!("timeout")),
+        }
+    }
+
+    async fn checkout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
+        let Ok(permit) = Arc::clone(&self.semaphore).acquire_owned().await else {
+            return Err(exception!("pool is closed"));
         };
         let counter = self.counter.increase();
 
@@ -88,7 +94,8 @@ where
                     if res.created_time.elapsed() >= self.max_life_time {
                         continue;
                     }
-                    if res.return_time.elapsed() < self.max_valid_window {
+                    // within the window skip is_valid, unless it was closed while idle (not by application, rather by server/network/etc)
+                    if res.return_time.elapsed() < self.max_valid_window && !R::is_closed(&res.item) {
                         break res;
                     }
 

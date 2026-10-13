@@ -39,7 +39,9 @@ where
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
     })?;
     let context = JobContext { name: schedule.name, scheduled_time: DateTime::now().with_timezone(state.timezone) };
-    state.executor.spawn(schedule.name, (schedule.job)(state.state.clone(), context));
+    if !state.executor.spawn(schedule.name, (schedule.job)(state.state.clone(), context)) {
+        return Err(exception!(format!("scheduler is shut down, job={job}"), severity = Severity::Warn));
+    }
     Ok(Response::empty().status(StatusCode::ACCEPTED))
 }
 

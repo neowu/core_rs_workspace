@@ -65,6 +65,9 @@ in the action record, which is the thing built to hold it.
 - `shutdown` stops accepting new tasks, then waits up to its timeout. It returns `None` if everything
   drained, otherwise the names still in flight at the deadline — which callers log as abandoned and
   the runtime drops on exit. The list is names, so duplicates are expected and meaningful.
+- `spawn` after `shutdown` started returns `false` and drops the task unrun; the caller decides what
+  to report (the scheduler's manual trigger returns an error, `spawn_action!` logs a warning). A
+  tracker token is taken before the closed check, so any task `spawn` admits is one `shutdown` waits for.
 - **Overrunning tasks are not aborted.** An abort would need an `AbortHandle` per task in the
   registry, a third lock (or one held across spawn) on the per-request path, and would buy nothing
   observable: a dropped action emits nothing ([`action_future.md`](action_future.md)), and every

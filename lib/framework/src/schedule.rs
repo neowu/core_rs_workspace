@@ -96,7 +96,8 @@ where
                     let next = schedule.trigger.next(previous, first);
                     first = false;
                     let context = JobContext { name: schedule.name, scheduled_time: next };
-                    let waiting_time = context.scheduled_time - previous;
+                    let waiting_time = Duration::try_from((context.scheduled_time - previous).0)
+                        .expect("next scheduled time must be after previous");
                     previous = context.scheduled_time;
 
                     let name = context.name;
@@ -107,7 +108,7 @@ where
                         () = shutdown_signal.cancelled() => {
                             return;
                         }
-                        () = time::sleep(Duration::from_secs(waiting_time.as_secs() as u64)) => {
+                        () = time::sleep(waiting_time) => {
                             let state = state.clone();
                             executor.spawn(schedule.name, (schedule.job)(state, context));
                         }
