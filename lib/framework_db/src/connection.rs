@@ -17,10 +17,13 @@ use tokio_postgres::Statement;
 
 use crate::PgError;
 
-pub(crate) struct Connection {
-    pub client: Client,
+#[doc(hidden)] // only reachable via Executor, used by framework
+pub struct Connection {
+    pub(crate) client: Client,
     cancel_token: CancelToken,
     statement_cache: HashMap<String, Statement>,
+    query_timeout: Duration,
+    // set on any error, the connection is discarded at release instead of returned to the pool
     broken: AtomicBool,
 }
 
@@ -29,11 +32,7 @@ impl Connection {
         if let Some(statement) = self.statement_cache.get(sql) {
             Ok(statement.clone())
         } else {
-            let statement = self
-                .client
-                .prepare(sql)
-                .await
-                .map_err(|err| exception!("failed to prepare statement", source = err))?;
+            let statement = self.with_timeout(self.client.prepare(sql)).await?;
             self.statement_cache.insert(sql.to_owned(), statement.clone());
             Ok(statement)
         }
@@ -42,14 +41,19 @@ impl Connection {
     pub(crate) async fn with_timeout<T>(
         &self,
         operation: impl Future<Output = Result<T, PgError>>,
-        query_timeout: Duration,
     ) -> Result<T, Exception> {
-        let result = timeout(query_timeout, operation).await;
+        // marks broken unless the operation succeeds, including when this future is dropped by caller (e.g. outer
+        // timeout or select!), the sent query still runs on the connection and may abort the transaction
+        let mut guard = BrokenGuard { connection: self, succeeded: false };
+        let result = timeout(self.query_timeout, operation).await;
         match result {
-            Ok(result) => result.map_err(|err| exception!("failed to call db", source = err)),
+            Ok(Ok(value)) => {
+                guard.succeeded = true;
+                Ok(value)
+            }
+            Ok(Err(err)) => Err(exception!("failed to call db", source = err)),
             Err(_elapsed) => {
                 // the timed out query is still in flight and cancel is racy, never reuse this connection
-                self.broken.store(true, Ordering::Relaxed);
                 log!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
@@ -59,10 +63,32 @@ impl Connection {
             }
         }
     }
+
+    pub(crate) fn mark_broken(&self) {
+        self.broken.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn is_broken(&self) -> bool {
+        self.broken.load(Ordering::Relaxed)
+    }
+}
+
+struct BrokenGuard<'a> {
+    connection: &'a Connection,
+    succeeded: bool,
+}
+
+impl Drop for BrokenGuard<'_> {
+    fn drop(&mut self) {
+        if !self.succeeded {
+            self.connection.mark_broken();
+        }
+    }
 }
 
 pub(crate) struct ConnectionManager {
     pub config: Config,
+    pub query_timeout: Duration,
 }
 
 impl ResourceManager for ConnectionManager {
@@ -81,7 +107,13 @@ impl ResourceManager for ConnectionManager {
 
         let cancel_token = client.cancel_token();
 
-        Ok(Connection { client, cancel_token, statement_cache: HashMap::new(), broken: AtomicBool::new(false) })
+        Ok(Connection {
+            client,
+            cancel_token,
+            statement_cache: HashMap::new(),
+            query_timeout: self.query_timeout,
+            broken: AtomicBool::new(false),
+        })
     }
 
     async fn is_valid(item: &Self::Target) -> bool {
@@ -89,6 +121,6 @@ impl ResourceManager for ConnectionManager {
     }
 
     fn is_closed(item: &Self::Target) -> bool {
-        item.client.is_closed() || item.broken.load(Ordering::Relaxed)
+        item.client.is_closed() || item.is_broken()
     }
 }

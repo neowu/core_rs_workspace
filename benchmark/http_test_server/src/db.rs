@@ -36,6 +36,7 @@ pub(crate) fn database() -> Database {
         user: "postgres".to_owned(),
         password: String::new(),
         client: env!("CARGO_PKG_NAME"),
+        ..DbConfig::default()
     })
 }
 

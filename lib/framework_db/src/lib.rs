@@ -1,3 +1,4 @@
+use std::ops::DerefMut;
 use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,6 +7,7 @@ pub use field::Cond;
 pub use field::Field;
 pub use field::Update;
 use framework::console;
+use framework::exception::Exception;
 use framework::metrics::Metrics;
 use framework::pool::ResourcePool;
 pub use tokio_postgres::Config;
@@ -14,13 +16,17 @@ pub use tokio_postgres::Row;
 use tokio_postgres::types::FromSqlOwned;
 pub use tokio_postgres::types::Json;
 pub use tokio_postgres::types::ToSql;
+pub use transaction::Transaction;
 
+#[doc(hidden)]
+pub use crate::connection::Connection;
 use crate::connection::ConnectionManager;
 
 mod connection;
 pub mod database;
 mod field;
 pub mod repository;
+mod transaction;
 pub mod types;
 
 // a borrowed query param, shaped exactly as tokio_postgres takes them: `&[&(dyn ToSql + Sync)]`.
@@ -60,9 +66,22 @@ pub trait Entity {
     fn __select_sql() -> &'static str;
 }
 
+// run statements on `&Database` (one pooled connection per call) or `&mut Transaction` (pinned connection)
+pub trait Executor {
+    #[doc(hidden)]
+    fn __conn(
+        &mut self,
+    ) -> impl Future<Output = Result<impl DerefMut<Target = Connection> + Send + '_, Exception>> + Send;
+}
+
+impl Executor for &Database {
+    async fn __conn(&mut self) -> Result<impl DerefMut<Target = Connection> + Send + '_, Exception> {
+        self.pool.get_with_timeout().await
+    }
+}
+
 pub struct Database {
     pool: Arc<ResourcePool<ConnectionManager>>,
-    query_timeout: Duration,
 }
 
 pub struct DbConfig {
@@ -70,6 +89,19 @@ pub struct DbConfig {
     pub user: String,
     pub password: String,
     pub client: &'static str, // pass as env!("CARGO_BIN_NAME") or env!("CARGO_PKG_NAME")
+    pub query_timeout: Duration,
+}
+
+impl Default for DbConfig {
+    fn default() -> Self {
+        DbConfig {
+            uri: "postgres://localhost:5432/postgres".to_owned(),
+            user: "postgres".to_owned(),
+            password: String::new(),
+            client: "",
+            query_timeout: Duration::from_secs(5),
+        }
+    }
 }
 
 impl Database {
@@ -80,17 +112,22 @@ impl Database {
         postgres_config.user(config.user);
         postgres_config.password(config.password);
         postgres_config.connect_timeout(Duration::from_secs(5));
-        postgres_config.application_name(config.client);
-
+        if !config.client.is_empty() {
+            postgres_config.application_name(config.client);
+        }
         let pool = Arc::new(ResourcePool::new(
-            ConnectionManager { config: postgres_config },
+            ConnectionManager { config: postgres_config, query_timeout: config.query_timeout },
             50,
             Duration::from_secs(30),
             Duration::from_hours(1),
             Duration::from_secs(5),
         ));
 
-        Database { pool, query_timeout: Duration::from_secs(5) }
+        Database { pool }
+    }
+
+    pub async fn begin(&self) -> Result<Transaction<'_>, Exception> {
+        Transaction::begin(self.pool.get_with_timeout().await?).await
     }
 
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {

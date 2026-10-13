@@ -8,6 +8,8 @@ Start `postgres`, then run `cargo test -p db_test`. Code: [`test/db_test`](../..
   to null) and delete by id.
 - Composite id: insert, `insert_ignore` and `upsert` on conflict, update, select and delete by
   both keys, and delete all.
+- Transaction: commit persists, rollback and drop discard, commit after a failed statement
+  returns error and rolls back, db is usable afterwards.
 - Date: timestamp and date columns round trip, including values before the epoch and nullable
   columns; stored text is checked with raw SQL.
 

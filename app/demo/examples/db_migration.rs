@@ -18,6 +18,7 @@ pub async fn main() {
         user: config.db_user,
         password: config.db_password.into(),
         client: env!("CARGO_BIN_NAME"),
+        ..DbConfig::default()
     });
 
     let _result = log::action("migration", None, async move {

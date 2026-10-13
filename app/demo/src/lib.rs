@@ -49,6 +49,7 @@ pub async fn run() {
         user: config.db_user,
         password: config.db_password.into(),
         client: env!("CARGO_PKG_NAME"),
+        ..DbConfig::default()
     });
     system.add_metrics(db.metrics());
 

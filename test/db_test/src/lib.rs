@@ -7,6 +7,7 @@ pub fn client() -> Database {
         user: "postgres".to_owned(),
         password: "postgres".to_owned(),
         client: env!("CARGO_PKG_NAME"),
+        ..DbConfig::default()
     };
     Database::new(config)
 }
