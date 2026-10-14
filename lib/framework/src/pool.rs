@@ -65,14 +65,14 @@ where
     }
 
     // the timeout covers the whole checkout, a stalled create or validation must not hold the permit forever
-    pub async fn get_with_timeout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
-        match time::timeout(self.checkout_timeout, self.checkout()).await {
+    pub async fn checkout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
+        match time::timeout(self.checkout_timeout, self.acquire()).await {
             Ok(result) => result,
             Err(_) => Err(exception!("timeout")),
         }
     }
 
-    async fn checkout(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
+    async fn acquire(&'_ self) -> Result<ResourceGuard<'_, R>, Exception> {
         let Ok(permit) = Arc::clone(&self.semaphore).acquire_owned().await else {
             return Err(exception!("pool is closed"));
         };

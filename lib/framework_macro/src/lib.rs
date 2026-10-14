@@ -1,7 +1,7 @@
 use syn::Error;
 
 mod api;
-mod entity;
+mod db;
 mod enum8;
 mod integration_test;
 mod model;
@@ -34,7 +34,17 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+    db::entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// Derive `framework_db::FromRow` for a raw sql row type (a view of a query result), each field is read by column name.
+/// field attributes, required on every field
+/// ```text
+/// #[column(name = "column_name")]
+/// ```
+#[proc_macro_derive(FromRow, attributes(column))]
+pub fn from_row(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    db::from_row::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// Derive serde `Serialize`/`Deserialize` for a fieldless enum mapped to a clickhouse Enum8 column;

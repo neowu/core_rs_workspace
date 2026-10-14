@@ -30,7 +30,7 @@ where
     log!("select_one, sql={statement}, params={params:?}");
     let row = conn.with_timeout(conn.client.query_opt(statement, params)).await?;
     stats!(db_read_rows = if row.is_some() { 1 } else { 0 });
-    row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
+    row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", code = "DB_ERROR", source = err))
 }
 
 pub async fn select<T>(
@@ -49,5 +49,5 @@ where
     rows.into_iter()
         .map(T::try_from)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| exception!("failed to map row", source = err))
+        .map_err(|err| exception!("failed to map row", code = "DB_ERROR", source = err))
 }

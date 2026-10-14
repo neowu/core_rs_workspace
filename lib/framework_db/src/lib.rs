@@ -7,8 +7,10 @@ pub use field::Cond;
 pub use field::Field;
 pub use field::Update;
 use framework::console;
+use framework::exception;
 use framework::exception::Exception;
 use framework::metrics::Metrics;
+use framework::pool::ResourceGuard;
 use framework::pool::ResourcePool;
 pub use tokio_postgres::Config;
 pub use tokio_postgres::Error as PgError;
@@ -76,12 +78,13 @@ pub trait Executor {
 
 impl Executor for &Database {
     async fn __conn(&mut self) -> Result<impl DerefMut<Target = Connection> + Send + '_, Exception> {
-        self.pool.get_with_timeout().await
+        self.checkout().await
     }
 }
 
 pub struct Database {
     pool: Arc<ResourcePool<ConnectionManager>>,
+    uri: &'static str,
 }
 
 pub struct DbConfig {
@@ -90,6 +93,7 @@ pub struct DbConfig {
     pub password: String,
     pub client: &'static str, // pass as env!("CARGO_BIN_NAME") or env!("CARGO_PKG_NAME")
     pub query_timeout: Duration,
+    pub pool_max_size: usize,
 }
 
 impl Default for DbConfig {
@@ -100,6 +104,7 @@ impl Default for DbConfig {
             password: String::new(),
             client: "",
             query_timeout: Duration::from_secs(5),
+            pool_max_size: 50,
         }
     }
 }
@@ -107,6 +112,7 @@ impl Default for DbConfig {
 impl Database {
     pub fn new(config: DbConfig) -> Self {
         console!("create database client, uri={}, user={}", config.uri, config.user);
+        assert!(config.pool_max_size > 0, "pool_max_size must be positive");
         let mut postgres_config =
             Config::from_str(&config.uri).unwrap_or_else(|err| panic!("failed to parse postgres uri, error={err}"));
         postgres_config.user(config.user);
@@ -115,19 +121,27 @@ impl Database {
         if !config.client.is_empty() {
             postgres_config.application_name(config.client);
         }
+        // uri holds no credentials by convention, leaked once per pool to be referenced in errors
+        let uri: &'static str = config.uri.leak();
         let pool = Arc::new(ResourcePool::new(
-            ConnectionManager { config: postgres_config, query_timeout: config.query_timeout },
-            50,
+            ConnectionManager { config: postgres_config, query_timeout: config.query_timeout, uri },
+            config.pool_max_size,
             Duration::from_secs(30),
             Duration::from_hours(1),
             Duration::from_secs(5),
         ));
 
-        Database { pool }
+        Database { pool, uri }
     }
 
     pub async fn begin(&self) -> Result<Transaction<'_>, Exception> {
-        Transaction::begin(self.pool.get_with_timeout().await?).await
+        Transaction::begin(self.checkout().await?).await
+    }
+
+    async fn checkout(&self) -> Result<ResourceGuard<'_, ConnectionManager>, Exception> {
+        self.pool.checkout().await.map_err(|err| {
+            exception!(format!("failed to get db connection, uri={}", self.uri), code = "DB_ERROR", source = err)
+        })
     }
 
     pub fn metrics(&self) -> impl Fn(&mut Metrics) + Send + 'static {

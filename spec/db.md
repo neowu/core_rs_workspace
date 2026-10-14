@@ -70,3 +70,32 @@ Within `max_valid_window` validation is skipped unless the resource was closed w
 
 `checkout_timeout` bounds permit wait, creation and validation together. A connect stalled in auth
 or a validation hung on a half-open socket fails the checkout instead of holding a permit forever.
+
+### Pool capacity is a cap, connections open lazily
+
+`DbConfig::pool_max_size` (default 50) caps concurrent connections, connections are created on
+checkout, so a sequential caller holds about one. Idle connections are not evicted in the
+background, `max_life_time` is enforced at checkout and release. Validation window, life time and
+checkout timeout stay fixed until a case needs them.
+
+### One pool per database, caching is the application's
+
+A postgres connection is bound to its database, so reading across databases needs one `Database`
+per database. The application creates and caches them (e.g. a map by name), the framework has no
+registry: cache limits, eviction and a total connection budget are application policy.
+
+### Errors carry `DB_ERROR` and the pool identity
+
+Every error from postgres or the pool (connect, checkout timeout, statement, query timeout, row
+mapping, broken transaction) has code `DB_ERROR`, keeping the cause chain. Checkout, statement and
+timeout errors name the pool `uri`, so apps with several pools can tell which failed. By convention
+the uri never holds credentials (user / password are separate `DbConfig` fields). The uri is leaked once per
+`Database`, which is meant to be created once and kept, not per request. Argument errors (empty `is_in` / `updates`) have
+no code.
+
+### `#[derive(FromRow)]` maps raw sql rows, columns are explicit
+
+`Entity` maps a table, `FromRow` maps a query result (a view) for `database::select`; it has no
+table, so it cannot be used with `repository`. Every field requires `#[column(name)]`, as on
+`Entity`, explicit over field name convention. No tuple `FromRow`: it would conflict with the
+blanket single column impl over `FromSqlOwned`.

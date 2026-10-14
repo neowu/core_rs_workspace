@@ -5,6 +5,7 @@ use framework::exception::Exception;
 use framework::log;
 use framework::pool::ResourceGuard;
 use framework::span;
+use framework::warn;
 
 use crate::Connection;
 use crate::Executor;
@@ -49,7 +50,7 @@ impl<'a> Transaction<'a> {
 
     fn check_broken(&self) -> Result<(), Exception> {
         if self.conn.is_broken() {
-            return Err(exception!("transaction connection is broken"));
+            return Err(exception!("transaction connection is broken", code = "DB_ERROR"));
         }
         Ok(())
     }
@@ -66,7 +67,7 @@ impl Drop for Transaction<'_> {
     fn drop(&mut self) {
         if !self.completed {
             // discard instead of sending ROLLBACK, the connection may still be in transaction or have a query in flight
-            log!("transaction dropped without commit or rollback, discard connection");
+            warn!(error_code = "DB_ERROR", "transaction dropped without commit or rollback, discard connection");
             self.conn.mark_broken();
         }
     }

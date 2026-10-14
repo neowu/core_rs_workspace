@@ -25,6 +25,7 @@ pub struct Connection {
     query_timeout: Duration,
     // set on any error, the connection is discarded at release instead of returned to the pool
     broken: AtomicBool,
+    uri: &'static str,
 }
 
 impl Connection {
@@ -51,14 +52,20 @@ impl Connection {
                 guard.succeeded = true;
                 Ok(value)
             }
-            Ok(Err(err)) => Err(exception!("failed to call db", source = err)),
+            Ok(Err(err)) => {
+                Err(exception!(format!("failed to call db, uri={}", self.uri), code = "DB_ERROR", source = err))
+            }
             Err(_elapsed) => {
                 // the timed out query is still in flight and cancel is racy, never reuse this connection
                 log!("cancel query");
                 let cancel_result = self.cancel_token.cancel_query(NoTls).await;
                 match cancel_result {
-                    Ok(()) => Err(exception!("query timed out")),
-                    Err(err) => Err(exception!("query timed out, failed to cancel", source = err)),
+                    Ok(()) => Err(exception!(format!("query timed out, uri={}", self.uri), code = "DB_ERROR")),
+                    Err(err) => Err(exception!(
+                        format!("query timed out, failed to cancel, uri={}", self.uri),
+                        code = "DB_ERROR",
+                        source = err
+                    )),
                 }
             }
         }
@@ -89,19 +96,25 @@ impl Drop for BrokenGuard<'_> {
 pub(crate) struct ConnectionManager {
     pub config: Config,
     pub query_timeout: Duration,
+    pub uri: &'static str,
 }
 
 impl ResourceManager for ConnectionManager {
     type Target = Connection;
 
     async fn create(&self) -> Result<Self::Target, Exception> {
-        let (client, connection) =
-            self.config.connect(NoTls).await.map_err(|err| exception!("failed to connect to db", source = err))?;
+        // the uri is added by Database::checkout, create only runs within it
+        let (client, connection) = self
+            .config
+            .connect(NoTls)
+            .await
+            .map_err(|err| exception!("failed to connect to db", code = "DB_ERROR", source = err))?;
 
         // use native tokio spawn, not wire current span
-        tokio::spawn(async {
+        let uri = self.uri;
+        tokio::spawn(async move {
             if let Err(e) = connection.await {
-                console!("ERROR db connection error, {e}");
+                console!("ERROR db connection error, uri={uri}, error={e}");
             }
         });
 
@@ -113,6 +126,7 @@ impl ResourceManager for ConnectionManager {
             statement_cache: HashMap::new(),
             query_timeout: self.query_timeout,
             broken: AtomicBool::new(false),
+            uri: self.uri,
         })
     }
 

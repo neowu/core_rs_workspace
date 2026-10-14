@@ -5,6 +5,7 @@ use syn::Ident;
 use syn::Result;
 use syn::Visibility;
 
+use crate::db::from_row;
 use crate::model;
 use crate::model::StructModel;
 
@@ -12,7 +13,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
     let model = parse_entity(model)?;
 
-    let from_row_impl = from_row_impl(&model);
+    let columns = model.columns.iter().map(|column| (&column.field_ident, column.column.clone())).collect::<Vec<_>>();
+    let from_row_impl = from_row::from_row_impl(&model.struct_ident, &columns);
 
     // a table without primary key cannot be inserted, since both insert_ignore and upsert need ON CONFLICT
     let insert_impl = if model.has_auto_increment_primary_key {
@@ -110,24 +112,6 @@ fn parse_entity(model: StructModel) -> Result<EntityModel> {
         has_primary_key: primary_key_fields > 0,
         has_auto_increment_primary_key: found_auto_increment,
     })
-}
-
-fn from_row_impl(model: &EntityModel) -> TokenStream {
-    let assignments = model.columns.iter().map(|column| {
-        let field = &column.field_ident;
-        let column = &column.column;
-        quote! { #field: row.try_get(#column)?, }
-    });
-    let struct_name = &model.struct_ident;
-    quote! {
-        impl framework_db::FromRow for #struct_name {
-            fn try_from(row: framework_db::Row) -> ::std::result::Result<#struct_name, framework_db::PgError> {
-                Ok(#struct_name {
-                    #(#assignments)*
-                })
-            }
-        }
-    }
 }
 
 fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {

@@ -49,7 +49,8 @@ pub async fn upsert<T: Insert>(mut database: impl Executor, entity: &T) -> Resul
     log!("upsert, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(sql).await?;
     let row = conn.with_timeout(conn.client.query_one(&statement, &params)).await?;
-    let inserted: bool = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
+    let inserted: bool =
+        row.try_get(0).map_err(|err| exception!("failed to get result", code = "DB_ERROR", source = err))?;
     log!("inserted={inserted}");
     stats!(db_write_rows = 1); // postgres upsert always affects row
     Ok(inserted)
@@ -66,7 +67,7 @@ pub async fn insert_with_auto_increment_id<T: InsertWithAutoIncrementId>(
     log!("insert, sql={sql}, params={params:?}");
     let statement = conn.prepared_statement(sql).await?;
     let row = conn.with_timeout(conn.client.query_one(&statement, &params)).await?;
-    let id: i64 = row.try_get(0).map_err(|err| exception!("failed to get result", source = err))?;
+    let id: i64 = row.try_get(0).map_err(|err| exception!("failed to get result", code = "DB_ERROR", source = err))?;
     stats!(db_write_rows = 1);
     Ok(id)
 }
@@ -84,7 +85,7 @@ where
     let statement = conn.prepared_statement(&sql).await?;
     let row = conn.with_timeout(conn.client.query_opt(&statement, &params)).await?;
     stats!(db_read_rows = if row.is_some() { 1 } else { 0 });
-    row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", source = err))
+    row.map(T::try_from).transpose().map_err(|err| exception!("failed to map row", code = "DB_ERROR", source = err))
 }
 
 pub async fn select_all<T>(mut database: impl Executor, conditions: Vec<Cond<T>>) -> Result<Vec<T>, Exception>
@@ -103,7 +104,7 @@ where
     rows.into_iter()
         .map(T::try_from)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| exception!("failed to map row", source = err))
+        .map_err(|err| exception!("failed to map row", code = "DB_ERROR", source = err))
 }
 
 pub async fn update<T: Entity>(
