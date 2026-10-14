@@ -8,6 +8,7 @@ use std::fs::read_to_string;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Once;
 
 use serde::Deserialize;
 use serde::de;
@@ -26,7 +27,7 @@ use crate::console;
 /// 2. `path` resolved next to the current exe;
 /// 3. `path` resolved against `CARGO_MANIFEST_DIR`, in debug builds only.
 ///
-/// A `.env` file is loaded first, so that `env:` references in the config
+/// A `.env` file is loaded first (once per process), so that `env:` references in the config
 /// resolve against those variables, and so that the config env var itself can
 /// be set locally to exercise the deployed path. It is taken from the first
 /// place it exists: next to the current exe, then `CARGO_MANIFEST_DIR` in debug
@@ -46,13 +47,15 @@ macro_rules! load_config {
     ($path:expr, env = $env:expr) => {{ $crate::config::__load_config(Some($env), $path, env!("CARGO_MANIFEST_DIR")) }};
 }
 
+static LOAD_ENV: Once = Once::new();
+
 #[doc(hidden)]
 pub fn __load_config<T>(env_name: Option<&str>, path: &str, manifest_dir: &str) -> T
 where
     T: DeserializeOwned,
 {
     let exe_path = current_exe().expect("cannot get current exe path");
-    load_env(&exe_path, manifest_dir);
+    LOAD_ENV.call_once(|| load_env(&exe_path, manifest_dir));
 
     let json = if let Some(json) = env_name.and_then(load_from_env) {
         json
@@ -287,7 +290,8 @@ mod tests {
         let _: TestConfig = __load_config(None, "assets/conf.json", dir.to_str().unwrap());
     }
 
-    // dev env must be loaded before the env var is read, so the deployed path can be exercised locally
+    // __load_config loads .env once per process, which other tests may already have triggered,
+    // so this drives load_env directly
     #[cfg(debug_assertions)]
     #[test]
     fn load_config_from_env_resolves_dev_env() {
@@ -296,6 +300,7 @@ mod tests {
         write(dir.join(".env"), "CONFIG_TEST_DEV_TOKEN=dev token\n# comment\n").unwrap();
         unsafe { env::set_var("CONFIG_TEST_DEV_JSON", r#"{"token":"env:CONFIG_TEST_DEV_TOKEN"}"#) }
 
+        load_env(&fake_exe(&dir), dir.to_str().unwrap());
         let config: TestSecretConfig = __load_config(Some("CONFIG_TEST_DEV_JSON"), &path, dir.to_str().unwrap());
 
         assert_eq!(config.token.0, "dev token");

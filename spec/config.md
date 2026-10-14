@@ -22,7 +22,7 @@ should be diffable in git, secrets must never be.
 
 ```rust
 let exe_path = current_exe().expect("cannot get current exe path");
-load_env(&exe_path, manifest_dir);
+LOAD_ENV.call_once(|| load_env(&exe_path, manifest_dir));
 
 let json = if let Some(json) = env_name.and_then(load_from_env) {
     json
@@ -125,6 +125,11 @@ Release builds read it too. The file is looked up next to the exe — the same d
 already has to populate with `assets/` — so this stays exe-relative and there is still no chance of
 picking up a stray `.env` from whatever the working directory happens to be. Only the
 `CARGO_MANIFEST_DIR` fallback is debug-only, since that path does not exist in an image.
+
+`.env` is loaded **once per process**, by the first `load_config!` call, guarded by a `std::sync::Once`.
+An app typically has several `load_config!` lines, and re-reading the same file for each one is
+pure noise. The consequence: the `manifest_dir` of that first call decides which source-folder
+`.env` is used; later calls from other crates do not load their own.
 
 A missing `.env` is not an error; it just means nothing to load. That is the opposite of the config
 itself, where nothing found is fatal, and the asymmetry is deliberate: a config is required to
