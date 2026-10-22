@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::log::Severity;
 use crate::time::DateTime;
 
-mod collector;
+pub(crate) mod collector;
 mod counter;
 
 pub(crate) use collector::MetricsCollector;

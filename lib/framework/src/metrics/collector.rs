@@ -260,7 +260,7 @@ fn process_vm_rss(page_size: u64) -> Option<u64> {
     Some(resident * page_size)
 }
 
-fn container_mem_max() -> Option<u64> {
+pub(crate) fn container_mem_max() -> Option<u64> {
     // cgroup v2, "max" when there is no limit
     if let Ok(content) = fs::read_to_string("/sys/fs/cgroup/memory.max") {
         let content = content.trim();

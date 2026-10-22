@@ -3,7 +3,7 @@
 Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`log/action.rs`](../lib/framework/src/log/action.rs), [`log/span.rs`](../lib/framework/src/log/span.rs),
 [`log/id_generator.rs`](../lib/framework/src/log/id_generator.rs),
-[`log/alloc_stats.rs`](../lib/framework/src/log/alloc_stats.rs),
+[`log/stats.rs`](../lib/framework/src/log/stats.rs),
 [`appender.rs`](../lib/framework/src/appender.rs) · producers:
 [`web/server.rs`](../lib/framework/src/web/server.rs), [`task.rs`](../lib/framework/src/task.rs),
 [`framework_nats/src/consumer.rs`](../lib/framework_nats/src/consumer.rs) · consumers:

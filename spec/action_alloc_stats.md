@@ -1,6 +1,6 @@
 # Action allocation stats design
 
-Code: [`lib/framework/src/log/alloc_stats.rs`](../lib/framework/src/log/alloc_stats.rs) · producer:
+Code: [`lib/framework/src/log/stats.rs`](../lib/framework/src/log/stats.rs) · producer:
 [`log.rs`](../lib/framework/src/log.rs) (`ActionFuture`) ·
 siblings: [`action_log.md`](action_log.md), [`action_future_design.md`](action_future_design.md),
 [`benchmark/http_server.md`](benchmark/http_server.md)
@@ -67,6 +67,16 @@ There is no per-action live or peak bytes. A block allocated in an action is rou
 another task — the `ActionMessage` is freed by the appender daemon — so per-action live bytes would
 be meaningless and frequently negative, and stats are `u64`. Process rss stays
 `MetricsCollector`'s job.
+
+## HIGH_MEM_ALLOC warning
+
+When an action finishes with `alloc_bytes` over 50% of max memory (`container_mem_max`: cgroup
+limit, else physical memory), it logs a warning with error code `HIGH_MEM_ALLOC`. The warning says
+what it measures: allocation volume, not live or peak memory, so an action that keeps reusing
+short-lived buffers can trip it without ever holding much.
+
+- max memory is read once per process, lazily on first use; when it is not available the check is skipped
+- checked only at finish, so a long-running action warns when it ends, not while it runs
 
 ## Framework owns the global allocator
 

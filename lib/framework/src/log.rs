@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use std::time::Instant;
 
 use pin_project_lite::pin_project;
 use serde::Deserialize;
@@ -17,15 +16,16 @@ use tokio::task_local;
 use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
-use crate::log::alloc_stats::ActionAllocs;
+use crate::log::stats::AllocStats;
+use crate::log::stats::PollStats;
 use crate::system::SENDER;
 use crate::time::DateTime;
 
 pub(crate) mod action;
-mod alloc_stats;
 pub mod id_generator;
 mod mask;
 mod span;
+mod stats;
 
 pub use span::__span;
 pub use span::Span;
@@ -98,10 +98,8 @@ pin_project! {
     pub struct ActionFuture<F> {
         #[pin]
         inner: TaskLocalFuture<RefCell<Action>, F>,
-        allocs: ActionAllocs,
-        // nanos spent inside inner poll, i.e. holding the worker thread; waiting is not counted
-        poll_elapsed: u64,
-        poll_count: u64,
+        alloc_stats: AllocStats,
+        poll_stats: PollStats,
     }
 }
 
@@ -114,9 +112,8 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let action = Action::new(id, kind, ref_ids, now);
     ActionFuture {
         inner: CURRENT_ACTION.scope(RefCell::new(action), task),
-        allocs: ActionAllocs::new(),
-        poll_elapsed: 0,
-        poll_count: 0,
+        alloc_stats: AllocStats::new(),
+        poll_stats: PollStats::new(),
     }
 }
 
@@ -130,10 +127,7 @@ where
         let mut this = self.project();
         // not `ready!`: the allocation and poll stats have to be taken on the Pending path too, or every
         // poll but the last is lost
-        let start = Instant::now();
-        let polled = this.allocs.poll(|| this.inner.as_mut().poll(cx));
-        *this.poll_elapsed += start.elapsed().as_nanos() as u64;
-        *this.poll_count += 1;
+        let polled = this.poll_stats.poll(|| this.alloc_stats.poll(|| this.inner.as_mut().poll(cx)));
         let Poll::Ready(result) = polled else {
             return Poll::Pending;
         };
@@ -145,9 +139,8 @@ where
         if let Err(e) = &result {
             current_action.log_exception(e);
         }
-        this.allocs.write_to(&mut current_action);
-        current_action.add_stat("poll_elapsed", *this.poll_elapsed);
-        current_action.add_stat("poll_count", *this.poll_count);
+        this.alloc_stats.write_to(&mut current_action);
+        this.poll_stats.write_to(&mut current_action);
         current_action.finish();
 
         if let Some(sender) = SENDER.get() {
