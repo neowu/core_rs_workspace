@@ -44,24 +44,24 @@ impl Serialize for Date16 {
 }
 
 impl<'de> Deserialize<'de> for Date16 {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Date16, D::Error> {
         if deserializer.is_human_readable() {
-            Date::deserialize(deserializer).map(Self)
+            Date::deserialize(deserializer).map(Date16)
         } else {
             let days = u16::deserialize(deserializer)?;
-            BASE_DATE.add_days(days as i64).map(Self).map_err(de::Error::custom)
+            BASE_DATE.add_days(days as i64).map(Date16).map_err(de::Error::custom)
         }
     }
 }
 
 impl From<Date> for Date16 {
-    fn from(date: Date) -> Self {
-        Self(date)
+    fn from(date: Date) -> Date16 {
+        Date16(date)
     }
 }
 
 impl From<Date16> for Date {
-    fn from(date: Date16) -> Self {
+    fn from(date: Date16) -> Date {
         date.0
     }
 }

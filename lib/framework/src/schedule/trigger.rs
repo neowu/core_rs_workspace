@@ -13,14 +13,14 @@ const ONE_DAY: SignedDuration = SignedDuration::from_days(1);
 impl Trigger {
     pub(super) fn next(&self, previous: DateTime, first: bool) -> DateTime {
         match self {
-            Self::FixedRate(interval) => {
+            Trigger::FixedRate(interval) => {
                 if first {
                     previous.add_duration(INITIAL_DELAY).expect("duration must be in range") // initial delay
                 } else {
                     previous.add_duration(*interval).expect("duration must be in range")
                 }
             }
-            Self::Daily(time) => {
+            Trigger::Daily(time) => {
                 let next_time = previous.with_time(*time);
                 if next_time > previous {
                     next_time

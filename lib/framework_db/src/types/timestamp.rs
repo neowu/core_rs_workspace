@@ -48,25 +48,25 @@ impl ToSql for Timestamp {
 // infinity / -infinity are sent as i64::MAX / i64::MIN, add_duration fails with out of range on
 // both rather than decoding to a bogus point in time
 impl<'a> FromSql<'a> for Timestamp {
-    fn from_sql(_ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql(_ty: &Type, raw: &'a [u8]) -> Result<Timestamp, Box<dyn Error + Sync + Send>> {
         let micros = types::timestamp_from_sql(raw)?;
         let date_time = BASE_TIMESTAMP
             .add_duration(SignedDuration::from_nanos(i128::from(micros) * 1_000))
             .map_err(|_err| format!("timestamp is out of range, micros={micros}"))?;
-        Ok(Self(date_time))
+        Ok(Timestamp(date_time))
     }
 
     accepts!(TIMESTAMPTZ);
 }
 
 impl From<DateTime> for Timestamp {
-    fn from(date_time: DateTime) -> Self {
-        Self(date_time)
+    fn from(date_time: DateTime) -> Timestamp {
+        Timestamp(date_time)
     }
 }
 
 impl From<Timestamp> for DateTime {
-    fn from(timestamp: Timestamp) -> Self {
+    fn from(timestamp: Timestamp) -> DateTime {
         timestamp.0
     }
 }

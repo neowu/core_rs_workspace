@@ -39,24 +39,24 @@ impl Serialize for DateTime64 {
 }
 
 impl<'de> Deserialize<'de> for DateTime64 {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<DateTime64, D::Error> {
         if deserializer.is_human_readable() {
-            DateTime::deserialize(deserializer).map(Self)
+            DateTime::deserialize(deserializer).map(DateTime64)
         } else {
             let millis: i128 = i64::deserialize(deserializer)? as i128;
-            DateTime::from_unix_timestamp_nanos(millis * 1_000_000).map(Self).map_err(de::Error::custom)
+            DateTime::from_unix_timestamp_nanos(millis * 1_000_000).map(DateTime64).map_err(de::Error::custom)
         }
     }
 }
 
 impl From<DateTime> for DateTime64 {
-    fn from(date_time: DateTime) -> Self {
-        Self(date_time)
+    fn from(date_time: DateTime) -> DateTime64 {
+        DateTime64(date_time)
     }
 }
 
 impl From<DateTime64> for DateTime {
-    fn from(date_time: DateTime64) -> Self {
+    fn from(date_time: DateTime64) -> DateTime {
         date_time.0
     }
 }

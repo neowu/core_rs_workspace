@@ -9,11 +9,11 @@ use time::UtcOffset;
 pub struct Offset(pub(crate) UtcOffset);
 
 impl Offset {
-    pub const UTC: Self = Self(UtcOffset::UTC);
+    pub const UTC: Offset = Offset(UtcOffset::UTC);
 
     /// East of UTC is positive, e.g. 8 for +08:00, -5 for -05:00,
     /// the sign of the hour component applies to the whole offset.
-    pub const fn new(hours: i8, minutes: i8) -> Self {
+    pub const fn new(hours: i8, minutes: i8) -> Offset {
         match UtcOffset::from_hms(hours, minutes, 0) {
             Ok(offset) => Offset(offset),
             Err(_) => panic!("input must be valid"),

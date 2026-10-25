@@ -49,7 +49,7 @@ pub struct HttpServerConfig {
 }
 
 impl Default for HttpServerConfig {
-    fn default() -> Self {
+    fn default() -> HttpServerConfig {
         HttpServerConfig {
             bind_address: "0.0.0.0:8080".to_owned(),
             max_forwarded_ips: 2,
@@ -76,8 +76,8 @@ struct Shared {
 }
 
 impl HttpServer {
-    pub fn new(config: HttpServerConfig) -> Self {
-        Self { config, counter: Arc::default(), sse_counter: Arc::default() }
+    pub fn new(config: HttpServerConfig) -> HttpServer {
+        HttpServer { config, counter: Arc::default(), sse_counter: Arc::default() }
     }
 
     /// Peak active handlers (excluding health checks and response body streaming) and open sse streams

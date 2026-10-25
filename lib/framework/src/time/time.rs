@@ -18,16 +18,16 @@ pub struct Time(pub(crate) time::Time);
 impl Time {
     pub const MIDNIGHT: Time = Time(time::Time::MIDNIGHT);
 
-    pub const fn new(hour: u8, minute: u8, second: u8) -> Self {
+    pub const fn new(hour: u8, minute: u8, second: u8) -> Time {
         match time::Time::from_hms(hour, minute, second) {
             Ok(time) => Time(time),
             Err(_) => panic!("input must be valid"),
         }
     }
 
-    pub fn parse(value: &str) -> Result<Self, Exception> {
+    pub fn parse(value: &str) -> Result<Time, Exception> {
         time::Time::parse(value, format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]"))
-            .map(Self)
+            .map(Time)
             .map_err(|err| exception!(format!("failed to parse time, value={value}"), source = err))
     }
 
@@ -58,9 +58,9 @@ impl Serialize for Time {
 }
 
 impl<'de> Deserialize<'de> for Time {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Time, D::Error> {
         let value = Cow::<str>::deserialize(deserializer)?;
-        Self::parse(&value).map_err(de::Error::custom)
+        Time::parse(&value).map_err(de::Error::custom)
     }
 }
 

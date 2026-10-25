@@ -55,7 +55,7 @@ pub struct ActionMessage {
 }
 
 impl From<Action> for ActionMessage {
-    fn from(action: Action) -> Self {
+    fn from(action: Action) -> ActionMessage {
         let context = CONTEXT.get().expect("context must be initialized");
 
         // the buffer already carries the lines joined by '\n', so this is a move
@@ -99,7 +99,7 @@ pub struct MetricsMessage {
 }
 
 impl From<Metrics> for MetricsMessage {
-    fn from(metrics: Metrics) -> Self {
+    fn from(metrics: Metrics) -> MetricsMessage {
         let (error_code, error_message) = match metrics.error {
             Some(error) => (error.code.map(str::to_owned), Some(error.message)),
             None => (None, None),

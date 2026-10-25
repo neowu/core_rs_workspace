@@ -16,13 +16,13 @@ pub struct NatsAppender {
 }
 
 impl NatsAppender {
-    pub async fn new(url: &str) -> Self {
+    pub async fn new(url: &str) -> NatsAppender {
         console!("start nats log appender, url={url}");
         let client = async_nats::connect_with_options(url, ConnectOptions::default())
             .await
             .unwrap_or_else(|e| panic!("failed to connect to log nats server, error={e}"));
 
-        Self { client }
+        NatsAppender { client }
     }
 
     // the log stream captures log.>, so a core publish still lands in the stream, without the

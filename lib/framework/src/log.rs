@@ -123,7 +123,7 @@ where
 {
     type Output = F::Output;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut ActionFuture<F>>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
         // not `ready!`: the allocation and poll stats have to be taken on the Pending path too, or every
         // poll but the last is lost

@@ -27,15 +27,15 @@ pub struct Event {
 }
 
 impl Event {
-    pub const fn new(data: String) -> Self {
-        Self { id: None, event_type: None, data }
+    pub const fn new(data: String) -> Event {
+        Event { id: None, event_type: None, data }
     }
 
-    pub fn json<T>(data: &T) -> Result<Self, Exception>
+    pub fn json<T>(data: &T) -> Result<Event, Exception>
     where
         T: serde::Serialize + Debug,
     {
-        Ok(Self::new(json::to_json(data)?))
+        Ok(Event::new(json::to_json(data)?))
     }
 }
 

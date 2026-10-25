@@ -20,7 +20,7 @@ pub struct Exception {
 impl Exception {
     // used to convert Box<dyn Error>
     #[inline]
-    pub fn from_dyn(error: &dyn Error) -> Self {
+    pub fn from_dyn(error: &dyn Error) -> Exception {
         Exception {
             severity: Severity::Error,
             code: None,
@@ -32,14 +32,20 @@ impl Exception {
 
     #[inline]
     #[doc(hidden)]
-    pub fn __new(message: impl Into<String>, location: &'static str) -> Self {
-        Self { severity: Severity::Error, code: None, message: message.into(), location: Some(location), source: None }
+    pub fn __new(message: impl Into<String>, location: &'static str) -> Exception {
+        Exception {
+            severity: Severity::Error,
+            code: None,
+            message: message.into(),
+            location: Some(location),
+            source: None,
+        }
     }
 
     #[inline]
     #[must_use]
     #[doc(hidden)]
-    pub const fn __with_severity(mut self, severity: Severity) -> Self {
+    pub const fn __with_severity(mut self, severity: Severity) -> Exception {
         self.severity = severity;
         self
     }
@@ -47,7 +53,7 @@ impl Exception {
     #[inline]
     #[must_use]
     #[doc(hidden)]
-    pub const fn __with_code(mut self, code: &'static str) -> Self {
+    pub const fn __with_code(mut self, code: &'static str) -> Exception {
         self.code = Some(code);
         self
     }
@@ -55,7 +61,7 @@ impl Exception {
     #[inline]
     #[must_use]
     #[doc(hidden)]
-    pub fn __with_source(mut self, source: impl Into<Exception>) -> Self {
+    pub fn __with_source(mut self, source: impl Into<Exception>) -> Exception {
         self.source = Some(Box::new(source.into()));
         self
     }
@@ -129,7 +135,7 @@ where
     T: Error + 'static,
 {
     #[inline]
-    fn from(error: T) -> Self {
+    fn from(error: T) -> Exception {
         Exception {
             severity: Severity::Error,
             code: None,

@@ -83,8 +83,8 @@ pub struct Router {
 }
 
 impl Router {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> Router {
+        Router::default()
     }
 
     /// Handlers registered on the returned router take `state` as first argument, convert back with `into()`.
@@ -99,7 +99,7 @@ impl Router {
     /// Serves files under `root` for GET / HEAD requests whose path starts with `prefix`,
     /// `prefix` must start and end with `/`, a path ending with `/` serves `index.html`.
     #[must_use]
-    pub fn dir(mut self, prefix: &'static str, root: impl Into<PathBuf>) -> Self {
+    pub fn dir(mut self, prefix: &'static str, root: impl Into<PathBuf>) -> Router {
         let root: Arc<Path> = Arc::from(root.into());
         let handler: Handler = Box::new(move |request| Box::pin(file::serve_dir(prefix, Arc::clone(&root), request)));
         self.routes.add_prefix(Method::GET, prefix, Route { name: "framework::web::file::serve_dir", handler });
@@ -108,7 +108,7 @@ impl Router {
 
     /// Serves one file for GET / HEAD requests on `path`.
     #[must_use]
-    pub fn file(mut self, path: &'static str, file: impl Into<PathBuf>) -> Self {
+    pub fn file(mut self, path: &'static str, file: impl Into<PathBuf>) -> Router {
         let file: Arc<Path> = Arc::from(file.into());
         let handler: Handler = Box::new(move |request| Box::pin(file::serve_file(Arc::clone(&file), request)));
         self.routes.add(Method::GET, path, Route { name: "framework::web::file::serve_file", handler });
@@ -117,7 +117,7 @@ impl Router {
 
     /// Takes routes of another router, panics on duplicate routes.
     #[must_use]
-    pub fn merge(mut self, other: impl Into<Router>) -> Self {
+    pub fn merge(mut self, other: impl Into<Router>) -> Router {
         let other = other.into();
         for (path, routes) in other.routes.exact {
             for (method, route) in routes {
@@ -140,8 +140,8 @@ pub struct StateRouter<S> {
 }
 
 impl<S> From<StateRouter<S>> for Router {
-    fn from(router: StateRouter<S>) -> Self {
-        Self { routes: router.routes }
+    fn from(router: StateRouter<S>) -> Router {
+        Router { routes: router.routes }
     }
 }
 
@@ -150,7 +150,7 @@ where
     S: Send + Sync + 'static,
 {
     #[must_use]
-    pub fn route<F, Fut>(self, method: Method, path: &'static str, handler: F) -> Self
+    pub fn route<F, Fut>(self, method: Method, path: &'static str, handler: F) -> StateRouter<S>
     where
         F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
@@ -162,7 +162,13 @@ where
     // used by #[api], the handler is a closure, its type name is not meaningful as `fn` context
     #[doc(hidden)]
     #[must_use]
-    pub fn __route<F, Fut>(mut self, method: Method, path: &'static str, name: &'static str, handler: F) -> Self
+    pub fn __route<F, Fut>(
+        mut self,
+        method: Method,
+        path: &'static str,
+        name: &'static str,
+        handler: F,
+    ) -> StateRouter<S>
     where
         F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
@@ -175,7 +181,7 @@ where
     /// Routes requests whose path starts with `prefix`, for paths with a variable tail, e.g. `/event/{app}`,
     /// `prefix` must start and end with `/`, the handler reads the tail from `request.path()`.
     #[must_use]
-    pub fn prefix<F, Fut>(mut self, method: Method, prefix: &'static str, handler: F) -> Self
+    pub fn prefix<F, Fut>(mut self, method: Method, prefix: &'static str, handler: F) -> StateRouter<S>
     where
         F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Response, Exception>> + Send + 'static,

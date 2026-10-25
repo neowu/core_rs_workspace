@@ -41,42 +41,42 @@ pub struct Response {
 
 impl Response {
     /// 204 with no body.
-    pub fn empty() -> Self {
-        Self { status: StatusCode::NO_CONTENT, headers: HeaderMap::new(), body: Body::Empty }
+    pub fn empty() -> Response {
+        Response { status: StatusCode::NO_CONTENT, headers: HeaderMap::new(), body: Body::Empty }
     }
 
     /// 200 with `application/json` body, logs the body.
-    pub fn json<T>(value: &T) -> Result<Self, Exception>
+    pub fn json<T>(value: &T) -> Result<Response, Exception>
     where
         T: serde::Serialize + Debug,
     {
         let body = json::to_json(value)?;
         log!("[response] body={body}");
         stats!(response_content_length = body.len());
-        Ok(Self::bytes(body, APPLICATION_JSON))
+        Ok(Response::bytes(body, APPLICATION_JSON))
     }
 
     /// 200 with `text/plain; charset=utf-8` body.
-    pub fn text(body: impl Into<Bytes>) -> Self {
-        Self::bytes(body, TEXT_PLAIN)
+    pub fn text(body: impl Into<Bytes>) -> Response {
+        Response::bytes(body, TEXT_PLAIN)
     }
 
     /// 200 with `text/html; charset=utf-8` body.
-    pub fn html(body: impl Into<Bytes>) -> Self {
-        Self::bytes(body, TEXT_HTML)
+    pub fn html(body: impl Into<Bytes>) -> Response {
+        Response::bytes(body, TEXT_HTML)
     }
 
     /// 200 with body of given content type.
-    pub fn bytes(body: impl Into<Bytes>, content_type: HeaderValue) -> Self {
+    pub fn bytes(body: impl Into<Bytes>, content_type: HeaderValue) -> Response {
         let mut headers = HeaderMap::with_capacity(1);
         headers.insert(header::CONTENT_TYPE, content_type);
-        Self { status: StatusCode::OK, headers, body: Body::Full(body.into()) }
+        Response { status: StatusCode::OK, headers, body: Body::Full(body.into()) }
     }
 
     /// 200 `text/event-stream`, after the http action `handler` runs as the `sse` action for the whole stream:
     /// the stream ends when it returns, it is dropped when the stream closes (client disconnected or shutdown).
     /// Reject the request (e.g. auth) by returning an error from the controller before this.
-    pub fn sse<F, Fut>(handler: F) -> Self
+    pub fn sse<F, Fut>(handler: F) -> Response
     where
         F: FnOnce(SseChannel) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,
@@ -84,17 +84,17 @@ impl Response {
         let mut headers = HeaderMap::with_capacity(2);
         headers.insert(header::CONTENT_TYPE, TEXT_EVENT_STREAM);
         headers.insert(header::CACHE_CONTROL, NO_CACHE);
-        Self { status: StatusCode::OK, headers, body: Body::Sse(SseBody::new(handler)) }
+        Response { status: StatusCode::OK, headers, body: Body::Sse(SseBody::new(handler)) }
     }
 
     #[must_use]
-    pub const fn status(mut self, status: StatusCode) -> Self {
+    pub const fn status(mut self, status: StatusCode) -> Response {
         self.status = status;
         self
     }
 
     #[must_use]
-    pub fn header(mut self, name: HeaderName, value: HeaderValue) -> Self {
+    pub fn header(mut self, name: HeaderName, value: HeaderValue) -> Response {
         self.headers.insert(name, value);
         self
     }
@@ -111,14 +111,14 @@ impl Response {
         &mut self.headers
     }
 
-    pub(crate) fn file(file: fs::File, length: u64) -> Self {
+    pub(crate) fn file(file: fs::File, length: u64) -> Response {
         // limit to the stat length, a growing file must not exceed content-length
         let stream = ReaderStream::with_capacity(File::from_std(file).take(length), 64 * 1024);
-        Self { status: StatusCode::OK, headers: HeaderMap::new(), body: Body::File { stream, remaining: length } }
+        Response { status: StatusCode::OK, headers: HeaderMap::new(), body: Body::File { stream, remaining: length } }
     }
 
     // json body without logging, the exception is already logged with the action
-    pub(crate) fn error(exception: &Exception) -> Self {
+    pub(crate) fn error(exception: &Exception) -> Response {
         let status = exception.code.map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
             error_code::BAD_REQUEST | error_code::VALIDATION_ERROR => StatusCode::BAD_REQUEST,
             error_code::NOT_FOUND => StatusCode::NOT_FOUND,
@@ -131,13 +131,13 @@ impl Response {
             message: exception.message.clone(),
         };
         match json::to_json(&body) {
-            Ok(body) => Self::bytes(body, APPLICATION_JSON).status(status),
-            Err(_) => Self::empty().status(status),
+            Ok(body) => Response::bytes(body, APPLICATION_JSON).status(status),
+            Err(_) => Response::empty().status(status),
         }
     }
 
     // hyper h2 still sends the body of HEAD responses, which h2 clients reject, so keep content-length and drop the body
-    pub(crate) fn without_body(mut self) -> Self {
+    pub(crate) fn without_body(mut self) -> Response {
         if let Some(length) = http_body::Body::size_hint(&self.body).exact()
             && length > 0
             && !self.headers.contains_key(header::CONTENT_LENGTH)
@@ -148,7 +148,7 @@ impl Response {
         self
     }
 
-    pub(crate) fn without_content(mut self) -> Self {
+    pub(crate) fn without_content(mut self) -> Response {
         self.headers.remove(header::CONTENT_LENGTH);
         self.body = Body::Empty;
         self
@@ -181,7 +181,7 @@ impl http_body::Body for Body {
     type Data = Bytes;
     type Error = io::Error;
 
-    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, io::Error>>> {
+    fn poll_frame(self: Pin<&mut Body>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, io::Error>>> {
         let this = self.get_mut();
         match this {
             Body::Empty => Poll::Ready(None),

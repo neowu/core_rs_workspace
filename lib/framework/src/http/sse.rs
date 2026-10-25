@@ -32,7 +32,7 @@ pub struct EventSource {
 }
 
 impl EventSource {
-    pub(super) fn new(response: Pin<Box<dyn Stream<Item = Result<Bytes, Exception>> + Send>>) -> Self {
+    pub(super) fn new(response: Pin<Box<dyn Stream<Item = Result<Bytes, Exception>> + Send>>) -> EventSource {
         EventSource {
             response,
             line: vec![],
@@ -117,7 +117,7 @@ impl Drop for EventSource {
 impl Stream for EventSource {
     type Item = Result<Event, Exception>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut EventSource>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             if let Some(event) = self.events.pop_front() {
                 return Poll::Ready(Some(Ok(event)));

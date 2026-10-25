@@ -7,28 +7,28 @@ pub struct SignedDuration(pub(crate) time::SignedDuration);
 
 impl SignedDuration {
     #[inline]
-    pub const fn from_days(days: i64) -> Self {
-        Self(time::SignedDuration::days(days))
+    pub const fn from_days(days: i64) -> SignedDuration {
+        SignedDuration(time::SignedDuration::days(days))
     }
 
     #[inline]
-    pub const fn from_hours(hours: i64) -> Self {
-        Self(time::SignedDuration::hours(hours))
+    pub const fn from_hours(hours: i64) -> SignedDuration {
+        SignedDuration(time::SignedDuration::hours(hours))
     }
 
     #[inline]
-    pub const fn from_mins(mins: i64) -> Self {
-        Self(time::SignedDuration::minutes(mins))
+    pub const fn from_mins(mins: i64) -> SignedDuration {
+        SignedDuration(time::SignedDuration::minutes(mins))
     }
 
     #[inline]
-    pub const fn from_secs(secs: i64) -> Self {
-        Self(time::SignedDuration::seconds(secs))
+    pub const fn from_secs(secs: i64) -> SignedDuration {
+        SignedDuration(time::SignedDuration::seconds(secs))
     }
 
     #[inline]
-    pub const fn from_nanos(nanos: i128) -> Self {
-        Self(time::SignedDuration::nanoseconds_i128(nanos))
+    pub const fn from_nanos(nanos: i128) -> SignedDuration {
+        SignedDuration(time::SignedDuration::nanoseconds_i128(nanos))
     }
 
     #[inline]

@@ -52,7 +52,7 @@ pub struct ClickHouse {
 }
 
 impl ClickHouse {
-    pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> Self {
+    pub fn new(uri: &str, user: &str, password: &str, database: Option<&str>) -> ClickHouse {
         console!("create clickhouse client, uri={uri}, user={user}, db={database:?}");
         // same as clickhouse's default http client, only with FallbackDnsResolver; clickhouse server keep_alive_timeout is 3s by default
         let http_client =
@@ -60,7 +60,7 @@ impl ClickHouse {
         let client = Client::with_http_client(http_client).with_url(uri).with_user(user).with_password(password);
         let client = if let Some(database) = database { client.with_database(database) } else { client };
 
-        Self { client }
+        ClickHouse { client }
     }
 
     // each `?` in sql is replaced client-side by the corresponding param, in order; use `??` for a literal `?`

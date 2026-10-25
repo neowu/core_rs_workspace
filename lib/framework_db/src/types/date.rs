@@ -45,23 +45,23 @@ impl ToSql for Date {
 
 // infinity / -infinity are sent as i32::MAX / i32::MIN, add_days fails with out of range on both
 impl<'a> FromSql<'a> for Date {
-    fn from_sql(_ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql(_ty: &Type, raw: &'a [u8]) -> Result<Date, Box<dyn Error + Sync + Send>> {
         let days = types::date_from_sql(raw)?;
         let date = BASE_DATE.add_days(i64::from(days)).map_err(|err| err.to_string())?;
-        Ok(Self(date))
+        Ok(Date(date))
     }
 
     accepts!(DATE);
 }
 
 impl From<time::Date> for Date {
-    fn from(date: time::Date) -> Self {
-        Self(date)
+    fn from(date: time::Date) -> Date {
+        Date(date)
     }
 }
 
 impl From<Date> for time::Date {
-    fn from(date: Date) -> Self {
+    fn from(date: Date) -> time::Date {
         date.0
     }
 }

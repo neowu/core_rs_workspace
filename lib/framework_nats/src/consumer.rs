@@ -56,8 +56,8 @@ pub struct ConsumerConfig {
 }
 
 impl Default for ConsumerConfig {
-    fn default() -> Self {
-        Self { max_concurrency: 100, batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
+    fn default() -> ConsumerConfig {
+        ConsumerConfig { max_concurrency: 100, batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
     }
 }
 
@@ -68,8 +68,8 @@ pub struct BatchConsumerConfig {
 }
 
 impl Default for BatchConsumerConfig {
-    fn default() -> Self {
-        Self { batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
+    fn default() -> BatchConsumerConfig {
+        BatchConsumerConfig { batch_max_messages: 1000, batch_max_wait: Duration::from_secs(1) }
     }
 }
 
@@ -108,8 +108,8 @@ impl<S> Consumer<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new(client: Client, stream: &'static str, durable: &'static str, config: ConsumerConfig) -> Self {
-        Self { context: jetstream::new(client), stream, durable, handlers: HashMap::new(), config }
+    pub fn new(client: Client, stream: &'static str, durable: &'static str, config: ConsumerConfig) -> Consumer<S> {
+        Consumer { context: jetstream::new(client), stream, durable, handlers: HashMap::new(), config }
     }
 
     pub fn add_handler<H, Fut, M>(&mut self, subject: &Subject<M>, handler: H)
@@ -123,7 +123,7 @@ where
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
-        let Self { context, stream, durable, handlers, config } = self;
+        let Consumer { context, stream, durable, handlers, config } = self;
         let subjects: Vec<String> = handlers.keys().map(|subject| (*subject).to_owned()).collect();
         console!(
             "start nats consumer, server={}, stream={stream}, name={durable}, subjects={subjects:?}",
@@ -217,7 +217,7 @@ where
         // graceful shutdown: messages not yet dispatched are nak'd for immediate redelivery (to another
         // instance, or the next release), then in-flight handlers are waited for; any that overrun the
         // timeout are abandoned (their messages are redelivered after ack_wait).
-        for (_, _, raw) in queue.drain(..) {
+        for (_, _, raw) in queue {
             nak(&raw, None).await;
         }
         if let Some(abandoned) = executor.shutdown(SHUTDOWN_TIMEOUT).await {
@@ -301,8 +301,8 @@ where
         subject: &Subject<M>,
         handler: H,
         config: BatchConsumerConfig,
-    ) -> Self {
-        Self {
+    ) -> BatchConsumer<S, M, H> {
+        BatchConsumer {
             context: jetstream::new(client),
             stream,
             durable,
@@ -314,7 +314,7 @@ where
     }
 
     pub async fn start(self, state: S, shutdown_signal: CancellationToken) {
-        let Self { context, stream, durable, subject, handler, config, .. } = self;
+        let BatchConsumer { context, stream, durable, subject, handler, config, .. } = self;
 
         console!(
             "start nats batch consumer, server={}, stream={stream}, name={durable}, subject={subject}",

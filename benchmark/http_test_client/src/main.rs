@@ -82,7 +82,7 @@ struct Target {
 }
 
 impl Target {
-    fn new(args: &Args) -> Self {
+    fn new(args: &Args) -> Target {
         let scenario = args.scenario;
         let path = scenario.path();
         let mut headers: HeaderMap =

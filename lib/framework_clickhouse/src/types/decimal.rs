@@ -15,15 +15,15 @@ pub struct Decimal64<const S: u8>(i64);
 impl<const S: u8> Decimal64<S> {
     // Decimal64 precision is 18, so S > 18 fails here at compile time via const eval overflow
     const SCALE_UNIT: i64 = 10_i64.pow(S as u32);
-    const SCALE: f64 = Self::SCALE_UNIT as f64;
+    const SCALE: f64 = Decimal64::<S>::SCALE_UNIT as f64;
 
     // f64 keeps 15-16 significant digits, exact for amounts up to ~10^9 with 6 decimal places
-    pub fn from_f64(amount: f64) -> Self {
-        Self((amount * Self::SCALE).round() as i64)
+    pub fn from_f64(amount: f64) -> Decimal64<S> {
+        Decimal64((amount * Decimal64::<S>::SCALE).round() as i64)
     }
 
     pub fn to_f64(self) -> f64 {
-        self.0 as f64 / Self::SCALE
+        self.0 as f64 / Decimal64::<S>::SCALE
     }
 }
 
@@ -33,7 +33,7 @@ impl<const S: u8> Debug for Decimal64<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let sign = if self.0 < 0 { "-" } else { "" };
         let value = self.0.unsigned_abs();
-        let scale = Self::SCALE_UNIT.unsigned_abs();
+        let scale = Decimal64::<S>::SCALE_UNIT.unsigned_abs();
         if S == 0 {
             write!(f, "{sign}{value}")
         } else {
@@ -43,13 +43,13 @@ impl<const S: u8> Debug for Decimal64<S> {
 }
 
 impl<const S: u8> From<f64> for Decimal64<S> {
-    fn from(amount: f64) -> Self {
-        Self::from_f64(amount)
+    fn from(amount: f64) -> Decimal64<S> {
+        Decimal64::<S>::from_f64(amount)
     }
 }
 
 impl<const S: u8> From<Decimal64<S>> for f64 {
-    fn from(decimal: Decimal64<S>) -> Self {
+    fn from(decimal: Decimal64<S>) -> f64 {
         decimal.to_f64()
     }
 }

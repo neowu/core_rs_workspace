@@ -36,16 +36,16 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         impl serde::Serialize for #ident {
             fn serialize<S: serde::Serializer>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> {
                 serializer.serialize_i8(match self {
-                    #(Self::#variants => #values,)*
+                    #(#ident::#variants => #values,)*
                 })
             }
         }
 
         impl<'de> serde::Deserialize<'de> for #ident {
-            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> ::std::result::Result<Self, D::Error> {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> ::std::result::Result<#ident, D::Error> {
                 let value = <i8 as serde::Deserialize>::deserialize(deserializer)?;
                 match value {
-                    #(#values => Ok(Self::#variants),)*
+                    #(#values => Ok(#ident::#variants),)*
                     _ => Err(serde::de::Error::custom(format!("unknown enum value, value={value}"))),
                 }
             }
@@ -95,20 +95,20 @@ mod tests {
                 impl serde::Serialize for ActionResult {
                     fn serialize<S: serde::Serializer>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> {
                         serializer.serialize_i8(match self {
-                            Self::Ok => 1,
-                            Self::Warn => 2,
-                            Self::Error => -3,
+                            ActionResult::Ok => 1,
+                            ActionResult::Warn => 2,
+                            ActionResult::Error => -3,
                         })
                     }
                 }
 
                 impl<'de> serde::Deserialize<'de> for ActionResult {
-                    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> ::std::result::Result<Self, D::Error> {
+                    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> ::std::result::Result<ActionResult, D::Error> {
                         let value = <i8 as serde::Deserialize>::deserialize(deserializer)?;
                         match value {
-                            1 => Ok(Self::Ok),
-                            2 => Ok(Self::Warn),
-                            -3 => Ok(Self::Error),
+                            1 => Ok(ActionResult::Ok),
+                            2 => Ok(ActionResult::Warn),
+                            -3 => Ok(ActionResult::Error),
                             _ => Err(serde::de::Error::custom(format!("unknown enum value, value={value}"))),
                         }
                     }

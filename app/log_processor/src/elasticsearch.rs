@@ -21,8 +21,8 @@ pub(crate) struct Elasticsearch {
 }
 
 impl Elasticsearch {
-    pub(crate) fn new(uri: String) -> Self {
-        Self {
+    pub(crate) fn new(uri: String) -> Elasticsearch {
+        Elasticsearch {
             uri,
             client: HttpClient::new(HttpClientConfig {
                 enable_fallback_dns_cache: true,

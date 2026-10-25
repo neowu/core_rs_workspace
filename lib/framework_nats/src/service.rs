@@ -48,8 +48,8 @@ pub struct ServiceConfig {
 }
 
 impl Default for ServiceConfig {
-    fn default() -> Self {
-        Self { max_concurrency: 100 }
+    fn default() -> ServiceConfig {
+        ServiceConfig { max_concurrency: 100 }
     }
 }
 
@@ -71,8 +71,8 @@ pub struct Service {
 
 impl Service {
     #[doc(hidden)]
-    pub fn __new(client: Client, config: ServiceConfig) -> Self {
-        Self { client: Arc::new(client), handlers: HashMap::new(), config, counter: Arc::default() }
+    pub fn __new(client: Client, config: ServiceConfig) -> Service {
+        Service { client: Arc::new(client), handlers: HashMap::new(), config, counter: Arc::default() }
     }
 
     #[doc(hidden)]
@@ -97,7 +97,7 @@ impl Service {
     }
 
     pub async fn start(self, shutdown_signal: CancellationToken) {
-        let Self { client, handlers, config, counter } = self;
+        let Service { client, handlers, config, counter } = self;
 
         let mut subscribers = Vec::with_capacity(handlers.len());
         for subject in handlers.keys() {
@@ -225,8 +225,8 @@ pub struct ServiceClient {
 
 impl ServiceClient {
     #[doc(hidden)]
-    pub const fn __new(client: Client) -> Self {
-        Self { client }
+    pub const fn __new(client: Client) -> ServiceClient {
+        ServiceClient { client }
     }
 
     #[doc(hidden)]

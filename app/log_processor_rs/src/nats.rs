@@ -14,7 +14,7 @@ pub(crate) enum Severity {
 }
 
 impl From<log::Severity> for Severity {
-    fn from(severity: log::Severity) -> Self {
+    fn from(severity: log::Severity) -> Severity {
         match severity {
             log::Severity::Info => Severity::Info,
             log::Severity::Warn => Severity::Warn,

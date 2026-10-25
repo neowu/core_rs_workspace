@@ -25,7 +25,7 @@ pub(crate) struct MetricsCollector {
 }
 
 impl MetricsCollector {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new() -> MetricsCollector {
         let now = Instant::now();
         let cpu_stats = if let Some(clock_ticks) = clock_ticks()
             && let Some(container_cpu_time) = container_cpu_time()
@@ -56,7 +56,7 @@ impl MetricsCollector {
             RuntimeStats { previous_wall_time: now, previous_busy_time: runtime_busy_time(&metrics), metrics }
         });
 
-        Self { cpu_stats, mem_stats, runtime_stats, collectors: Vec::new() }
+        MetricsCollector { cpu_stats, mem_stats, runtime_stats, collectors: Vec::new() }
     }
 
     pub(crate) fn add(&mut self, collector: impl Fn(&mut Metrics) + Send + 'static) {

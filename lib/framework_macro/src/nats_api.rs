@@ -73,8 +73,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         }
 
         impl #client_ident {
-            #trait_vis fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                Self { client: ::framework_nats::service::ServiceClient::__new(client) }
+            #trait_vis fn new(client: ::framework_nats::async_nats::Client) -> #client_ident {
+                #client_ident { client: ::framework_nats::service::ServiceClient::__new(client) }
             }
         }
 
@@ -282,8 +282,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                        Self { client: ::framework_nats::service::ServiceClient::__new(client) }
+                    pub fn new(client: ::framework_nats::async_nats::Client) -> UserServiceClient {
+                        UserServiceClient { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
 
@@ -367,8 +367,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(client: ::framework_nats::async_nats::Client) -> Self {
-                        Self { client: ::framework_nats::service::ServiceClient::__new(client) }
+                    pub fn new(client: ::framework_nats::async_nats::Client) -> UserServiceClient {
+                        UserServiceClient { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
 

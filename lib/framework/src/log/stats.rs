@@ -75,7 +75,7 @@ pub(crate) struct AllocStats {
 }
 
 impl AllocStats {
-    pub(crate) const fn new() -> Self {
+    pub(crate) const fn new() -> AllocStats {
         AllocStats { count: 0, bytes: 0 }
     }
 
@@ -119,7 +119,7 @@ pub(crate) struct PollStats {
 }
 
 impl PollStats {
-    pub(crate) const fn new() -> Self {
+    pub(crate) const fn new() -> PollStats {
         PollStats { elapsed: 0, count: 0 }
     }
 

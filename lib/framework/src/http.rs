@@ -86,8 +86,8 @@ pub struct HttpClientConfig {
 
 impl Default for HttpClientConfig {
     // for docker image used on cloud env, must install "ca-certificates"
-    fn default() -> Self {
-        Self {
+    fn default() -> HttpClientConfig {
+        HttpClientConfig {
             accept_invalid_cert: false,
             accept_certs: None,
             timeout: Duration::from_secs(30),
@@ -100,8 +100,8 @@ impl Default for HttpClientConfig {
 
 impl HttpClientConfig {
     // use to call internal services with self signed certs and http2
-    pub const fn internal_only() -> Self {
-        Self {
+    pub const fn internal_only() -> HttpClientConfig {
+        HttpClientConfig {
             accept_invalid_cert: true,
             accept_certs: Some(vec![]),
             timeout: Duration::from_secs(30),
@@ -126,7 +126,7 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    pub fn new(method: Method, url: impl Into<String>) -> Result<Self, Exception> {
+    pub fn new(method: Method, url: impl Into<String>) -> Result<HttpRequest, Exception> {
         let url = url.into();
         let uri: Uri = url.parse().map_err(|err| exception!(format!("invalid url, url={url}"), source = err))?;
         let https = match uri.scheme_str() {
@@ -223,7 +223,7 @@ struct IdleConnection {
 }
 
 impl HttpClient {
-    pub fn new(config: HttpClientConfig) -> Self {
+    pub fn new(config: HttpClientConfig) -> HttpClient {
         HttpClient {
             tls: TlsConnector::from(Arc::new(tls::tls_config(&config))),
             resolver: config.enable_fallback_dns_cache.then(FallbackDnsResolver::default),

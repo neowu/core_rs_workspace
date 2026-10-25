@@ -38,8 +38,8 @@ pub struct ApiClient {
 impl ApiClient {
     #[doc(hidden)]
     #[inline]
-    pub const fn __new(http_client: Arc<HttpClient>, api_url: String) -> Self {
-        Self { http_client, api_url }
+    pub const fn __new(http_client: Arc<HttpClient>, api_url: String) -> ApiClient {
+        ApiClient { http_client, api_url }
     }
 
     #[doc(hidden)]

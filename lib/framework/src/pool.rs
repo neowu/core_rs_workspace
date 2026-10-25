@@ -52,8 +52,8 @@ where
         max_valid_window: Duration,
         max_life_time: Duration,
         checkout_timeout: Duration,
-    ) -> Self {
-        Self {
+    ) -> ResourcePool<R> {
+        ResourcePool {
             storage: Mutex::new(VecDeque::with_capacity(capacity)),
             semaphore: Arc::new(Semaphore::new(capacity)),
             counter: Counter::default(),

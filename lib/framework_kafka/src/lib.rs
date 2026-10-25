@@ -9,8 +9,8 @@ pub struct Topic<T> {
 }
 
 impl<T> Topic<T> {
-    pub const fn new(name: &'static str) -> Self {
-        Self { name, _marker: PhantomData }
+    pub const fn new(name: &'static str) -> Topic<T> {
+        Topic { name, _marker: PhantomData }
     }
 }
 

@@ -36,8 +36,8 @@ struct SlackMessageApiResponse {
 }
 
 impl SlackClient {
-    pub(crate) fn new(token: String, error_channel: String, warn_channel: String) -> Self {
-        Self { token, error_channel, warn_channel, client: HttpClient::new(HttpClientConfig::default()) }
+    pub(crate) fn new(token: String, error_channel: String, warn_channel: String) -> SlackClient {
+        SlackClient { token, error_channel, warn_channel, client: HttpClient::new(HttpClientConfig::default()) }
     }
 
     // refer to https://api.slack.com/methods/chat.postMessage

@@ -20,9 +20,9 @@ pub struct Producer {
 }
 
 impl Producer {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client) -> Producer {
         console!("create nats producer, server={}", client.server_info().server_name);
-        Self { context: jetstream::new(client) }
+        Producer { context: jetstream::new(client) }
     }
 
     // let caller decide what to do with ack, whether batch wait or throw away

@@ -14,7 +14,7 @@ pub struct Field<E, V> {
 
 impl<E, V: ToSql + Sync + Send + 'static> Field<E, V> {
     #[doc(hidden)]
-    pub const fn __new(column: &'static str) -> Self {
+    pub const fn __new(column: &'static str) -> Field<E, V> {
         Field { column, _marker: PhantomData }
     }
 

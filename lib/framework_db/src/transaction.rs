@@ -18,7 +18,7 @@ pub struct Transaction<'a> {
 }
 
 impl<'a> Transaction<'a> {
-    pub(crate) async fn begin(conn: ResourceGuard<'a, ConnectionManager>) -> Result<Self, Exception> {
+    pub(crate) async fn begin(conn: ResourceGuard<'a, ConnectionManager>) -> Result<Transaction<'a>, Exception> {
         let _span = span!("db");
         log!("begin transaction");
         // simple query protocol, one round trip, no prepare needed

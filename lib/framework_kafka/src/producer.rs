@@ -25,7 +25,7 @@ pub struct Producer {
 }
 
 impl Producer {
-    pub fn new(bootstrap_servers: String) -> Self {
+    pub fn new(bootstrap_servers: String) -> Producer {
         console!("create kafka producer, broker={bootstrap_servers}");
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_servers)
@@ -33,7 +33,7 @@ impl Producer {
             .set("compression.codec", "zstd")
             .create()
             .expect("failed to create producer");
-        Self { producer }
+        Producer { producer }
     }
 
     pub async fn send<T>(&self, topic: &Topic<T>, key: Option<String>, message: &T) -> Result<(), Exception>

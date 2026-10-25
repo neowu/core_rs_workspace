@@ -62,8 +62,8 @@ pub struct ConsumerConfig {
 }
 
 impl Default for ConsumerConfig {
-    fn default() -> Self {
-        Self {
+    fn default() -> ConsumerConfig {
+        ConsumerConfig {
             max_concurrency: 100,
             poll_max_wait_time: Duration::from_secs(1),
             poll_max_records: 1000,
@@ -86,8 +86,8 @@ where
     S: Clone + Send + Sync + 'static,
 {
     // group_id usually be env!("CARGO_BIN_NAME")
-    pub fn new(bootstrap_servers: String, group_id: &'static str, config: &ConsumerConfig) -> Self {
-        Self {
+    pub fn new(bootstrap_servers: String, group_id: &'static str, config: &ConsumerConfig) -> MessageConsumer<S> {
+        MessageConsumer {
             config: ClientConfig::new()
                 .set("group.id", group_id)
                 .set("bootstrap.servers", bootstrap_servers)

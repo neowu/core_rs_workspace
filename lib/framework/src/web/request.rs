@@ -38,9 +38,9 @@ impl Request {
         peer_addr: SocketAddr,
         max_forwarded_ips: usize,
         max_body_size: usize,
-    ) -> Self {
+    ) -> Request {
         let client_ip = client_ip(&parts.headers, peer_addr, max_forwarded_ips);
-        Self { parts, body: Some(body), client_ip, peer_addr, max_body_size }
+        Request { parts, body: Some(body), client_ip, peer_addr, max_body_size }
     }
 
     pub const fn method(&self) -> &Method {

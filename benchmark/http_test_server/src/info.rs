@@ -18,7 +18,7 @@ pub struct MachineInfo {
 }
 
 impl MachineInfo {
-    pub fn collect() -> Self {
+    pub fn collect() -> MachineInfo {
         MachineInfo {
             host: output("hostname", &[]).unwrap_or_else(unknown),
             ip: output("hostname", &["-I"])
@@ -60,7 +60,7 @@ pub struct ProcessUsage {
 }
 
 impl ProcessUsage {
-    pub fn current() -> Self {
+    pub fn current() -> ProcessUsage {
         // SAFETY: getrusage only writes into the zeroed struct it is given
         let usage = unsafe {
             let mut usage: libc::rusage = std::mem::zeroed();

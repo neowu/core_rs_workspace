@@ -131,7 +131,7 @@ pub(crate) struct SseBody {
 }
 
 impl SseBody {
-    pub(crate) fn new<F, Fut>(handler: F) -> Self
+    pub(crate) fn new<F, Fut>(handler: F) -> SseBody
     where
         F: FnOnce(SseChannel) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), Exception>> + Send + 'static,

@@ -45,8 +45,8 @@ impl<S> Scheduler<S>
 where
     S: Send + Sync + 'static,
 {
-    pub fn new(timezone: Offset) -> Self {
-        Self { timezone, schedules: Vec::new(), executor: Arc::new(TaskExecutor::default()) }
+    pub fn new(timezone: Offset) -> Scheduler<S> {
+        Scheduler { timezone, schedules: Vec::new(), executor: Arc::new(TaskExecutor::default()) }
     }
 
     pub fn schedule_fixed_rate<J, Fut>(&mut self, name: &'static str, job: J, interval: SignedDuration)

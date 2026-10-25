@@ -50,7 +50,7 @@ struct Target {
 }
 
 impl Target {
-    fn new(args: &Args) -> Self {
+    fn new(args: &Args) -> Target {
         let scenario = args.scenario;
         let payload = if scenario.is_post() {
             let request = PostRequest { id: ID, name: "benchmark".to_owned(), values: vec![1; args.values] };

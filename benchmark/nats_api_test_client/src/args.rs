@@ -56,7 +56,7 @@ pub struct Args {
 }
 
 impl Default for Args {
-    fn default() -> Self {
+    fn default() -> Args {
         Args {
             url: "nats.test:4222".to_owned(),
             scenario: Scenario::Get,
@@ -73,7 +73,7 @@ impl Default for Args {
 impl Args {
     /// Fails the process on anything unrecognized, a mistyped flag must not silently run a
     /// different benchmark than the one intended.
-    pub fn parse() -> Self {
+    pub fn parse() -> Args {
         let mut args = Args::default();
         let mut iter = env::args().skip(1);
 

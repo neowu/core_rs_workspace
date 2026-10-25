@@ -41,13 +41,13 @@ pub struct PostResponse {
 // the plain controllers and the #[api] ones share these, so the two routes differ only in the
 // framework code between the socket and the call, never in the work done
 impl GetResponse {
-    pub fn new(request: &GetRequest) -> Self {
+    pub fn new(request: &GetRequest) -> GetResponse {
         GetResponse { id: request.id, name: "benchmark".to_owned(), values: vec![request.id; 10] }
     }
 }
 
 impl PostResponse {
-    pub fn new(request: &PostRequest) -> Self {
+    pub fn new(request: &PostRequest) -> PostResponse {
         PostResponse { id: request.id, sum: request.values.iter().sum() }
     }
 }

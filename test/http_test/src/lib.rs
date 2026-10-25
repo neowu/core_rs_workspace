@@ -41,13 +41,13 @@ pub struct TestServer {
 }
 
 impl TestServer {
-    pub async fn start(router: impl Into<Router>) -> Self {
+    pub async fn start(router: impl Into<Router>) -> TestServer {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("failed to bind");
         let url = format!("http://{}", listener.local_addr().expect("failed to get local address"));
         let shutdown_signal = CancellationToken::new();
         let http_server = HttpServer::new(HttpServerConfig { max_body_size: 1024, ..Default::default() });
         let task = tokio::spawn(http_server.start_with_listener(listener, router.into(), shutdown_signal.clone()));
-        let server = Self {
+        let server = TestServer {
             url,
             client: Arc::new(HttpClient::new(HttpClientConfig {
                 timeout: Duration::from_secs(2),

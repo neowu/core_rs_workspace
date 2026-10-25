@@ -19,7 +19,7 @@ pub struct Date(pub(crate) time::Date);
 impl Date {
     // new() is always called by constructing const or unit test, panic on invalid input
     // for dynamic input, use parse or deserialize
-    pub const fn new(year: i32, month: u8, day: u8) -> Self {
+    pub const fn new(year: i32, month: u8, day: u8) -> Date {
         let month = match month {
             1 => time::Month::January,
             2 => time::Month::February,
@@ -41,9 +41,9 @@ impl Date {
         }
     }
 
-    pub fn parse(value: &str) -> Result<Self, Exception> {
+    pub fn parse(value: &str) -> Result<Date, Exception> {
         time::Date::parse(value, format_description!("[year]-[month]-[day]"))
-            .map(Self)
+            .map(Date)
             .map_err(|err| exception!(format!("failed to parse date, value={value}"), source = err))
     }
 
@@ -57,10 +57,10 @@ impl Date {
         (year, month as u8, day)
     }
 
-    pub fn add_days(self, days: i64) -> Result<Self, Exception> {
+    pub fn add_days(self, days: i64) -> Result<Date, Exception> {
         self.0
             .checked_add(time::Duration::days(days))
-            .map(Self)
+            .map(Date)
             .ok_or_else(|| exception!(format!("result is out of range, days={days}")))
     }
 }
@@ -75,7 +75,7 @@ impl Sub for Date {
     type Output = i64;
 
     #[inline]
-    fn sub(self, other: Self) -> Self::Output {
+    fn sub(self, other: Date) -> Self::Output {
         (self.0 - other.0).whole_days()
     }
 }
@@ -87,9 +87,9 @@ impl Serialize for Date {
 }
 
 impl<'de> Deserialize<'de> for Date {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Date, D::Error> {
         let value = Cow::<str>::deserialize(deserializer)?;
-        Self::parse(&value).map_err(de::Error::custom)
+        Date::parse(&value).map_err(de::Error::custom)
     }
 }
 

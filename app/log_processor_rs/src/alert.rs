@@ -46,8 +46,8 @@ pub(crate) struct AlertService {
 }
 
 impl AlertService {
-    pub(crate) fn new(slack: SlackClient) -> Self {
-        Self { stats: Mutex::new(HashMap::new()), slack: Arc::new(slack) }
+    pub(crate) fn new(slack: SlackClient) -> AlertService {
+        AlertService { stats: Mutex::new(HashMap::new()), slack: Arc::new(slack) }
     }
 
     pub(crate) fn process_action(&self, message: &ActionMessage) {
@@ -220,10 +220,7 @@ mod tests {
     }
 
     fn context(entries: &[(&str, &str)]) -> Vec<(Cow<'static, str>, ContextValues)> {
-        entries
-            .iter()
-            .map(|(key, value)| ((*key).to_owned().into(), [(*value).to_owned()].into_iter().collect()))
-            .collect()
+        entries.iter().map(|(key, value)| ((*key).to_owned().into(), [(*value).to_owned()].into())).collect()
     }
 
     // moves the last sent time of every entry back, to simulate the interval passing

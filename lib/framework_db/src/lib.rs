@@ -43,7 +43,7 @@ impl<T> FromRow for T
 where
     T: FromSqlOwned,
 {
-    fn try_from(row: Row) -> Result<Self, PgError> {
+    fn try_from(row: Row) -> Result<T, PgError> {
         row.try_get(0)
     }
 }
@@ -97,7 +97,7 @@ pub struct DbConfig {
 }
 
 impl Default for DbConfig {
-    fn default() -> Self {
+    fn default() -> DbConfig {
         DbConfig {
             uri: "postgres://localhost:5432/postgres".to_owned(),
             user: "postgres".to_owned(),
@@ -110,7 +110,7 @@ impl Default for DbConfig {
 }
 
 impl Database {
-    pub fn new(config: DbConfig) -> Self {
+    pub fn new(config: DbConfig) -> Database {
         console!("create database client, uri={}, user={}", config.uri, config.user);
         assert!(config.pool_max_size > 0, "pool_max_size must be positive");
         let mut postgres_config =

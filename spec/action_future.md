@@ -71,7 +71,7 @@ where
 {
     type Output = F::Output;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut ActionFuture<F>>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
         let result = ready!(this.inner.as_mut().poll(cx));
         let mut current_action =

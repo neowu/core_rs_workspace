@@ -19,8 +19,8 @@ pub struct Subject<T> {
 }
 
 impl<T> Subject<T> {
-    pub const fn new(name: &'static str) -> Self {
-        Self { name, _marker: PhantomData }
+    pub const fn new(name: &'static str) -> Subject<T> {
+        Subject { name, _marker: PhantomData }
     }
 }
 

@@ -26,7 +26,7 @@ pub struct Summary {
 }
 
 impl Summary {
-    pub fn merge(recorders: Vec<Recorder>, elapsed: Duration) -> Self {
+    pub fn merge(recorders: Vec<Recorder>, elapsed: Duration) -> Summary {
         let mut latencies = Vec::with_capacity(recorders.iter().map(|recorder| recorder.latencies.len()).sum());
         let mut failed = 0;
         let mut errors = 0;

@@ -26,24 +26,24 @@ pub struct DateTime(time::OffsetDateTime);
 
 impl DateTime {
     #[inline]
-    pub fn now() -> Self {
-        Self(OffsetDateTime::now_utc())
+    pub fn now() -> DateTime {
+        DateTime(OffsetDateTime::now_utc())
     }
 
     #[inline]
-    pub const fn new(date: Date, time: Time) -> Self {
-        Self(OffsetDateTime::new_utc(date.0, time.0))
+    pub const fn new(date: Date, time: Time) -> DateTime {
+        DateTime(OffsetDateTime::new_utc(date.0, time.0))
     }
 
-    pub fn parse(value: &str) -> Result<Self, Exception> {
+    pub fn parse(value: &str) -> Result<DateTime, Exception> {
         OffsetDateTime::parse(value, &Rfc3339)
-            .map(Self)
+            .map(DateTime)
             .map_err(|err| exception!(format!("failed to parse date, value={value}"), source = err))
     }
 
-    pub fn from_unix_timestamp_nanos(nanos: i128) -> Result<Self, Exception> {
+    pub fn from_unix_timestamp_nanos(nanos: i128) -> Result<DateTime, Exception> {
         OffsetDateTime::from_unix_timestamp_nanos(nanos)
-            .map(Self)
+            .map(DateTime)
             .map_err(|err| exception!(format!("timestamp is out of range, nanos={nanos}"), source = err))
     }
 
@@ -70,24 +70,24 @@ impl DateTime {
 
     #[inline]
     #[must_use]
-    pub const fn with_timezone(self, offset: Offset) -> Self {
+    pub const fn with_timezone(self, offset: Offset) -> DateTime {
         DateTime(self.0.to_offset(offset.0))
     }
 
     #[inline]
     #[must_use]
-    pub const fn with_date(self, date: Date) -> Self {
+    pub const fn with_date(self, date: Date) -> DateTime {
         DateTime(self.0.replace_date(date.0))
     }
 
     #[inline]
     #[must_use]
-    pub const fn with_time(self, time: Time) -> Self {
+    pub const fn with_time(self, time: Time) -> DateTime {
         DateTime(self.0.replace_time(time.0))
     }
 
-    pub fn add_duration(self, duration: SignedDuration) -> Result<Self, Exception> {
-        self.0.checked_add(duration.0).map(Self).ok_or_else(|| exception!("result is out of range"))
+    pub fn add_duration(self, duration: SignedDuration) -> Result<DateTime, Exception> {
+        self.0.checked_add(duration.0).map(DateTime).ok_or_else(|| exception!("result is out of range"))
     }
 
     pub fn to_rfc3339(&self) -> String {
@@ -119,7 +119,7 @@ impl Sub for DateTime {
     type Output = SignedDuration;
 
     #[inline]
-    fn sub(self, other: Self) -> Self::Output {
+    fn sub(self, other: DateTime) -> Self::Output {
         SignedDuration(self.0 - other.0)
     }
 }
@@ -132,9 +132,9 @@ impl Serialize for DateTime {
 }
 
 impl<'de> Deserialize<'de> for DateTime {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<DateTime, D::Error> {
         let value = Cow::<str>::deserialize(deserializer)?;
-        Self::parse(&value).map_err(de::Error::custom)
+        DateTime::parse(&value).map_err(de::Error::custom)
     }
 }
 

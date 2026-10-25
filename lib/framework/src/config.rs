@@ -155,7 +155,7 @@ fn resolve_env_path(exe_path: &Path, manifest_dir: &str) -> Option<PathBuf> {
 pub struct EnvString(String);
 
 impl<'de> Deserialize<'de> for EnvString {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<EnvString, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -190,7 +190,7 @@ impl Deref for EnvString {
 }
 
 impl From<EnvString> for String {
-    fn from(env: EnvString) -> Self {
+    fn from(env: EnvString) -> String {
         env.0
     }
 }

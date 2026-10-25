@@ -19,8 +19,8 @@ struct IdGenerator {
 }
 
 impl IdGenerator {
-    fn init() -> Self {
-        Self { counter: AtomicU16::new(rand::random()), machine_id: machine_identifier() }
+    fn init() -> IdGenerator {
+        IdGenerator { counter: AtomicU16::new(rand::random()), machine_id: machine_identifier() }
     }
 
     #[allow(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]

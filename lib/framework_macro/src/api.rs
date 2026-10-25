@@ -69,8 +69,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         }
 
         impl #client_ident {
-            #trait_vis fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
-                Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
+            #trait_vis fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> #client_ident {
+                #client_ident { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
             }
         }
 
@@ -278,8 +278,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
+                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> UserServiceClient {
+                        UserServiceClient { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }
 
@@ -358,8 +358,8 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> Self {
-                        Self { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
+                    pub fn new(http_client: ::std::sync::Arc<::framework::http::HttpClient>, api_url: String) -> UserServiceClient {
+                        UserServiceClient { client: ::framework::web::api::ApiClient::__new(http_client, api_url) }
                     }
                 }
 
