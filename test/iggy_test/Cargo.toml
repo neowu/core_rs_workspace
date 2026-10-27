@@ -1,0 +1,11 @@
+[package]
+name = "iggy_test"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+framework = { workspace = true }
+framework_iggy = { workspace = true }
+framework_macro = { workspace = true }
+serde.workspace = true
+tokio.workspace = true

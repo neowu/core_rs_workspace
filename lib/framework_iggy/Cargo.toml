@@ -1,0 +1,17 @@
+[package]
+name = "framework_iggy"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+framework.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tokio-util = "*"
+
+bytes = "*"
+futures = "*"
+iggy = "*"
+
+[lints]
+workspace = true

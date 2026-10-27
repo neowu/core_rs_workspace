@@ -2,7 +2,7 @@
 
 Code: [`framework_kafka/src/consumer.rs`](../lib/framework_kafka/src/consumer.rs),
 [`framework_kafka/src/producer.rs`](../lib/framework_kafka/src/producer.rs) · siblings:
-[`nats.md`](nats.md), [`test/kafka.md`](test/kafka.md)
+[`nats.md`](nats.md), [`iggy.md`](iggy.md), [`test/kafka.md`](test/kafka.md)
 
 ## Consumer
 
