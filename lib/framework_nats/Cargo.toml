@@ -7,10 +7,10 @@ edition = "2024"
 framework.workspace = true
 serde.workspace = true
 tokio.workspace = true
-tokio-util = "*"
 
-futures = "*"
 async-nats = "*"
+futures = "*"
+tokio-util = "*"
 
 [lints]
 workspace = true

@@ -19,15 +19,12 @@ tokio = { version = "*", features = ["full"] }
 uuid = { version = "*", features = ["serde", "v7"] }
 
 [workspace.lints.clippy]
-# restriction
 absolute_paths = "warn"
 alloc_instead_of_core = "warn"
 as_pointer_underscore = "warn"
-# nursery
 as_ptr_cast_mut = "warn"
 as_underscore = "warn"
 assertions_on_result_states = "warn"
-# pedantic
 assigning_clones = "warn"
 borrow_as_ptr = "warn"
 branches_sharing_code = "warn"

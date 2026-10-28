@@ -456,7 +456,6 @@ dependencies = [
  "framework_db",
  "framework_macro",
  "framework_nats",
- "http",
  "serde",
  "tokio",
  "uuid",
@@ -1298,7 +1297,6 @@ dependencies = [
  "framework_kafka",
  "framework_macro",
  "framework_nats",
- "http",
  "serde",
  "tokio",
 ]

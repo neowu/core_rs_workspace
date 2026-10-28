@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use framework::asset_path;
 use framework::exception::Exception;
+use framework::http::Method;
+use framework::http::StatusCode;
 use framework::log::trace;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
-use http::Method;
-use http::StatusCode;
 use tokio::time::sleep;
 
 pub(crate) fn routes() -> Router {

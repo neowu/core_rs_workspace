@@ -5,36 +5,32 @@ edition = "2024"
 
 [dependencies]
 serde.workspace = true
-serde_json = "*"
-serde_html_form = "*"
-smallvec = { version = "1", features = ["serde"] }
-
-time = { version = "*", features = ["formatting", "parsing", "macros"] }
-
 tokio.workspace = true
-tokio-util = { version = "*", features = ["rt", "io"] }
-tokio-stream = "*"
-tokio-rustls = "*"
-rustls-platform-verifier = "*"
 
+bytes = "*"
+futures = "*"
 http = "*"
 http-body = "*"
 http-body-util = "*"
-hyper = { version = "*", features = ["server", "client", "http1", "http2"] }
-hyper-util = { version = "*", features = ["tokio", "server-auto", "server-graceful"] }
+hyper = { version = "*", features = ["client", "http1", "http2", "server"] }
+hyper-util = { version = "*", features = ["server-auto", "server-graceful", "tokio"] }
+libc = "*"
+log = { version = "*", features = ["release_max_level_off"] }
+memchr = "*"
 percent-encoding = "*"
+pin-project-lite = "*"
+rand = "*"
+rustls-platform-verifier = "*"
+serde_html_form = "*"
+serde_json = "*"
+smallvec = { version = "1", features = ["serde"] }
 socket2 = "*"
-
+time = { version = "*", features = ["formatting", "macros", "parsing"] }
+tokio-rustls = "*"
+tokio-stream = "*"
+tokio-util = { version = "*", features = ["io", "rt"] }
 # dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
 tracing = { version = "*", features = ["release_max_level_off"] }
-log = { version = "*", features = ["release_max_level_off"] }
-
-futures = "*"
-pin-project-lite = "*"
-bytes = "*"
-libc = "*"
-memchr = "*"
-rand = "*"
 
 [lints]
 workspace = true
