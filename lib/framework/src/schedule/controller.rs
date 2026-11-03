@@ -14,6 +14,7 @@ use crate::schedule::Scheduler;
 use crate::task::TaskExecutor;
 use crate::time::DateTime;
 use crate::time::Offset;
+use crate::web::access_control;
 use crate::web::request::Request;
 use crate::web::response::Response;
 use crate::web::router::Router;
@@ -34,6 +35,7 @@ async fn trigger_job<S>(state: Arc<JobState<S>>, mut request: Request) -> Result
 where
     S: Clone,
 {
+    access_control::validate_local_peer(&request)?;
     let TriggerJobRequest { job } = request.json().await?;
     let schedule = state.schedules.get(job.as_str()).ok_or_else(|| {
         exception!(format!("job not found, name={job}"), severity = Severity::Warn, code = error_code::NOT_FOUND)
@@ -49,7 +51,7 @@ impl<S> Scheduler<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    /// `PUT /_sys/job/trigger` with `{"job": "name"}` triggers a job, merge into the http server router.
+    /// `PUT /_sys/job/trigger` with `{"job": "name"}` triggers a job, only from local peer, merge into the http server router.
     pub fn routes(&self, state: S) -> Router {
         let schedules = self.schedules.iter().map(|schedule| (schedule.name, Arc::clone(schedule))).collect();
         let state = JobState { state, timezone: self.timezone, schedules, executor: Arc::clone(&self.executor) };

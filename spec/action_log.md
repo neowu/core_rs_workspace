@@ -73,10 +73,9 @@ which borrows the `RefCell` twice.
 entry and appends it to structured context. Trace messages use the message limit; stored context
 values use the separate context limit.
 
-HTTP middleware uses `log!`, `context!`, and `stats!` at each call site. Client-IP parsing uses
-`warn!` for malformed forwarded addresses and falls back to the connection peer address (or
-`unknown`). The HTTP batching experiment was removed after benchmark review: no demonstrated
-benefit warranted the extra call-site code. See [HTTP tuning](../plan/http_tuning.md).
+HTTP middleware uses `log!`, `context!`, and `stats!` at each call site. Malformed forwarded
+addresses reject the request with `BAD_REQUEST`, see [http_server.md](http_server.md). The HTTP
+batching experiment was removed after benchmark review: no demonstrated benefit warranted the extra call-site code. See [HTTP tuning](../plan/http_tuning.md).
 
 ### Three shapes, because they are read three different ways
 

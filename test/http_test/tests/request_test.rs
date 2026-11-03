@@ -108,6 +108,21 @@ async fn request_response() -> Result<(), Exception> {
         .await?;
     assert_eq!(response.text().await?, "108.0.0.1|abc def|test-agent");
 
+    let response = client
+        .get(server.url("/whoami"))
+        .header("x-forwarded-for", "1.1.1.1")
+        .header("x-forwarded-for", "108.0.0.1, 10.0.0.1")
+        .send()
+        .await?;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let error: ErrorResponse = response.json().await?;
+    assert_eq!(error.message, "duplicate header, name=x-forwarded-for");
+
+    let response = client.get(server.url("/whoami")).header("x-forwarded-for", "1.2.3, 10.0.0.1").send().await?;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let error: ErrorResponse = response.json().await?;
+    assert_eq!(error.message, "invalid client ip address, value=1.2.3");
+
     let response = client.get(server.url("/ping")).send().await?;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
@@ -118,6 +133,7 @@ async fn request_response() -> Result<(), Exception> {
     for (path, body, message) in [
         ("/greet", Some("{"), "failed to parse json body"),
         ("/greet", Some(r#"{"name":42}"#), "failed to parse json body"),
+        ("/greet", Some(r#"{"name":"a\u0000"}"#), "json body must not contain NUL char"),
         ("/echo", Some(&*"x".repeat(2048)), "failed to read body, error=length limit exceeded"),
     ] {
         let response = client.post(server.url(path)).body(body.unwrap_or_default().to_owned()).send().await?;

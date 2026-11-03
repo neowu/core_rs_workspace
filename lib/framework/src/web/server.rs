@@ -1,5 +1,5 @@
 use std::convert::Infallible;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +10,7 @@ use http::Method;
 use http::StatusCode;
 use http::Uri;
 use http::header;
+use http::request::Parts;
 use http::uri::Authority;
 use http::uri::PathAndQuery;
 use hyper::body::Incoming;
@@ -29,6 +30,7 @@ use crate::metrics::Counter;
 use crate::metrics::Metrics;
 use crate::web::CLIENT;
 use crate::web::REF_ID;
+use crate::web::X_FORWARDED_PROTO;
 use crate::web::catch_panic;
 use crate::web::request::Request;
 use crate::web::request::cookies;
@@ -37,8 +39,6 @@ use crate::web::response::Response;
 use crate::web::router::Matched;
 use crate::web::router::Router;
 use crate::web::router::Routes;
-
-const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 pub struct HttpServerConfig {
     pub bind_address: String,
@@ -143,8 +143,9 @@ impl HttpServer {
             let _nodelay = stream.set_nodelay(true);
 
             let shared = Arc::clone(&shared);
-            let service =
-                service_fn(move |request| handle(Arc::clone(&shared), peer_addr, request).map(Ok::<_, Infallible>));
+            let service = service_fn(move |request| {
+                handle(Arc::clone(&shared), peer_addr.ip(), request).map(Ok::<_, Infallible>)
+            });
             let io = TokioIo::new(stream);
             let connection = graceful.watch(builder.serve_connection(io, service).into_owned());
             tokio::spawn(async move {
@@ -165,7 +166,7 @@ impl HttpServer {
 #[allow(clippy::manual_async_fn)]
 fn handle(
     shared: Arc<Shared>,
-    peer_addr: SocketAddr,
+    peer_addr: IpAddr,
     request: http::Request<Incoming>,
 ) -> impl Future<Output = http::Response<Body>> {
     async move {
@@ -180,11 +181,7 @@ fn handle(
 
         // boxed for the same reason, one malloc instead of moving the whole action future
         let result = Box::pin(log::action("http", ref_ids, async {
-            let (parts, body) = request.into_parts();
-            Ok::<_, Exception>(
-                process(&shared, Request::new(parts, body, peer_addr, shared.max_forwarded_ips, shared.max_body_size))
-                    .await,
-            )
+            Ok::<_, Exception>(process(&shared, request, peer_addr).await)
         }))
         .await;
         let response = match result {
@@ -205,27 +202,38 @@ fn handle(
     }
 }
 
-async fn process(shared: &Shared, request: Request) -> Response {
-    log_request(&request);
+async fn process(shared: &Shared, http_request: http::Request<Incoming>, peer_addr: IpAddr) -> Response {
+    let (parts, body) = http_request.into_parts();
+    // log before parsing, to gather more info in case of invalid request
+    log_request(&parts);
 
-    let response = match shared.routes.find(request.method(), request.path()) {
-        Matched::Found(path, route) => {
-            context!(path = path, fn = route.name);
-            let mut response = match catch_panic((route.handler)(request)).await {
-                Ok(response) => response,
-                Err(err) => {
-                    log!(exception = err);
-                    Response::error(&err)
+    let response = match Request::parse(parts, body, peer_addr, shared.max_forwarded_ips, shared.max_body_size) {
+        Ok(request) => {
+            context!(client_ip = request.client_ip().to_string());
+            match shared.routes.find(request.method(), request.path()) {
+                Matched::Found(path, route) => {
+                    context!(path = path, fn = route.name);
+                    let mut response = match catch_panic((route.handler)(request)).await {
+                        Ok(response) => response,
+                        Err(err) => {
+                            log!(exception = err);
+                            Response::error(&err)
+                        }
+                    };
+                    if let Some(sse) = response.sse_body() {
+                        sse.route(path, route.name);
+                    }
+                    response
                 }
-            };
-            if let Some(sse) = response.sse_body() {
-                sse.route(path, route.name);
+                Matched::NotFound => Response::empty().status(StatusCode::NOT_FOUND),
+                // no Allow header, these requests are mostly from vulnerability scans, don't hint available methods
+                Matched::MethodNotAllowed => Response::empty().status(StatusCode::METHOD_NOT_ALLOWED),
             }
-            response
         }
-        Matched::NotFound => Response::empty().status(StatusCode::NOT_FOUND),
-        // no Allow header, these requests are mostly from vulnerability scans, don't hint available methods
-        Matched::MethodNotAllowed => Response::empty().status(StatusCode::METHOD_NOT_ALLOWED),
+        Err(err) => {
+            log!(exception = err);
+            Response::error(&err)
+        }
     };
 
     context!(response_status = response.status_code().as_str());
@@ -235,10 +243,11 @@ async fn process(shared: &Shared, request: Request) -> Response {
     response
 }
 
-fn log_request(request: &Request) {
-    context!(uri = request_url(request.uri(), request.headers()), method = request.method().as_str());
+fn log_request(parts: &Parts) {
+    let headers = &parts.headers;
+    context!(uri = request_url(&parts.uri, headers), method = parts.method.as_str());
 
-    for (name, value) in request.headers() {
+    for (name, value) in headers {
         if name != header::COOKIE {
             log!("[header] {name}={value:?}");
         } else if let Ok(cookie_header) = value.to_str() {
@@ -248,14 +257,13 @@ fn log_request(request: &Request) {
         }
     }
 
-    context!(client_ip = request.client_ip());
-    if let Some(user_agent) = request.user_agent() {
+    if let Some(user_agent) = header_str(headers, header::USER_AGENT) {
         context!(user_agent = user_agent);
     }
-    if let Some(client) = request.header(CLIENT) {
+    if let Some(client) = header_str(headers, CLIENT) {
         context!(client = client);
     }
-    if let Some(length) = request.header(header::CONTENT_LENGTH).and_then(|v| v.parse::<u64>().ok()) {
+    if let Some(length) = header_str(headers, header::CONTENT_LENGTH).and_then(|v| v.parse::<u64>().ok()) {
         stats!(request_content_length = length);
     }
 }

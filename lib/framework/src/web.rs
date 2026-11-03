@@ -7,6 +7,7 @@ use http::HeaderName;
 use crate::exception::Exception;
 use crate::json;
 
+pub mod access_control;
 pub mod api;
 mod file;
 pub mod request;
@@ -14,6 +15,9 @@ pub mod response;
 pub mod router;
 pub mod server;
 pub mod sse;
+
+const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
+const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 const REF_ID: HeaderName = HeaderName::from_static("ref-id");
 const CLIENT: HeaderName = HeaderName::from_static("client");

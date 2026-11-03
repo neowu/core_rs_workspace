@@ -94,6 +94,25 @@ extractors, per request handler clones and a tower middleware stack the framewor
   `body()`, `text()`, `json::<T>()`.
 - Body is read once, bounded by `max_body_size` (default 2MB); exceeding it or invalid input is a
   `BAD_REQUEST` warning. `text` / `json` / `query` log the input.
+- `json::<T>()` rejects user input containing NUL (`\u0000`): postgres rejects it and it truncates C strings.
+  serde_json already rejects lone surrogates and invalid utf-8. `json::from_json` stays lenient, it is for trusted
+  payloads (api client, kafka / nats).
+
+## Forwarded headers / client IP
+
+- `process` logs the request headers, then `Request::parse` validates headers and parses `client_ip`, so a rejected
+  request still has its headers in the action log; failures are `BAD_REQUEST`, the handler is not called.
+- `host`, `x-forwarded-for` and `x-forwarded-proto` must appear at most once. Proxies append to the existing
+  header, a client can send a second one so the value read is not the one the proxy appended.
+- `client_ip` (`IpAddr`) takes the `x-forwarded-for` node `max_forwarded_ips` hops from the right (`ip` or
+  `ipv4:port`), parsed as a standard IP literal (no scope id, no legacy ipv4 forms like `1.2` / `010.1.1.1`).
+  Strict: an invalid node is `BAD_REQUEST`, no fallback. Absent / blank `x-forwarded-for` or
+  `max_forwarded_ips = 0` uses the peer address. Never resolves DNS.
+- `client_ip` is for logging / business use only, never for access control. Internal endpoints
+  (`PUT /_sys/job/trigger`) call `web::access_control::validate_local_peer`: the connection peer address must be loopback or
+  private network (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`, ipv4-mapped included), else `FORBIDDEN`.
+  This assumes external traffic reaches the app through an L7 LB with public source addresses; an in-cluster
+  proxy (private address) in front of the app would be trusted.
 - `Response` constructors: `empty()` (204), `json(&T)` (logs body and `response_content_length`), `text`,
   `html`, `bytes(body, content_type)`, with `status(..)` / `header(..)` builders.
 - The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse`) implementing `http_body::Body`,

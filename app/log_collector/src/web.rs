@@ -27,8 +27,6 @@ use serde::Serialize;
 use crate::AppState;
 use crate::kafka::EventMessage;
 
-const EVENT_PATH: &str = "/event/";
-
 pub(super) fn routes(state: Arc<AppState>) -> Router {
     Router::new()
         .state(state)
@@ -36,8 +34,6 @@ pub(super) fn routes(state: Arc<AppState>) -> Router {
         .route(Method::GET, "/1x1.png", png_1x1)
         .route(Method::OPTIONS, "/event/submit", event_submit_options)
         .route(Method::POST, "/event/submit", event_submit)
-        .prefix(Method::OPTIONS, EVENT_PATH, event_options)
-        .prefix(Method::POST, EVENT_PATH, event_post)
         .into()
 }
 
@@ -50,16 +46,7 @@ async fn png_1x1(_state: Arc<AppState>, _request: Request) -> Result<Response, E
     Ok(Response::bytes(&include_bytes!("../assets/1x1.png")[..], HeaderValue::from_static("image/png")))
 }
 
-async fn event_options(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
-    event_app(&request)?;
-    cors_preflight(&request)
-}
-
 async fn event_submit_options(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
-    cors_preflight(&request)
-}
-
-fn cors_preflight(request: &Request) -> Result<Response, Exception> {
     let origin = request
         .headers()
         .get(header::ORIGIN)
@@ -74,17 +61,6 @@ fn cors_preflight(request: &Request) -> Result<Response, Exception> {
 }
 
 // event will be sent via ajax or navigator.sendBeacon(), refer to https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon
-async fn event_post(state: Arc<AppState>, mut request: Request) -> Result<Response, Exception> {
-    let app = event_app(&request)?.to_owned();
-    let body = request.text().await?;
-    if !body.is_empty() {
-        let event_request: SendEventRequest = parse_body(&body)?;
-        process_events(&state, &app, event_request.events, &request).await?;
-    }
-    Ok(event_response(&request))
-}
-
-// static path, app is passed in body
 async fn event_submit(state: Arc<AppState>, mut request: Request) -> Result<Response, Exception> {
     let body = request.text().await?;
     let event_request: SubmitEventRequest = parse_body(&body)?;
@@ -108,17 +84,6 @@ fn event_response(request: &Request) -> Response {
             .header(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
     }
     response
-}
-
-// same as the former `/event/{app}` route, one non empty segment
-fn event_app(request: &Request) -> Result<&str, Exception> {
-    request.path().strip_prefix(EVENT_PATH).filter(|app| !app.is_empty() && !app.contains('/')).ok_or_else(|| {
-        exception!(
-            format!("not found, path={}", request.path()),
-            severity = Severity::Warn,
-            code = error_code::NOT_FOUND
-        )
-    })
 }
 
 async fn process_events(state: &AppState, app: &str, events: Vec<Event>, request: &Request) -> Result<(), Exception> {
@@ -148,18 +113,12 @@ async fn process_events(state: &AppState, app: &str, events: Vec<Event>, request
             message.context.insert("user_agent".to_owned(), user_agent.to_owned());
         }
 
-        message.context.insert("client_ip".to_owned(), request.client_ip().to_owned());
+        message.context.insert("client_ip".to_owned(), request.client_ip().to_string());
 
         state.producer.send(&state.topics.event, None, &message).await?;
     }
 
     Ok(())
-}
-
-#[derive(Validate, Deserialize, Debug)]
-struct SendEventRequest {
-    #[length(min = 1)]
-    events: Vec<Event>,
 }
 
 #[derive(Validate, Deserialize, Debug)]

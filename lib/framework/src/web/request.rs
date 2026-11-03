@@ -1,9 +1,8 @@
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 
 use bytes::Bytes;
 use http::HeaderMap;
-use http::HeaderName;
 use http::Method;
 use http::Uri;
 use http::Version;
@@ -20,27 +19,30 @@ use crate::exception::Exception;
 use crate::exception::error_code;
 use crate::json;
 use crate::log::Severity;
-
-const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
+use crate::web::X_FORWARDED_FOR;
+use crate::web::X_FORWARDED_PROTO;
 
 pub struct Request {
     parts: Parts,
     body: Option<Incoming>,
-    client_ip: String,
-    peer_addr: SocketAddr,
+    client_ip: IpAddr,
+    peer_addr: IpAddr,
     max_body_size: usize,
 }
 
 impl Request {
-    pub(crate) fn new(
+    /// Validates headers and parses client ip, rejects invalid request with `BAD_REQUEST`.
+    pub(crate) fn parse(
         parts: Parts,
         body: Incoming,
-        peer_addr: SocketAddr,
+        peer_addr: IpAddr,
         max_forwarded_ips: usize,
         max_body_size: usize,
-    ) -> Request {
-        let client_ip = client_ip(&parts.headers, peer_addr, max_forwarded_ips);
-        Request { parts, body: Some(body), client_ip, peer_addr, max_body_size }
+    ) -> Result<Request, Exception> {
+        validate_single_headers(&parts.headers)?;
+
+        let client_ip = client_ip(&parts.headers, peer_addr, max_forwarded_ips)?;
+        Ok(Request { parts, body: Some(body), client_ip, peer_addr, max_body_size })
     }
 
     pub const fn method(&self) -> &Method {
@@ -84,11 +86,11 @@ impl Request {
     }
 
     /// From `x-forwarded-for` within `max_forwarded_ips` hops, or the peer address.
-    pub fn client_ip(&self) -> &str {
-        &self.client_ip
+    pub const fn client_ip(&self) -> IpAddr {
+        self.client_ip
     }
 
-    pub const fn peer_addr(&self) -> SocketAddr {
+    pub const fn peer_addr(&self) -> IpAddr {
         self.peer_addr
     }
 
@@ -136,6 +138,13 @@ impl Request {
             exception!("failed to read body", severity = Severity::Warn, code = error_code::BAD_REQUEST, source = err)
         })?;
         log!("[request] body={body}");
+        if contains_nul_escape(body) {
+            return Err(exception!(
+                "json body must not contain NUL char",
+                severity = Severity::Warn,
+                code = error_code::BAD_REQUEST
+            ));
+        }
         json::from_json(body).map_err(|err| {
             exception!(
                 "failed to parse json body",
@@ -145,6 +154,15 @@ impl Request {
             )
         })
     }
+}
+
+// json escape allows "\u0000", NUL is rejected by postgres and truncates c string, serde_json already rejects lone surrogate
+// raw control chars are invalid json, so NUL can only come from escape
+fn contains_nul_escape(json: &str) -> bool {
+    json.match_indices(r"\u0000").any(|(index, _)| {
+        // odd number of consecutive backslashes means the last one starts the escape, otherwise it is an escaped "\\"
+        json.as_bytes().iter().take(index + 1).rev().take_while(|&&byte| byte == b'\\').count() % 2 == 1
+    })
 }
 
 pub(crate) fn cookies(value: &str) -> impl Iterator<Item = (&str, Cow<'_, str>)> {
@@ -160,94 +178,165 @@ pub(crate) fn cookies(value: &str) -> impl Iterator<Item = (&str, Cow<'_, str>)>
     })
 }
 
-fn client_ip(headers: &HeaderMap, peer_addr: SocketAddr, max_forwarded_ips: usize) -> String {
-    if max_forwarded_ips > 0
-        && let Some(x_forwarded_for) = headers.get(X_FORWARDED_FOR).and_then(|value| value.to_str().ok())
-        && let Some(client_ip) = extract_client_ip(x_forwarded_for, max_forwarded_ips)
-    {
-        return client_ip;
+// proxies append to the existing header, client may send the same header again, so the value read may not be the
+// one proxy appended
+fn validate_single_headers(headers: &HeaderMap) -> Result<(), Exception> {
+    for name in [header::HOST, X_FORWARDED_FOR, X_FORWARDED_PROTO] {
+        if headers.get_all(&name).iter().nth(1).is_some() {
+            return Err(exception!(
+                format!("duplicate header, name={name}"),
+                severity = Severity::Warn,
+                code = error_code::BAD_REQUEST
+            ));
+        }
     }
-    peer_addr.ip().to_string()
+    Ok(())
 }
 
-fn extract_client_ip(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<String> {
+fn client_ip(headers: &HeaderMap, peer_addr: IpAddr, max_forwarded_ips: usize) -> Result<IpAddr, Exception> {
+    if max_forwarded_ips == 0 {
+        return Ok(peer_addr);
+    }
+    let Some(value) = headers.get(X_FORWARDED_FOR) else {
+        return Ok(peer_addr);
+    };
+    let x_forwarded_for = value.to_str().map_err(|err| {
+        exception!(
+            format!("invalid client ip address, value={value:?}"),
+            severity = Severity::Warn,
+            code = error_code::BAD_REQUEST,
+            source = err
+        )
+    })?;
     if x_forwarded_for.trim().is_empty() {
-        return None;
+        return Ok(peer_addr);
     }
     // x-forwarded-for = node, node, ..., take the node at max_forwarded_ips from right, values on the right are from trusted LB
-    let node = x_forwarded_for.rsplit(',').take(max_forwarded_ips).last()?.trim();
+    let node = x_forwarded_for.rsplit(',').take(max_forwarded_ips).last().unwrap_or_default().trim();
     extract_ip(node)
 }
 
-// check loosely, ipv4 must have 3 dots and 1 optional colon (ipv4:port), ipv6 must have only colons, with hex chars
-fn extract_ip(node: &str) -> Option<String> {
-    let mut dots = 0;
-    let mut last_dot_index = 0;
-    let mut colons = 0;
-    let mut last_colon_index = 0;
-
-    for (i, ch) in node.bytes().enumerate() {
-        if ch == b'.' {
-            dots += 1;
-            last_dot_index = i;
-        } else if ch == b':' {
-            colons += 1;
-            last_colon_index = i;
-        } else if !ch.is_ascii_hexdigit() {
-            warn!(error_code = "BAD_REQUEST", "invalid character in client ip address, value={node}");
-            return None;
-        }
-    }
-
-    if dots == 0 || (dots == 3 && colons == 0) {
-        return Some(node.to_owned());
-    }
-    if dots == 3 && colons == 1 && last_colon_index > last_dot_index && last_colon_index < node.len() - 1 {
-        return node.get(..last_colon_index).map(str::to_owned);
-    }
-    warn!(error_code = "BAD_REQUEST", "invalid client ip address, value={node}");
-    None
+// node is ip or ipv4:port, only standard ip literals are accepted (no scope id, no legacy ipv4 forms like 1.2 or 010.1.1.1)
+fn extract_ip(node: &str) -> Result<IpAddr, Exception> {
+    // only 1 colon means ipv4:port, ipv6 has at least 2 colons
+    let ip = match node.split_once(':') {
+        Some((ip, port)) if !ip.is_empty() && !port.is_empty() && !port.contains(':') => ip,
+        _ => node,
+    };
+    ip.parse::<IpAddr>().map_err(|err| {
+        exception!(
+            format!("invalid client ip address, value={node}"),
+            severity = Severity::Warn,
+            code = error_code::BAD_REQUEST,
+            source = err
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use http::HeaderValue;
+
     use super::*;
 
     #[test]
-    fn client_ip_from_headers() {
-        let peer_addr: SocketAddr = "127.0.0.1:1234".parse().unwrap();
+    fn nul_escape() {
+        assert!(contains_nul_escape(r#""a\u0000b""#));
+        assert!(contains_nul_escape(r#"{"\u0000":"a"}"#));
+        assert!(contains_nul_escape(r#""a\\\u0000""#));
+        assert!(!contains_nul_escape(r#""a\\u0000""#));
+        assert!(!contains_nul_escape(r#""a\u0001""#));
+    }
+
+    fn ip(value: &str) -> IpAddr {
+        value.parse().unwrap()
+    }
+
+    fn client_ip_of(x_forwarded_for: &str, max_forwarded_ips: usize) -> Option<IpAddr> {
         let mut headers = HeaderMap::new();
-        assert_eq!(client_ip(&headers, peer_addr, 2), "127.0.0.1");
-
-        headers.insert(X_FORWARDED_FOR, "invalid".parse().unwrap());
-        assert_eq!(client_ip(&headers, peer_addr, 2), "127.0.0.1");
-
-        headers.insert(X_FORWARDED_FOR, "1.2.3".parse().unwrap());
-        assert_eq!(client_ip(&headers, peer_addr, 2), "127.0.0.1");
-
-        headers.insert(X_FORWARDED_FOR, "108.0.0.1, 10.10.10.10".parse().unwrap());
-        assert_eq!(client_ip(&headers, peer_addr, 2), "108.0.0.1");
-        assert_eq!(client_ip(&headers, peer_addr, 0), "127.0.0.1");
+        headers.insert(X_FORWARDED_FOR, x_forwarded_for.parse().unwrap());
+        client_ip(&headers, ip("127.0.0.1"), max_forwarded_ips).ok()
     }
 
     #[test]
-    fn extract_client_ip_with_empty() {
-        assert_eq!(extract_client_ip("", 2), None);
-        assert_eq!(extract_client_ip("   ", 2), None);
+    fn client_ip_from_peer() {
+        assert_eq!(client_ip(&HeaderMap::new(), ip("127.0.0.1"), 2).ok(), Some(ip("127.0.0.1")));
+        assert_eq!(client_ip_of("", 2), Some(ip("127.0.0.1")));
+        assert_eq!(client_ip_of("   ", 2), Some(ip("127.0.0.1")));
+        assert_eq!(client_ip_of("108.0.0.1, 10.10.10.10", 0), Some(ip("127.0.0.1")));
+        assert_eq!(client_ip_of("invalid", 0), Some(ip("127.0.0.1")));
     }
 
     #[test]
-    fn extract_client_ip_within_limits() {
-        assert_eq!(extract_client_ip("108.0.0.1", 2), Some("108.0.0.1".to_owned()));
-        assert_eq!(extract_client_ip(" 108.0.0.1 ", 2), Some("108.0.0.1".to_owned()));
-        assert_eq!(extract_client_ip("108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
-        assert_eq!(extract_client_ip("2001:db8::1, 10.10.10.10", 2), Some("2001:db8::1".to_owned()));
+    fn client_ip_within_limits() {
+        assert_eq!(client_ip_of("108.0.0.1", 2), Some(ip("108.0.0.1")));
+        assert_eq!(client_ip_of(" 108.0.0.1 ", 2), Some(ip("108.0.0.1")));
+        assert_eq!(client_ip_of("108.0.0.1, 10.10.10.10", 2), Some(ip("108.0.0.1")));
+        assert_eq!(client_ip_of("2001:db8::1, 10.10.10.10", 2), Some(ip("2001:db8::1")));
     }
 
     #[test]
-    fn extract_client_ip_with_more_than_limits() {
-        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
-        assert_eq!(extract_client_ip("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2), Some("108.0.0.1".to_owned()));
+    fn client_ip_with_more_than_limits() {
+        assert_eq!(client_ip_of("108.0.0.2, 108.0.0.1, 10.10.10.10", 2), Some(ip("108.0.0.1")));
+        assert_eq!(client_ip_of("108.0.0.2, 108.0.0.1:5432, 10.10.10.10", 2), Some(ip("108.0.0.1")));
+        assert_eq!(client_ip_of("invalid, 108.0.0.1, 10.10.10.10", 2), Some(ip("108.0.0.1")));
+    }
+
+    #[test]
+    fn client_ip_rejects_invalid() {
+        assert_eq!(client_ip_of("invalid", 2), None);
+        assert_eq!(client_ip_of("1.2.3", 2), None);
+        assert_eq!(client_ip_of("invalid, 10.10.10.10", 2), None);
+        assert_eq!(client_ip_of(", 10.10.10.10", 2), None);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(X_FORWARDED_FOR, HeaderValue::from_bytes("108.0.0.1, 中".as_bytes()).unwrap());
+        let err = client_ip(&headers, ip("127.0.0.1"), 2).unwrap_err();
+        assert_eq!(err.code, Some(error_code::BAD_REQUEST));
+    }
+
+    #[test]
+    fn extract_ip_rejects_invalid() {
+        assert_eq!(extract_ip("108.0.0.1").ok(), Some(ip("108.0.0.1")));
+        assert_eq!(extract_ip("108.0.0.1:5432").ok(), Some(ip("108.0.0.1")));
+        assert_eq!(extract_ip("2001:db8::1").ok(), Some(ip("2001:db8::1")));
+        assert_eq!(extract_ip("::1").ok(), Some(ip("::1")));
+
+        for value in [
+            "dead",
+            "::::",
+            "ffff.ffff.ffff.ffff",
+            "1.2",
+            "192.0.2",
+            "010.1.1.1",
+            "256.1.1.1",
+            "fe80::1%eth0",
+            "[::1]:80",
+            "108.0.0.1:",
+            ":80",
+            "localhost",
+        ] {
+            let err = extract_ip(value).unwrap_err();
+            assert_eq!(err.code, Some(error_code::BAD_REQUEST), "value={value}");
+        }
+    }
+
+    #[test]
+    fn single_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::HOST, HeaderValue::from_static("localhost"));
+        headers.insert(X_FORWARDED_FOR, HeaderValue::from_static("108.0.0.1, 10.0.0.1"));
+        headers.append(header::ACCEPT, HeaderValue::from_static("text/html"));
+        headers.append(header::ACCEPT, HeaderValue::from_static("application/json"));
+        validate_single_headers(&headers).unwrap();
+
+        for name in [header::HOST, X_FORWARDED_FOR, X_FORWARDED_PROTO] {
+            let mut headers = headers.clone();
+            headers.append(&name, HeaderValue::from_static("a"));
+            headers.append(&name, HeaderValue::from_static("b"));
+            let err = validate_single_headers(&headers).unwrap_err();
+            assert_eq!(err.code, Some(error_code::BAD_REQUEST));
+        }
     }
 
     #[test]

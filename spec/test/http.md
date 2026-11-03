@@ -8,7 +8,7 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
 - Use reqwest with `http1_only` and `http2_prior_knowledge` clients to cover both protocols on one port,
   and the framework `HttpClient` for `#[api]` clients.
 - `request_test`: query / JSON / text handling, Unicode and query escaping, cookie, user agent and
-  `x-forwarded-for` accessors, a non-text `client` header still reaches the handler, `merge` of routers with
+  `x-forwarded-for` accessors, duplicate or invalid `x-forwarded-for` and NUL in JSON body are `400`, a non-text `client` header still reaches the handler, `merge` of routers with
   different state, `204`, HEAD fallback with `content-length`, malformed input and body limit
   (`400` / `BAD_REQUEST`), exceptions as `ErrorResponse`, panics as
   `500`, `204` with a body set sends none over both protocols, `404`, `405` without `Allow`, requests fail
