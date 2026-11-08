@@ -1,10 +1,11 @@
+#![allow(unused_crate_dependencies)]
 use std::sync::Arc;
 use std::time::Duration;
 
 use demo::user::CreateUserRequest;
 use demo::user::GetUserByNameRequest;
 use demo::user::UpdateUserRequest;
-use demo::user::UserService;
+use demo::user::UserService as _;
 use demo::user::UserServiceClient;
 use framework::appender::ConsoleAppender;
 use framework::http::HttpClient;

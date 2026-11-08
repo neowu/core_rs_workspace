@@ -1,10 +1,12 @@
+#![allow(unused_crate_dependencies)]
 use framework::appender::ConsoleAppender;
+use framework::console;
 use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
-use framework::http::StreamExt;
+use framework::http::StreamExt as _;
 use framework::log;
 use framework::log::trace;
 use framework::stats;
@@ -62,7 +64,7 @@ async fn test_sse() -> Result<(), Exception> {
     let mut source = http_client.sse(request).await?;
     while let Some(result) = source.next().await {
         let event = result?;
-        println!("event => {event:?}");
+        console!("event => {event:?}");
     }
 
     warn!(error_code = "TRIGGER", "test");

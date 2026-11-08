@@ -15,7 +15,6 @@ http-body-util = "0"
 hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0", features = ["server-auto", "server-graceful", "tokio"] }
 libc = "0"
-log = { version = "0", features = ["release_max_level_off"] }
 memchr = "2"
 percent-encoding = "2"
 pin-project-lite = "0"
@@ -29,7 +28,9 @@ time = { version = "0", features = ["formatting", "macros", "parsing"] }
 tokio-rustls = "0"
 tokio-stream = "0"
 tokio-util = { version = "0", features = ["io", "rt"] }
+
 # dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
+log = { version = "0", features = ["release_max_level_off"] }
 tracing = { version = "0", features = ["release_max_level_off"] }
 
 [lints]

@@ -7,7 +7,9 @@ edition = "2024"
 framework.workspace = true
 framework_db.workspace = true
 framework_macro.workspace = true
-framework_nats.workspace = true
 serde.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true

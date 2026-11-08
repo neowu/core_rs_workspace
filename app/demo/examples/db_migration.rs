@@ -1,3 +1,4 @@
+#![allow(unused_crate_dependencies)]
 use demo::AppConfig;
 use framework::appender::ConsoleAppender;
 use framework::load_config;

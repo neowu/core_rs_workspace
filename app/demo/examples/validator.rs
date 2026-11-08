@@ -1,3 +1,4 @@
+#![allow(unused_crate_dependencies)]
 use framework::exception::Exception;
 use framework::validate::Validator as _;
 use framework_macro::Validate;
@@ -41,6 +42,5 @@ fn main() -> Result<(), Exception> {
     };
     x.validate()?;
 
-    dbg!(x);
     Ok(())
 }

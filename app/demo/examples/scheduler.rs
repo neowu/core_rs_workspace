@@ -1,7 +1,9 @@
+#![allow(unused_crate_dependencies)]
 use std::sync::Arc;
 use std::time::Duration;
 
 use framework::appender::ConsoleAppender;
+use framework::console;
 use framework::exception::Exception;
 use framework::schedule::JobContext;
 use framework::schedule::Scheduler;
@@ -14,7 +16,7 @@ use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use tokio::time::sleep;
 
-struct State {}
+struct State;
 
 #[tokio::main]
 pub async fn main() {
@@ -42,12 +44,12 @@ pub async fn main() {
 
 async fn job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
     // log::trace();
-    println!("Job executed: {}", context.name);
+    console!("Job executed: {}", context.name);
     sleep(Duration::from_secs(10)).await;
     Ok(())
 }
 
 async fn daily_job(_state: Arc<State>, context: JobContext) -> Result<(), Exception> {
-    println!("daily executed: {}", context.name);
+    console!("daily executed: {}", context.name);
     Ok(())
 }
