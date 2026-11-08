@@ -1,12 +1,12 @@
 use std::fs;
 
 use framework::exception::Exception;
+use framework::http::StatusCode;
+use framework::http::header;
 use framework::web::router::Router;
 use framework_macro::integration_test;
+use http::Version;
 use http_test::TestServer;
-use reqwest::StatusCode;
-use reqwest::Version;
-use reqwest::header;
 
 #[integration_test]
 async fn static_files() -> Result<(), Exception> {

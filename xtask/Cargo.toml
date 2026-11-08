@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[dependencies]
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true
+
+[lints]
+workspace = true

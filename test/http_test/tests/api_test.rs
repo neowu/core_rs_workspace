@@ -5,6 +5,7 @@ use framework::exception;
 use framework::exception::Exception;
 use framework::exception::error_code;
 use framework::http::Method;
+use framework::http::header;
 use framework::json;
 use framework::log::Severity;
 use framework_macro::api;
@@ -12,7 +13,6 @@ use framework_macro::integration_test;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
-use reqwest::header;
 
 #[api]
 trait GreetingService {

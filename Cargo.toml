@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["app/*", "benchmark/*", "lib/*", "test/*"]
+members = ["app/*", "benchmark/*", "lib/*", "test/*", "xtask"]
 default-members = ["app/*", "lib/*"]
 
 [workspace.package]
@@ -14,9 +14,58 @@ framework_kafka = { path = "lib/framework_kafka" }
 framework_macro = { path = "lib/framework_macro" }
 framework_nats = { path = "lib/framework_nats" }
 
+bytes = "1"
+futures = "0"
+http = "1"
+http-body = "1"
+http-body-util = "0"
+hyper = "1"
+hyper-rustls = { version = "0.27", default-features = false }
+hyper-util = "0"
+libc = "0"
+memchr = "2"
+percent-encoding = "2"
+pin-project-lite = "0"
+rand = "0"
+rdkafka = { version = "0.39", default-features = false }
+regex = "1"
+reqwest = "0"
+rustc-demangle = "0"
+rustls = { version = "0", default-features = false }
+rustls-platform-verifier = "0"
+semver = "1"
 serde = { version = "1", features = ["derive"] }
+serde_html_form = "0"
+serde_json = "1"
+smallvec = "1"
+socket2 = "0"
+time = "0"
 tokio = { version = "1", features = ["full"] }
+tokio-rustls = "0"
+tokio-stream = "0"
+tokio-util = "0"
+toml_edit = { version = "0", default-features = false, features = ["parse"] }
 uuid = { version = "1", features = ["serde", "v7"] }
+
+# framework_postgres
+postgres-protocol = "0"
+tokio-postgres = { version = "0", features = ["default", "with-serde_json-1", "with-uuid-1"] }
+
+# framework_clickhouse
+clickhouse = { version = "0", features = ["inserter", "rustls-tls"] }
+tower-service = "0"
+
+# framework_nats
+async-nats = "0"
+
+# framework_macro
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "3", features = ["full"] }
+
+# dependency-only, for their compile time max level features; see spec/third_party_instrumentation.md
+log = { version = "0", features = ["release_max_level_off"] }
+tracing = { version = "0", features = ["release_max_level_off"] }
 
 [workspace.lints.clippy]
 # pedantic

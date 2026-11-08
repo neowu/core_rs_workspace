@@ -5,12 +5,12 @@ edition = "2024"
 
 [dependencies]
 framework.workspace = true
+
+async-nats.workspace = true
+futures.workspace = true
 serde.workspace = true
 tokio.workspace = true
-
-async-nats = "*"
-futures = "*"
-tokio-util = "*"
+tokio-util.workspace = true
 
 [lints]
 workspace = true

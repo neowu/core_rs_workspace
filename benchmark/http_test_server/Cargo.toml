@@ -10,4 +10,4 @@ framework_db.workspace = true
 
 serde.workspace = true
 tokio.workspace = true
-libc = "*"
+libc.workspace = true

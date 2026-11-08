@@ -1,3 +1,6 @@
+[alias]
+lint = "run --quiet -p xtask -- lint"
+
 [build]
 warnings = "deny"
 

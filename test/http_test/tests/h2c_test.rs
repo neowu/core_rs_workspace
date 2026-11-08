@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use framework::exception::Exception;
+use framework::http::Method;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
 use framework_macro::integration_test;
 use futures::future::try_join_all;
+use http::Version;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
-use reqwest::Method;
-use reqwest::Version;
 
 async fn greet(_state: Arc<()>, mut request: Request) -> Result<Response, Exception> {
     let request: GreetRequest = request.json().await?;

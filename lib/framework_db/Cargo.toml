@@ -4,12 +4,12 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-framework = { workspace = true }
-tokio.workspace = true
+framework.workspace = true
 
-bytes = "*"
-postgres-protocol = "*"
-tokio-postgres = { version = "*", features = ["default", "with-serde_json-1", "with-uuid-1"] }
+bytes.workspace = true
+postgres-protocol.workspace = true
+tokio.workspace = true
+tokio-postgres.workspace = true
 
 [lints]
 workspace = true

@@ -7,10 +7,10 @@ edition = "2024"
 framework.workspace = true
 framework_clickhouse.workspace = true
 framework_kafka.workspace = true
+
+regex.workspace = true
 serde.workspace = true
 tokio.workspace = true
-
-regex = "*"
 
 [lints]
 workspace = true

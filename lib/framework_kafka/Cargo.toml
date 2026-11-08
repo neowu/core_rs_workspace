@@ -5,16 +5,15 @@ edition = "2024"
 
 [dependencies]
 framework.workspace = true
+
+futures.workspace = true
 serde.workspace = true
 tokio.workspace = true
-
-futures = "*"
-tokio-util = "*"
+tokio-util.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rdkafka = {
-  version = "*",
-  default-features = false,
+  workspace = true,
   features = [
     "cmake-build",
     "tokio",
@@ -24,8 +23,7 @@ rdkafka = {
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rdkafka = {
-  version = "*",
-  default-features = false,
+  workspace = true,
   features = [
     "dynamic-linking",
     "tokio",

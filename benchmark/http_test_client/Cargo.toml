@@ -7,7 +7,7 @@ edition = "2024"
 [dependencies]
 http_test_server = { path = "../http_test_server" }
 
-serde_json = "*"
+serde_json.workspace = true
 tokio.workspace = true
-reqwest = "0"
-bytes = "*"
+reqwest.workspace = true
+bytes.workspace = true

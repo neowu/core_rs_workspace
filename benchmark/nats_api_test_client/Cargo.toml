@@ -7,7 +7,7 @@ edition = "2024"
 [dependencies]
 nats_api_test_server = { path = "../nats_api_test_server" }
 
-serde_json = "*"
+async-nats.workspace = true
+bytes.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
-async-nats = "*"
-bytes = "*"

@@ -4,5 +4,5 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-serde_json = "*"
-rustc-demangle = "*"
+rustc-demangle.workspace = true
+serde_json.workspace = true

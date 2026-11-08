@@ -26,8 +26,37 @@ The following nursery rules are intentionally omitted:
 Validate all workspace targets, including tests, examples, and benchmarks:
 
 ```sh
-cargo clippy --workspace --all-targets -- -D warnings
+cargo lint
 cargo +nightly fmt --all -- --check
 ```
 
 The repository Cargo configuration also treats build warnings as errors.
+
+`cargo lint` runs repository checks through the `xtask` workspace member, then
+Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing makes
+the command fail. `cargo lint --custom-only` runs only the repository checks.
+CI uses the same command as local development.
+Custom rule unit tests live beside their rule in sibling `_test.rs` modules.
+
+All workspace members, including tests, benchmarks, and tooling, must inherit
+registry and Git dependencies using `workspace = true`. Local `path` dependencies
+may be declared directly in members. This applies to normal, development, build,
+and target-specific dependencies. Centralized versions and sources belong in
+`[workspace.dependencies]`; member-specific features, optionality, and
+default-feature settings remain supported.
+
+Repository checks enforce three dependency rules:
+
+| Rule | Requirement |
+| --- | --- |
+| `workspace_dependency_required` | Each member dependency inherits an existing root declaration or declares a local path. |
+| `unused_workspace_dependency` | Each root dependency declaration is inherited by at least one member. |
+| `wildcard_workspace_dependency` | Registry dependencies in the root must not use an unrestricted `*` version requirement. Path and Git dependencies are exempt. |
+
+Inheritance is checked by dependency key, including renamed dependencies. A
+direct path dependency does not keep an otherwise unused root declaration.
+Optional and platform-specific declarations count as uses even when inactive.
+This checks manifest references; the Rust `unused_crate_dependencies` lint
+separately checks usage in source code. Root wildcard checking is independent of
+Clippy's first-package workspace limitation. Diagnostics identify the manifest,
+line, column, and rule; violations produce a nonzero exit status.
