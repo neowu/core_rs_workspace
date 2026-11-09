@@ -17,11 +17,12 @@ framework_nats = { path = "lib/framework_nats" }
 async-nats = "0"
 bytes = "1"
 futures = "0"
-http = "1"
 hyper-util = "0"
 libc = "0"
+proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+syn = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0"
 uuid = { version = "1", features = ["serde", "v7"] }

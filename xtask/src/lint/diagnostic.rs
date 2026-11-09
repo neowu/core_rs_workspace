@@ -5,7 +5,7 @@ use serde_json::Value;
 use serde_json::json;
 
 pub(super) struct Diagnostic {
-    /// Manifest path relative to the workspace root, as rustc reports file names.
+    /// Manifest or source file path relative to the workspace root, as rustc reports file names.
     pub(super) path: PathBuf,
     pub(super) manifest_path: PathBuf,
     pub(super) package_id: String,

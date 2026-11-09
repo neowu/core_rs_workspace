@@ -2862,9 +2862,11 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 name = "xtask"
 version = "0.9.9"
 dependencies = [
+ "proc-macro2",
  "semver",
  "serde",
  "serde_json",
+ "syn 3.0.9",
  "toml_edit",
 ]
 

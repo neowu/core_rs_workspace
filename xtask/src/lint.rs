@@ -12,15 +12,14 @@ use serde_json::Value;
 use serde_json::json;
 
 mod diagnostic;
+mod file_length;
 mod workspace;
 mod workspace_dependencies;
 
-#[cfg(test)]
-mod workspace_dependencies_test;
-
 pub(crate) fn run(custom_only: bool, json: bool) -> Result<ExitCode, Box<dyn Error>> {
     let workspace = workspace::load()?;
-    let diagnostics = workspace_dependencies::check(&workspace);
+    let mut diagnostics = workspace_dependencies::check(&workspace);
+    diagnostics.extend(file_length::check(&workspace)?);
     let custom_ok = diagnostics.is_empty();
     let clippy_ok = if json {
         let mut stdout = io::stdout().lock();

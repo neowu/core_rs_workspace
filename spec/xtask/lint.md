@@ -11,13 +11,13 @@ The repository Cargo configuration also treats build warnings as errors.
 Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing makes
 the command fail. `cargo lint --custom-only` runs only the repository checks.
 CI uses the same command as local development.
-Custom rule unit tests live beside their rule in sibling `_test.rs` modules.
+Unit tests live in the same file as the code they test, in a `#[cfg(test)] mod tests`.
 
 `--message-format=json` emits the same JSON line stream as
 `cargo clippy --message-format=json` on stdout, so IDEs and tools that read Clippy
 output can read repository checks too. Repository diagnostics are
 `compiler-message` entries with the rule as the diagnostic code and the manifest,
-relative to the workspace root, as the span file. Diagnostics on the root
+or source file, relative to the workspace root, as the span file. Diagnostics on the root
 manifest are attributed to the `xtask` package, since a virtual manifest has no
 package. Clippy's own `build-finished` message is replaced by one final
 `build-finished` whose `success` covers both phases. The default
@@ -49,3 +49,16 @@ optional or inactive platform-specific declarations count as uses. These checks
 read manifest references; the Rust `unused_crate_dependencies` lint separately
 checks usage in source code. Diagnostics identify the manifest, line, column, and
 rule; violations produce a nonzero exit status.
+
+## File length
+
+| Rule | Requirement |
+| --- | --- |
+| `file_too_long` | A Rust source file has at most 500 lines, not counting top-level `#[cfg(test)]` items. |
+
+Files are parsed with `syn` so test items are excluded by their attributes rather
+than by layout. Only `.rs` files under each member's `src` are checked; build
+scripts, `tests/`, benches, and examples are exempt. A test module in a separate
+file (`#[cfg(test)] mod x;`) is not recognized as test code, which is why unit tests
+stay inline. Files that do not parse are skipped and left to the compiler. The
+diagnostic points at the first line past the limit.
