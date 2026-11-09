@@ -8,7 +8,7 @@ framework.workspace = true
 framework_clickhouse.workspace = true
 framework_kafka.workspace = true
 
-regex.workspace = true
+regex = "1"
 serde.workspace = true
 tokio.workspace = true
 

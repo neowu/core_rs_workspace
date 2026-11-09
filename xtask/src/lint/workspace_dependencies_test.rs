@@ -1,184 +1,182 @@
 use std::path::PathBuf;
 
+use serde_json::Value;
 use toml_edit::Document;
 
 use super::workspace_dependencies::check;
 use crate::lint::diagnostic::Diagnostic;
 use crate::lint::workspace::Manifest;
+use crate::lint::workspace::Package;
 use crate::lint::workspace::Workspace;
 
-fn run(root: &str, member: &str) -> Vec<Diagnostic> {
-    let workspace = Workspace {
-        root: PathBuf::from("fixture"),
-        manifest: Manifest {
-            path: PathBuf::from("fixture/Cargo.toml"),
-            document: Document::parse(root.to_owned()).expect("valid fixture"),
+fn manifest(name: &str, path: &str, source: &str) -> Manifest {
+    Manifest {
+        path: PathBuf::from(path),
+        absolute_path: PathBuf::from("/fixture").join(path),
+        package: Package {
+            id: format!("path+file:///fixture#{name}"),
+            name: name.to_owned(),
+            manifest_path: PathBuf::from("/fixture").join(path),
+            target: Value::Null,
         },
-        members: vec![
-            Manifest {
-                path: PathBuf::from("fixture/first/Cargo.toml"),
-                document: Document::parse(String::new()).expect("valid fixture"),
-            },
-            Manifest {
-                path: PathBuf::from("fixture/member/Cargo.toml"),
-                document: Document::parse(member.to_owned()).expect("valid fixture"),
-            },
-        ],
+        document: Document::parse(source.to_owned()).expect("valid fixture"),
+    }
+}
+
+fn run(root: &str, members: &[&str]) -> Vec<Diagnostic> {
+    let workspace = Workspace {
+        root: PathBuf::from("/fixture"),
+        manifest: manifest("xtask", "Cargo.toml", root),
+        members: members
+            .iter()
+            .enumerate()
+            .map(|(index, source)| manifest(&format!("m{index}"), &format!("m{index}/Cargo.toml"), source))
+            .collect(),
     };
     check(&workspace)
 }
 
+fn rules(diagnostics: &[Diagnostic]) -> Vec<&str> {
+    diagnostics.iter().map(|diagnostic| diagnostic.rule).collect()
+}
+
 #[test]
-fn accepts_inheritance_in_all_dependency_sections() {
+fn accepts_shared_root_and_member_own_dependencies() {
     let diagnostics = run(
         r#"
 [workspace.dependencies]
-runtime = "1"
-development = "1"
-builder = "1"
-platform = "1"
-platform_dev = "1"
-platform_build = "1"
+shared = "1"
 alias = { package = "actual-package", version = "1" }
+local = { path = "local" }
 "#,
-        r#"
+        &[
+            r#"
 [dependencies]
-runtime.workspace = true
+shared.workspace = true
 alias = { workspace = true, features = ["extra"], optional = true }
-[dev-dependencies]
-development = { workspace = true }
-[build-dependencies.builder]
-workspace = true
-[target.'cfg(target_os = "none")'.dependencies]
-platform.workspace = true
-[target.'cfg(target_os = "none")'.dev-dependencies]
-platform_dev.workspace = true
-[target.'cfg(target_os = "none")'.build-dependencies]
-platform_build.workspace = true
-"#,
-    );
-    assert!(diagnostics.is_empty(), "inherited declarations should pass");
-}
-
-#[test]
-fn rejects_direct_versions_and_sources_in_all_sections() {
-    let diagnostics = run(
-        "",
-        r#"[dependencies]
-plain = "1"
-inline = { version = "1" }
-remote = { git = "https://example.com/remote" }
-[dev-dependencies]
-development = "1"
-[build-dependencies.builder]
-version = "1"
-[target.'cfg(unix)'.dependencies]
-platform = "1"
-[target.'cfg(unix)'.dev-dependencies]
-platform_dev = "1"
-[target.'cfg(unix)'.build-dependencies]
-platform_build = "1"
-"#,
-    );
-    assert_eq!(diagnostics.len(), 8, "direct registry and Git dependencies should fail");
-    assert!(diagnostics.iter().all(|diagnostic| diagnostic.rule == "workspace_dependency_required"));
-    let first = diagnostics.first().expect("at least one diagnostic");
-    assert_eq!(first.path, PathBuf::from("fixture/member/Cargo.toml"));
-    assert_eq!(first.line, 2, "diagnostic should point at the declaration");
-    assert!(first.column > 1, "diagnostic should include the value column");
-}
-
-#[test]
-fn accepts_direct_paths_in_all_dependency_sections() {
-    let diagnostics = run(
-        "",
-        r#"[dependencies]
-runtime = { path = "../first" }
-alias = { package = "first", path = "../first", optional = true, features = ["extra"] }
-[dev-dependencies]
-development = { path = "../first", version = "1" }
-[build-dependencies.builder]
-path = "../first"
-[target.'cfg(target_os = "none")'.dependencies]
-platform = { path = "../first" }
-[target.'cfg(target_os = "none")'.dev-dependencies]
-platform_dev = { path = "../first" }
-[target.'cfg(target_os = "none")'.build-dependencies]
-platform_build = { path = "../first" }
-"#,
-    );
-    assert!(diagnostics.is_empty(), "local path dependencies do not need workspace declarations");
-}
-
-#[test]
-fn direct_paths_do_not_keep_unused_root_declarations() {
-    let diagnostics = run(
-        r#"[workspace.dependencies]
-first = { path = "first" }
-"#,
-        r#"[dependencies]
-first = { path = "../first" }
-"#,
-    );
-    assert_eq!(diagnostics.len(), 1, "direct paths must not count as workspace inheritance");
-    let diagnostic = diagnostics.first().expect("unused root declaration diagnostic");
-    assert_eq!(diagnostic.rule, "unused_workspace_dependency");
-    assert!(diagnostic.message.contains("`first`"));
-}
-
-#[test]
-fn tracks_unused_entries_by_dependency_key() {
-    let diagnostics = run(
-        r#"[workspace.dependencies]
-alias = { package = "actual", version = "1" }
-actual = "1"
-unused = "1"
-"#,
-        "[dependencies]\nalias.workspace = true\n",
-    );
-    assert_eq!(diagnostics.len(), 2, "an alias must not count as a use of another root key");
-    assert!(diagnostics.iter().all(|diagnostic| diagnostic.rule == "unused_workspace_dependency"));
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic.message.contains("`actual`")));
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic.message.contains("`unused`")));
-}
-
-#[test]
-fn checks_root_wildcards_independently_of_member_order() {
-    let diagnostics = run(
-        r#"[workspace.dependencies]
-plain = "*"
-inline = { version = "*" }
-equivalent = "x"
-bounded = "1.*"
-local = { path = "../local" }
-remote = { git = "https://example.com/remote", version = "*" }
-"#,
-        "[dependencies]
-plain.workspace = true
-inline.workspace = true
-equivalent.workspace = true
-bounded.workspace = true
+own = { version = "1", default-features = false }
 local.workspace = true
-remote.workspace = true
-",
+[target.'cfg(unix)'.build-dependencies]
+platform = "1"
+"#,
+            r#"
+[dev-dependencies]
+shared = { workspace = true }
+local.workspace = true
+remote = { git = "https://example.com/remote" }
+[target.'cfg(unix)'.dependencies]
+alias.workspace = true
+local.workspace = true
+sibling = { path = "../m0" }
+"#,
+        ],
     );
-    assert_eq!(diagnostics.len(), 3, "only unrestricted registry requirements should fail");
-    assert!(diagnostics.iter().all(|diagnostic| diagnostic.rule == "wildcard_workspace_dependency"));
+    assert!(diagnostics.is_empty(), "unexpected diagnostics: {:?}", rules(&diagnostics));
 }
 
 #[test]
-fn does_not_count_direct_declarations_as_inheritance() {
-    let diagnostics = run("[workspace.dependencies]\nshared = \"1\"\n", "[dependencies]\nshared = \"1\"\n");
-    assert_eq!(diagnostics.len(), 2, "both the direct declaration and unused root entry should fail");
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic.rule == "workspace_dependency_required"));
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic.rule == "unused_workspace_dependency"));
+fn rejects_duplicate_direct_dependencies_across_members() {
+    let diagnostics = run(
+        "",
+        &[
+            "[dependencies]\nshared = \"1\"\nlocal = { path = \"../local\" }\n",
+            "[dev-dependencies]\nrenamed = { package = \"shared\", version = \"1\" }\n[target.'cfg(unix)'.dependencies]\nlocal = { path = \"../local\" }\n",
+        ],
+    );
+    assert_eq!(rules(&diagnostics), vec!["duplicate_dependency"; 4], "each duplicate declaration should be reported");
+    let first = diagnostics.first().expect("duplicate diagnostic");
+    assert_eq!(first.path, PathBuf::from("m0/Cargo.toml"));
+    assert_eq!((first.span.line_start, first.span.column_start), (2, 10), "diagnostic should point at the value");
+    assert!(first.message.contains("`m0`, `m1`"), "message should list members: {}", first.message);
+}
+
+#[test]
+fn accepts_repeated_declarations_within_one_member() {
+    let diagnostics = run(
+        "",
+        &[r#"
+[target.'cfg(target_os = "linux")'.dependencies]
+native = { version = "1", features = ["static"] }
+[target.'cfg(target_os = "macos")'.dependencies]
+native = { version = "1", features = ["dynamic"] }
+"#],
+    );
+    assert!(diagnostics.is_empty(), "one member may declare a dependency per target");
+}
+
+#[test]
+fn requires_inheriting_root_declared_packages() {
+    let diagnostics = run(
+        "[workspace.dependencies]\nshared = \"1\"\nalias = { package = \"actual\", version = \"1\" }\n",
+        &[
+            "[dependencies]\nshared = \"1\"\nactual = \"1\"\n",
+            "[dependencies]\nshared.workspace = true\nalias.workspace = true\n",
+            "[dependencies]\nshared.workspace = true\nalias.workspace = true\n",
+        ],
+    );
+    assert_eq!(rules(&diagnostics), vec!["inherit_workspace_dependency"; 2]);
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic.message.contains("as `alias`")));
+}
+
+#[test]
+fn reports_unused_and_unshared_root_dependencies() {
+    let diagnostics = run(
+        "[workspace.dependencies]\nunused = \"1\"\nsingle = \"1\"\nshared = \"1\"\n",
+        &[
+            "[dependencies]\nsingle.workspace = true\nshared.workspace = true\n[dev-dependencies]\nsingle.workspace = true\n",
+            "[dependencies]\nshared.workspace = true\n",
+        ],
+    );
+    assert_eq!(rules(&diagnostics), vec!["unused_workspace_dependency", "unshared_workspace_dependency"]);
+    let unshared = diagnostics.get(1).expect("unshared diagnostic");
+    assert!(unshared.message.contains("`single`") && unshared.message.contains("`m0`"));
 }
 
 #[test]
 fn reports_missing_workspace_declarations() {
-    let diagnostics = run("", "[dependencies]\nmissing.workspace = true\n");
-    let diagnostic = diagnostics.first().expect("missing declaration diagnostic");
-    assert_eq!(diagnostics.len(), 1, "missing root declaration should fail");
-    assert_eq!(diagnostic.rule, "workspace_dependency_required");
-    assert!(diagnostic.message.contains("no declaration"));
+    let diagnostics = run("", &["[dependencies]\nmissing.workspace = true\n"]);
+    assert_eq!(rules(&diagnostics), vec!["missing_workspace_dependency"]);
+}
+
+#[test]
+fn rejects_wildcard_registry_versions_in_root_and_members() {
+    let diagnostics = run(
+        r#"[workspace.dependencies]
+plain = "*"
+inline = { version = "*" }
+bounded = "1.*"
+local = { path = "local" }
+remote = { git = "https://example.com/remote", version = "*" }
+"#,
+        &[
+            r#"[dependencies]
+plain.workspace = true
+inline.workspace = true
+bounded.workspace = true
+local.workspace = true
+remote.workspace = true
+equivalent = "x"
+unversioned = { features = ["extra"] }
+"#,
+            "[dependencies]\nplain.workspace = true\ninline.workspace = true\nbounded.workspace = true\nlocal.workspace = true\nremote.workspace = true\n",
+        ],
+    );
+    assert_eq!(
+        rules(&diagnostics),
+        vec!["wildcard_dependency"; 4],
+        "only unrestricted registry requirements should fail"
+    );
+}
+
+#[test]
+fn renders_cargo_json_messages() {
+    let diagnostics = run("", &["[dependencies]\nmissing = { workspace = true,\n  features = [\"x\"] }\n"]);
+    let message = diagnostics.first().expect("diagnostic").to_json();
+    assert_eq!(message["reason"], "compiler-message");
+    assert_eq!(message["package_id"], "path+file:///fixture#m0");
+    assert_eq!(message["message"]["code"]["code"], "missing_workspace_dependency");
+    let span = &message["message"]["spans"][0];
+    assert_eq!(span["file_name"], "m0/Cargo.toml");
+    assert_eq!((span["line_start"].as_u64(), span["line_end"].as_u64()), (Some(2), Some(3)));
+    assert_eq!(span["text"].as_array().map(Vec::len), Some(2), "every spanned line should be included");
 }

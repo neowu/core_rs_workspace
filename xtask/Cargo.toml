@@ -5,10 +5,10 @@ edition = "2024"
 publish = false
 
 [dependencies]
-semver.workspace = true
+semver = "1"
 serde.workspace = true
 serde_json.workspace = true
-toml_edit.workspace = true
+toml_edit = { version = "0", default-features = false, features = ["parse"] }
 
 [lints]
 workspace = true

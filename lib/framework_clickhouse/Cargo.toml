@@ -7,12 +7,12 @@ edition = "2024"
 framework.workspace = true
 framework_macro.workspace = true
 
-clickhouse.workspace = true
-hyper-rustls = { workspace = true, features = ["aws-lc-rs", "http1", "tls12", "webpki-tokio"] }
+clickhouse = { version = "0", features = ["inserter", "rustls-tls"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "tls12", "webpki-tokio"] }
 hyper-util = { workspace = true, features = ["client-legacy", "http1", "tokio"] }  # same as clickhouse's rustls-tls feature, to build its http client with FallbackDnsResolver
-rustls = { workspace = true, features = ["aws_lc_rs"] }
+rustls = { version = "0", default-features = false, features = ["aws_lc_rs"] }
 serde.workspace = true
-tower-service.workspace = true  # for FallbackDnsResolver to be used as hyper-util legacy client resolver
+tower-service = "0"  # for FallbackDnsResolver to be used as hyper-util legacy client resolver
 
 [lints]
 workspace = true

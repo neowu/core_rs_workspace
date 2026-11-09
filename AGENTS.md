@@ -16,4 +16,4 @@ e2e test: `test/`, spec: `@spec/test/spec.md`
 # spec
 
 - update `/spec` to reflect what code and design changed
-- for spec doc, only keep key design decisions / behaviour / requirements, always goes to code for impl details
+- for spec doc, only keep key design decisions / behavior / requirements, always goes to code for impl details

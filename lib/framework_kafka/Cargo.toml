@@ -13,7 +13,8 @@ tokio-util.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rdkafka = {
-  workspace = true,
+  version = "0.39",
+  default-features = false,
   features = [
     "cmake-build",
     "tokio",
@@ -23,7 +24,8 @@ rdkafka = {
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rdkafka = {
-  workspace = true,
+  version = "0.39",
+  default-features = false,
   features = [
     "dynamic-linking",
     "tokio",
