@@ -7,6 +7,20 @@ cargo +nightly fmt --all -- --check
 
 The repository Cargo configuration also treats build warnings as errors.
 
+## Packaging
+
+The checks live in the `framework_lint` library so other workspaces can run them the
+same way this one does. Each workspace keeps a thin `xtask` binary member that calls
+`framework_lint::run(&LintConfig { .. })`, plus the Cargo alias
+`lint = "run --quiet -p xtask -- lint"`. Customization is passed in code through
+`LintConfig` (currently `max_file_lines`, default 500), not a config file. Other
+workspaces depend on it via git, like the other framework crates.
+
+The workspace is located at runtime: the library reads `CARGO_MANIFEST_DIR` and
+`CARGO`, which `cargo run` sets for the wrapper binary, so it checks the workspace
+that contains the wrapper rather than wherever the library was compiled from. It
+must therefore be started through `cargo run`.
+
 `cargo lint` runs repository checks through the `xtask` workspace member, then
 Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing makes
 the command fail. `cargo lint --custom-only` runs only the repository checks.
@@ -18,7 +32,7 @@ Unit tests live in the same file as the code they test, in a `#[cfg(test)] mod t
 output can read repository checks too. Repository diagnostics are
 `compiler-message` entries with the rule as the diagnostic code and the manifest,
 or source file, relative to the workspace root, as the span file. Diagnostics on the root
-manifest are attributed to the `xtask` package, since a virtual manifest has no
+manifest are attributed to the wrapper (`xtask`) package, since a virtual manifest has no
 package. Clippy's own `build-finished` message is replaced by one final
 `build-finished` whose `success` covers both phases. The default
 `--message-format=human` prints rustc-style diagnostics to stderr.
@@ -42,6 +56,10 @@ local path dependencies alike.
 | `unshared_workspace_dependency` | Each root declaration is inherited by at least two members; otherwise it belongs in that member. |
 | `wildcard_dependency` | Registry dependencies in the root and members specify a version other than `*` (or an equivalent such as `x`, or none). Path and Git dependencies are exempt. |
 
+Path dependencies on workspace members are exempt from the `unused_workspace_dependency`
+and `unshared_workspace_dependency` rules, so the root can list every workspace crate
+(such as `framework_lint`, used only by `xtask`) and members always inherit them.
+
 Packages are identified by their `package` name, so renamed dependencies count as
 the same package. Root use is counted by root key and distinct member; a member
 declaring the same dependency in several sections or targets counts once, and
@@ -54,7 +72,7 @@ rule; violations produce a nonzero exit status.
 
 | Rule | Requirement |
 | --- | --- |
-| `file_too_long` | A Rust source file has at most 500 lines, not counting top-level `#[cfg(test)]` items. |
+| `file_too_long` | A Rust source file has at most `max_file_lines` (default 500) lines, not counting top-level `#[cfg(test)]` items. |
 
 Files are parsed with `syn` so test items are excluded by their attributes rather
 than by layout. Only `.rs` files under each member's `src` are checked; build

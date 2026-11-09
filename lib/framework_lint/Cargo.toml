@@ -1,0 +1,18 @@
+[package]
+name = "framework_lint"
+version.workspace = true
+edition = "2024"
+
+[lib]
+doctest = false
+
+[dependencies]
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+semver = "1"
+serde.workspace = true
+serde_json.workspace = true
+syn = { workspace = true, features = ["full"] }
+toml_edit = { version = "0", default-features = false, features = ["parse"] }
+
+[lints]
+workspace = true

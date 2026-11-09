@@ -70,7 +70,13 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
         }
     }
 
+    let member_names: BTreeSet<&str> = workspace.members.iter().map(|member| member.package.name.as_str()).collect();
     for (name, dependency) in &root_dependencies {
+        check_wildcard(root_manifest, name, dependency, &mut diagnostics);
+        // the root may list every workspace crate, however many members use it
+        if dependency.get("path").is_some() && member_names.contains(package_name(name, dependency)) {
+            continue;
+        }
         let members = inherited.get(name).map(|members| members.iter().collect::<Vec<_>>()).unwrap_or_default();
         if let [member] = members.as_slice() {
             diagnostics.push(root_manifest.diagnostic(
@@ -87,7 +93,6 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
                 format!("workspace dependency `{name}` is not inherited by any member"),
             ));
         }
-        check_wildcard(root_manifest, name, dependency, &mut diagnostics);
     }
 
     diagnostics.sort_by(|left, right| {
@@ -265,6 +270,15 @@ native = { version = "1", features = ["dynamic"] }
         assert_eq!(rules(&diagnostics), vec!["unused_workspace_dependency", "unshared_workspace_dependency"]);
         let unshared = diagnostics.get(1).expect("unshared diagnostic");
         assert!(unshared.message.contains("`single`") && unshared.message.contains("`m0`"));
+    }
+
+    #[test]
+    fn exempts_workspace_crates_from_sharing_rules() {
+        let diagnostics = run(
+            "[workspace.dependencies]\nm0 = { path = \"m0\" }\nm1 = { path = \"m1\" }\n",
+            &["[dependencies]\nm1.workspace = true\n", ""],
+        );
+        assert_eq!(rules(&diagnostics), Vec::<&str>::new());
     }
 
     #[test]

@@ -13,10 +13,8 @@ use super::diagnostic::Diagnostic;
 use super::diagnostic::SpanLine;
 use super::workspace::Workspace;
 
-const MAX_LINES: usize = 500;
-
 /// Checks `.rs` files under each member's `src`, so build scripts, integration tests, benches and examples are exempt.
-pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
+pub(super) fn check(workspace: &Workspace, max_lines: usize) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
     let mut diagnostics = Vec::new();
     for member in &workspace.members {
         let Some(package_dir) = member.absolute_path.parent() else { continue };
@@ -24,7 +22,7 @@ pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Er
         rust_files(&package_dir.join("src"), &mut files)?;
         for file in files {
             let source = fs::read_to_string(&file)?;
-            let Some((line, count)) = overflow(&source) else { continue };
+            let Some((line, count)) = overflow(&source, max_lines) else { continue };
             let byte_start: usize = source.split_inclusive('\n').take(line - 1).map(str::len).sum();
             let text = source.lines().nth(line - 1).unwrap_or_default();
             diagnostics.push(Diagnostic {
@@ -47,7 +45,7 @@ pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Er
                 },
                 rule: "file_too_long",
                 message: format!(
-                    "file has {count} lines excluding `#[cfg(test)]` items, more than the limit of {MAX_LINES}"
+                    "file has {count} lines excluding `#[cfg(test)]` items, more than the limit of {max_lines}"
                 ),
             });
         }
@@ -73,13 +71,13 @@ fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>
 
 /// The first line past the limit and the total line count, both ignoring top-level `#[cfg(test)]` items.
 /// Files that fail to parse are skipped; the compiler reports those.
-fn overflow(source: &str) -> Option<(usize, usize)> {
+fn overflow(source: &str, max_lines: usize) -> Option<(usize, usize)> {
     let file = syn::parse_file(source).ok()?;
     let test_lines: Vec<RangeInclusive<usize>> =
         file.items.iter().filter(|item| is_test(item)).map(|item| lines(item.span())).collect();
     let code_lines: Vec<usize> =
         (1..=source.lines().count()).filter(|line| !test_lines.iter().any(|range| range.contains(line))).collect();
-    code_lines.get(MAX_LINES).map(|line| (*line, code_lines.len()))
+    code_lines.get(max_lines).map(|line| (*line, code_lines.len()))
 }
 
 fn lines(span: Span) -> RangeInclusive<usize> {
@@ -110,8 +108,9 @@ fn is_test(item: &Item) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::MAX_LINES;
     use super::overflow;
+
+    const MAX_LINES: usize = 20;
 
     fn code(lines: usize) -> String {
         "const C: u8 = 0;\n".repeat(lines)
@@ -119,21 +118,21 @@ mod tests {
 
     #[test]
     fn accepts_files_at_the_limit() {
-        assert_eq!(overflow(&code(MAX_LINES)), None);
+        assert_eq!(overflow(&code(MAX_LINES), MAX_LINES), None);
     }
 
     #[test]
     fn reports_first_line_past_the_limit() {
-        assert_eq!(overflow(&code(MAX_LINES + 2)), Some((MAX_LINES + 1, MAX_LINES + 2)));
+        assert_eq!(overflow(&code(MAX_LINES + 2), MAX_LINES), Some((MAX_LINES + 1, MAX_LINES + 2)));
     }
 
     #[test]
     fn excludes_cfg_test_items() {
         let tests = "#[cfg(test)]\nmod tests {\n    #[test]\n    fn it_works() {}\n}\n";
         let helper = "/// helper\n#[cfg(test)]\nfn helper() {}\n";
-        assert_eq!(overflow(&format!("{helper}{}{tests}", code(MAX_LINES))), None);
+        assert_eq!(overflow(&format!("{helper}{}{tests}", code(MAX_LINES)), MAX_LINES), None);
         assert_eq!(
-            overflow(&format!("{helper}{}{tests}", code(MAX_LINES + 1))),
+            overflow(&format!("{helper}{}{tests}", code(MAX_LINES + 1)), MAX_LINES),
             Some((MAX_LINES + 4, MAX_LINES + 1)),
             "line numbers are in the original file"
         );
@@ -142,6 +141,6 @@ mod tests {
     #[test]
     fn counts_other_cfg_items() {
         let source = format!("#[cfg(not(test))]\nfn real() {{}}\n{}", code(MAX_LINES - 1));
-        assert_eq!(overflow(&source), Some((MAX_LINES + 1, MAX_LINES + 1)));
+        assert_eq!(overflow(&source, MAX_LINES), Some((MAX_LINES + 1, MAX_LINES + 1)));
     }
 }

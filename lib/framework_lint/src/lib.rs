@@ -1,3 +1,4 @@
+use std::env;
 use std::error::Error;
 use std::io;
 use std::io::BufRead as _;
@@ -16,10 +17,52 @@ mod file_length;
 mod workspace;
 mod workspace_dependencies;
 
-pub(crate) fn run(custom_only: bool, json: bool) -> Result<ExitCode, Box<dyn Error>> {
+const USAGE: &str = "Usage: cargo lint [--custom-only] [--message-format=human|json]";
+
+pub struct LintConfig {
+    /// Maximum lines per Rust source file, not counting top-level `#[cfg(test)]` items.
+    pub max_file_lines: usize,
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        Self { max_file_lines: 500 }
+    }
+}
+
+/// Entry point for the workspace's lint binary, which must be started by `cargo run` from a workspace member,
+/// e.g. through the alias `lint = "run --quiet -p xtask -- lint"`.
+pub fn run(config: &LintConfig) -> Result<ExitCode, Box<dyn Error>> {
+    let args: Vec<_> = env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        writeln!(io::stdout(), "{USAGE}")?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let Some(("lint", options)) = args.split_first().map(|(command, options)| (command.as_str(), options)) else {
+        return Err(USAGE.into());
+    };
+    let mut custom_only = false;
+    let mut json = false;
+    for option in options {
+        match option.as_str() {
+            "--custom-only" => custom_only = true,
+            "--message-format=json" => json = true,
+            "--message-format=human" => json = false,
+            _ => return Err(format!("unknown option `{option}`\n{USAGE}").into()),
+        }
+    }
+    lint(config, custom_only, json)
+}
+
+/// Read at runtime, since a library compiled from a git checkout cannot rely on its own build environment.
+fn cargo() -> Command {
+    Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+}
+
+fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, Box<dyn Error>> {
     let workspace = workspace::load()?;
     let mut diagnostics = workspace_dependencies::check(&workspace);
-    diagnostics.extend(file_length::check(&workspace)?);
+    diagnostics.extend(file_length::check(&workspace, config.max_file_lines)?);
     let custom_ok = diagnostics.is_empty();
     let clippy_ok = if json {
         let mut stdout = io::stdout().lock();
@@ -45,7 +88,7 @@ pub(crate) fn run(custom_only: bool, json: bool) -> Result<ExitCode, Box<dyn Err
 }
 
 fn clippy_command(root: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO"));
+    let mut command = cargo();
     command.args(["clippy", "--workspace", "--all-targets"]).current_dir(root);
     command
 }

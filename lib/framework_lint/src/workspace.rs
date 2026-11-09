@@ -1,9 +1,9 @@
 use std::collections::HashSet;
+use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -24,7 +24,7 @@ pub(super) struct Manifest {
     /// Relative to the workspace root.
     pub(super) path: PathBuf,
     pub(super) absolute_path: PathBuf,
-    /// Package that diagnostics are attributed to in JSON output; the root manifest uses `xtask`.
+    /// Package that diagnostics are attributed to in JSON output; the root manifest uses the package running the lint.
     pub(super) package: Package,
     pub(super) document: Document<String>,
 }
@@ -103,23 +103,24 @@ struct Metadata {
 }
 
 pub(super) fn load() -> Result<Workspace, Box<dyn Error>> {
-    let start_dir = Path::new(env!("CARGO_MANIFEST_DIR")).parent().ok_or("xtask must be inside the workspace")?;
-    let output = Command::new(env!("CARGO"))
-        .args(["metadata", "--no-deps", "--format-version", "1"])
-        .current_dir(start_dir)
-        .output()?;
+    // `cargo run` sets this at runtime to the lint binary's package, i.e. the wrapper member of the linted workspace.
+    let runner_dir =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").ok_or("cargo lint must be started by `cargo run`")?);
+    let runner_manifest = runner_dir.join("Cargo.toml");
+    let output =
+        super::cargo().args(["metadata", "--no-deps", "--format-version", "1"]).current_dir(&runner_dir).output()?;
     if !output.status.success() {
         return Err(format!("cargo metadata failed:\n{}", String::from_utf8_lossy(&output.stderr)).into());
     }
     let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
     let root = metadata.workspace_root;
-    let xtask = metadata
+    let runner = metadata
         .packages
         .iter()
-        .find(|package| package.manifest_path == Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
-        .ok_or("xtask package not found in cargo metadata")?
+        .find(|package| package.manifest_path == runner_manifest)
+        .ok_or_else(|| format!("{} is not a member of the workspace", runner_manifest.display()))?
         .clone();
-    let manifest = Manifest::load(&root, root.join("Cargo.toml"), xtask)?;
+    let manifest = Manifest::load(&root, root.join("Cargo.toml"), runner)?;
     let mut members = Vec::new();
     for package in metadata.packages {
         if metadata.workspace_members.contains(&package.id) {
