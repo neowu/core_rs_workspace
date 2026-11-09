@@ -5,8 +5,12 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
 
 - Bind loopback port `0` and pass the listener to `HttpServer::start_with_listener`, wait for
   `/health-check`, shutdown after each test. `max_body_size` is 1KB to exercise the limit.
-- Use reqwest with `http1_only` and `http2_prior_knowledge` clients to cover both protocols on one port,
-  and the framework `HttpClient` for `#[api]` clients.
+- Use only the framework `HttpClient` (no reqwest): `http_client(h2c)` builds a new client per use, HTTP/1
+  or h2c (`prefer_http2`), to cover both protocols on one port and back the `#[api]` clients; readability
+  over reuse. A missing client feature is added to the
+  framework, not worked around with another client. The protocol is asserted server side (`h2c_test`).
+- `sse_test` uses `HttpClient::sse` for streams (disconnect by dropping the `EventSource`, shutdown frame
+  via `EventSource::retry()`) and `execute` for whole responses.
 - `request_test`: query / JSON / text handling, Unicode and query escaping, cookie, user agent and
   `x-forwarded-for` accessors, duplicate or invalid `x-forwarded-for` and NUL in JSON body are `400`, a non-text `client` header still reaches the handler, `merge` of routers with
   different state, `204`, HEAD fallback with `content-length`, malformed input and body limit

@@ -932,8 +932,6 @@ dependencies = [
  "framework",
  "framework_macro",
  "futures",
- "http",
- "reqwest",
  "serde",
  "tokio",
 ]
@@ -1960,8 +1958,6 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
- "serde",
- "serde_json",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

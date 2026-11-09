@@ -28,8 +28,12 @@ Built directly on `hyper::client::conn` (no reqwest / tower), TLS via `tokio-rus
 - No redirects, no proxy env vars, no decompression; urls must be valid `http::Uri` (already encoded),
   an explicit port must be a valid u16 (`http::Uri` doesn't check it); the url is parsed in
   `HttpRequest::new`, which returns an error for an invalid url, so it fails before sending.
+- `HttpRequest.headers` is public for raw values (repeated or non-UTF-8); `header()` is the validated
+  shortcut that replaces.
 - `HttpResponse.headers` is the response `HeaderMap` as received: repeated headers (e.g. `set-cookie`)
   are kept, and a non-UTF-8 header value doesn't fail the request.
+- `HttpResponse.body` is the raw `Bytes`, binary safe; `text()` fails if it's not UTF-8. `#[api]`
+  clients read it lossily so a non-UTF-8 error body still reports the status.
 
 ## SSE
 
@@ -37,7 +41,9 @@ Built directly on `hyper::client::conn` (no reqwest / tower), TLS via `tokio-rus
 event stream format so it reads any server, not only ours:
 
 - Lines end with CRLF / LF / CR (also split across chunks); `field:value`, one optional leading space
-  stripped; `:` lines are comments (keepalive); unknown fields and `retry` are ignored.
+  stripped; `:` lines are comments (keepalive); unknown fields are ignored.
+- `retry` (digits only, else ignored) is kept as `EventSource::retry()`, the reconnect delay the server
+  asks for, e.g. the jittered frame our server sends on shutdown; the caller decides whether to use it.
 - `data` lines are joined with `\n`, an event is dispatched on a blank line, none if there was no `data`
   line; an incomplete event at the end of the stream is discarded.
 - `event_type` resets per event; `id` is the last event id, it persists across events (an empty `id`

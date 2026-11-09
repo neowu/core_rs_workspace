@@ -84,7 +84,7 @@ impl Elasticsearch {
         if response.status != 200 {
             return Err(exception!("failed to get state"));
         }
-        json::from_json(&response.body)
+        json::from_json(response.text()?)
     }
 
     pub(crate) async fn close_index(&self, index: String) -> Result<(), Exception> {

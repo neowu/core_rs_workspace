@@ -5,13 +5,13 @@ use framework::exception::Exception;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
+use framework::http::HttpResponse;
 use framework::http::Method;
 use framework::system::CancellationToken;
 use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
 use framework_macro::Validate;
-use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -30,12 +30,21 @@ pub struct GreetResponse {
     pub greeting: String,
 }
 
+// a new client per call, h2c = http2 prior knowledge, otherwise http1; Arc for #[api] clients
+pub fn http_client(h2c: bool) -> Arc<HttpClient> {
+    Arc::new(HttpClient::new(HttpClientConfig {
+        timeout: Duration::from_secs(2),
+        prefer_http2: h2c,
+        ..Default::default()
+    }))
+}
+
+pub async fn execute(client: &HttpClient, method: Method, url: String) -> Result<HttpResponse, Exception> {
+    client.execute(HttpRequest::new(method, url)?).await
+}
+
 pub struct TestServer {
     pub url: String,
-    /// framework client, for #[api] clients
-    pub client: Arc<HttpClient>,
-    pub http1: Client,
-    pub h2c: Client,
     shutdown_signal: CancellationToken,
     task: JoinHandle<()>,
 }
@@ -47,31 +56,14 @@ impl TestServer {
         let shutdown_signal = CancellationToken::new();
         let http_server = HttpServer::new(HttpServerConfig { max_body_size: 1024, ..Default::default() });
         let task = tokio::spawn(http_server.start_with_listener(listener, router.into(), shutdown_signal.clone()));
-        let server = TestServer {
-            url,
-            client: Arc::new(HttpClient::new(HttpClientConfig {
-                timeout: Duration::from_secs(2),
-                ..Default::default()
-            })),
-            http1: Client::builder()
-                .http1_only()
-                .timeout(Duration::from_secs(2))
-                .build()
-                .expect("failed to build client"),
-            h2c: Client::builder()
-                .http2_prior_knowledge()
-                .timeout(Duration::from_secs(2))
-                .build()
-                .expect("failed to build client"),
-            shutdown_signal,
-            task,
-        };
+        let server = TestServer { url, shutdown_signal, task };
 
         timeout(Duration::from_secs(5), async {
+            let client = http_client(false);
             loop {
                 assert!(!server.task.is_finished(), "http server exited before becoming ready");
-                if let Ok(response) = server.http1.get(server.url("/health-check")).send().await
-                    && response.status() == 200
+                if let Ok(response) = execute(&client, Method::GET, server.url("/health-check")).await
+                    && response.status == 200
                 {
                     return;
                 }
@@ -86,10 +78,6 @@ impl TestServer {
 
     pub fn url(&self, path: &str) -> String {
         format!("{}{path}", self.url)
-    }
-
-    pub fn request(&self, method: Method, path: &str) -> Result<HttpRequest, Exception> {
-        HttpRequest::new(method, self.url(path))
     }
 
     pub async fn shutdown(&mut self) {

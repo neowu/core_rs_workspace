@@ -4,6 +4,13 @@ use framework::api::ErrorResponse;
 use framework::exception;
 use framework::exception::Exception;
 use framework::exception::error_code;
+use framework::http::HeaderName;
+use framework::http::HeaderValue;
+use framework::http::HttpRequest;
+use framework::http::Method;
+use framework::http::StatusCode;
+use framework::http::header;
+use framework::json;
 use framework::log::Severity;
 use framework::web::request::Request;
 use framework::web::response::Response;
@@ -12,10 +19,8 @@ use framework_macro::integration_test;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
-use reqwest::Method;
-use reqwest::StatusCode;
-use reqwest::header;
-use reqwest::header::HeaderValue;
+use http_test::execute;
+use http_test::http_client;
 
 struct AppState {
     prefix: &'static str,
@@ -73,109 +78,116 @@ async fn request_response() -> Result<(), Exception> {
         )
         .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).route(Method::GET, "/ping", ping));
     let mut server = TestServer::start(router).await;
-    let client = &server.http1;
+    let client = &http_client(false);
+    let json_request = |method, path, body: &str| {
+        let mut request = HttpRequest::new(method, server.url(path))?;
+        request.body(body.to_owned(), "application/json");
+        Ok::<_, Exception>(request)
+    };
 
-    let response = client.get(server.url("/greet?name=world+%26+friends")).send().await?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.version(), reqwest::Version::HTTP_11);
-    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
-    let body: GreetResponse = response.json().await?;
+    let response = execute(client, Method::GET, server.url("/greet?name=world+%26+friends")).await?;
+    assert_eq!(response.status, 200);
+    assert_eq!(response.headers[header::CONTENT_TYPE], "application/json");
+    let body: GreetResponse = json::from_json(response.text()?)?;
     assert_eq!(body.greeting, "hello, world & friends");
 
     // a non text `client` header is skipped in the context, the request still reaches the handler
-    let response = client
-        .get(server.url("/greet?name=world"))
-        .header("client", HeaderValue::from_bytes("café".as_bytes()).expect("header value must be valid"))
-        .send()
-        .await?;
-    let body: GreetResponse = response.json().await?;
+    let mut request = HttpRequest::new(Method::GET, server.url("/greet?name=world"))?;
+    request.headers.insert(
+        HeaderName::from_static("client"),
+        HeaderValue::from_bytes("café".as_bytes()).expect("header value must be valid"),
+    );
+    let body: GreetResponse = json::from_json(client.execute(request).await?.text()?)?;
     assert_eq!(body.greeting, "hello, world");
 
-    let response = client.post(server.url("/greet")).json(&GreetRequest { name: "世界".to_owned() }).send().await?;
-    let body: GreetResponse = response.json().await?;
+    let request = json_request(Method::POST, "/greet", &json::to_json(&GreetRequest { name: "世界".to_owned() })?)?;
+    let body: GreetResponse = json::from_json(client.execute(request).await?.text()?)?;
     assert_eq!(body.greeting, "hello, 世界");
 
-    let response = client.post(server.url("/echo")).body("hello\n世界").send().await?;
-    assert_eq!(response.headers()[header::CONTENT_TYPE], "text/plain; charset=utf-8");
-    assert_eq!(response.text().await?, "hello\n世界");
+    let mut request = HttpRequest::new(Method::POST, server.url("/echo"))?;
+    request.body("hello\n世界".to_owned(), "text/plain");
+    let response = client.execute(request).await?;
+    assert_eq!(response.headers[header::CONTENT_TYPE], "text/plain; charset=utf-8");
+    assert_eq!(response.text()?, "hello\n世界");
 
-    let response = client
-        .get(server.url("/whoami"))
-        .header(header::COOKIE, "a=1; session=abc%20def")
-        .header(header::USER_AGENT, "test-agent")
-        .header("x-forwarded-for", "108.0.0.1, 10.0.0.1")
-        .send()
-        .await?;
-    assert_eq!(response.text().await?, "108.0.0.1|abc def|test-agent");
+    let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
+    request.header(header::COOKIE, "a=1; session=abc%20def")?;
+    request.header(header::USER_AGENT, "test-agent")?;
+    request.header(HeaderName::from_static("x-forwarded-for"), "108.0.0.1, 10.0.0.1")?;
+    assert_eq!(client.execute(request).await?.text()?, "108.0.0.1|abc def|test-agent");
 
-    let response = client
-        .get(server.url("/whoami"))
-        .header("x-forwarded-for", "1.1.1.1")
-        .header("x-forwarded-for", "108.0.0.1, 10.0.0.1")
-        .send()
-        .await?;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let error: ErrorResponse = response.json().await?;
+    let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
+    let forwarded_for = HeaderName::from_static("x-forwarded-for");
+    request.headers.append(&forwarded_for, HeaderValue::from_static("1.1.1.1"));
+    request.headers.append(&forwarded_for, HeaderValue::from_static("108.0.0.1, 10.0.0.1"));
+    let response = client.execute(request).await?;
+    assert_eq!(response.status, 400);
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.message, "duplicate header, name=x-forwarded-for");
 
-    let response = client.get(server.url("/whoami")).header("x-forwarded-for", "1.2.3, 10.0.0.1").send().await?;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let error: ErrorResponse = response.json().await?;
+    let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
+    request.header(forwarded_for, "1.2.3, 10.0.0.1")?;
+    let response = client.execute(request).await?;
+    assert_eq!(response.status, 400);
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.message, "invalid client ip address, value=1.2.3");
 
-    let response = client.get(server.url("/ping")).send().await?;
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let response = execute(client, Method::GET, server.url("/ping")).await?;
+    assert_eq!(response.status, 204);
 
-    let response = client.head(server.url("/greet?name=world")).send().await?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.headers()[header::CONTENT_LENGTH], r#"{"greeting":"hello, world"}"#.len().to_string());
+    let response = execute(client, Method::HEAD, server.url("/greet?name=world")).await?;
+    assert_eq!(response.status, 200);
+    assert_eq!(response.headers[header::CONTENT_LENGTH], r#"{"greeting":"hello, world"}"#.len().to_string());
+    assert!(response.body.is_empty());
 
     for (path, body, message) in [
-        ("/greet", Some("{"), "failed to parse json body"),
-        ("/greet", Some(r#"{"name":42}"#), "failed to parse json body"),
-        ("/greet", Some(r#"{"name":"a\u0000"}"#), "json body must not contain NUL char"),
-        ("/echo", Some(&*"x".repeat(2048)), "failed to read body, error=length limit exceeded"),
+        ("/greet", "{", "failed to parse json body"),
+        ("/greet", r#"{"name":42}"#, "failed to parse json body"),
+        ("/greet", r#"{"name":"a\u0000"}"#, "json body must not contain NUL char"),
+        ("/echo", &*"x".repeat(2048), "failed to read body, error=length limit exceeded"),
     ] {
-        let response = client.post(server.url(path)).body(body.unwrap_or_default().to_owned()).send().await?;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        let error: ErrorResponse = response.json().await?;
+        let response = client.execute(json_request(Method::POST, path, body)?).await?;
+        assert_eq!(response.status, 400);
+        let error: ErrorResponse = json::from_json(response.text()?)?;
         assert_eq!(error.code.as_deref(), Some(error_code::BAD_REQUEST));
         assert_eq!(error.severity, Severity::Warn);
         assert_eq!(error.message, message);
     }
 
-    let response = client.get(server.url("/greet")).send().await?;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let error: ErrorResponse = response.json().await?;
+    let response = execute(client, Method::GET, server.url("/greet")).await?;
+    assert_eq!(response.status, 400);
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.message, "failed to parse query");
 
-    let response = client.get(server.url("/fail")).send().await?;
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let error: ErrorResponse = response.json().await?;
+    let response = execute(client, Method::GET, server.url("/fail")).await?;
+    assert_eq!(response.status, 500);
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
     assert_eq!(error.message, "expected failure");
 
-    let response = client.get(server.url("/panic")).send().await?;
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let error: ErrorResponse = response.json().await?;
+    let response = execute(client, Method::GET, server.url("/panic")).await?;
+    assert_eq!(response.status, 500);
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.message, "handler panicked, error=expected panic");
 
-    for client in [&server.http1, &server.h2c] {
-        let response = client.get(server.url("/no-content")).send().await?;
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert!(response.headers().get(header::CONTENT_LENGTH).is_none());
-        assert_eq!(response.bytes().await?.len(), 0);
+    for h2c in [false, true] {
+        let client = &http_client(h2c);
+        let response = execute(client, Method::GET, server.url("/no-content")).await?;
+        assert_eq!(response.status, 204);
+        assert!(response.headers.get(header::CONTENT_LENGTH).is_none());
+        assert!(response.body.is_empty());
     }
 
-    let response = client.get(server.url("/unknown")).send().await?;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(response.text().await?, "");
+    let response = execute(client, Method::GET, server.url("/unknown")).await?;
+    assert_eq!(response.status, 404);
+    assert!(response.body.is_empty());
 
-    let response = client.put(server.url("/greet")).send().await?;
-    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-    assert!(response.headers().get(header::ALLOW).is_none());
+    let response = execute(client, Method::PUT, server.url("/greet")).await?;
+    assert_eq!(response.status, 405);
+    assert!(response.headers.get(header::ALLOW).is_none());
 
     server.shutdown().await;
-    assert!(server.http1.get(server.url("/health-check")).send().await.is_err(), "request succeeded after shutdown");
+    let result = execute(client, Method::GET, server.url("/health-check")).await;
+    assert!(result.is_err(), "request succeeded after shutdown");
     Ok(())
 }

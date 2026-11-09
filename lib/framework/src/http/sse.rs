@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::task::ready;
+use std::time::Duration;
 use std::time::Instant;
 
 use bytes::Bytes;
@@ -25,6 +26,7 @@ pub struct EventSource {
     event_type: Option<String>,
     // persists across events, the value for `last-event-id` on reconnect
     last_id: Option<String>,
+    retry: Option<Duration>,
 
     start_time: Instant,
     read_bytes: usize,
@@ -41,10 +43,16 @@ impl EventSource {
             data: String::new(),
             event_type: None,
             last_id: None,
+            retry: None,
             start_time: Instant::now(),
             read_bytes: 0,
             read_entries: 0,
         }
+    }
+
+    /// The last `retry` the server sent, the reconnection delay it asks for; no auto reconnect.
+    pub const fn retry(&self) -> Option<Duration> {
+        self.retry
     }
 
     fn read(&mut self, bytes: &[u8]) {
@@ -87,6 +95,11 @@ impl EventSource {
             }
             "event" => self.event_type = Some(value.to_owned()),
             "id" if !value.contains('\0') => self.last_id = (!value.is_empty()).then(|| value.to_owned()),
+            "retry" if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) => {
+                if let Ok(millis) = value.parse() {
+                    self.retry = Some(Duration::from_millis(millis));
+                }
+            }
             _ => {}
         }
     }
@@ -163,5 +176,15 @@ mod tests {
         );
         // trailing data line keeps an empty line, incomplete event at end is discarded
         assert_eq!(events(&["data: a\ndata: \n\ndata: b\n"]).await, [event(None, None, "a\n")]);
+    }
+
+    #[tokio::test]
+    async fn retry() {
+        let chunks =
+            ["retry: 1500\n\n", "retry: x\nretry: -1\nretry:\n\n"].map(|c| Ok(Bytes::from_static(c.as_bytes())));
+        let mut source = EventSource::new(Box::pin(stream::iter(chunks)));
+        assert!(source.next().await.is_none());
+        // non digit values are ignored
+        assert_eq!(source.retry(), Some(Duration::from_millis(1500)));
     }
 }

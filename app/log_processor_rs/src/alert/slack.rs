@@ -56,17 +56,18 @@ impl SlackClient {
         request.body(body, "application/json");
 
         let response = self.client.execute(request).await?;
+        let response_body = response.text()?;
         if response.status != 200 {
             return Err(exception!(format!(
-                "failed to send message to slack, status={}, response={}",
-                response.status, response.body
+                "failed to send message to slack, status={}, response={response_body}",
+                response.status
             )));
         }
 
         // slack answers 200 with ok=false on business errors, e.g. invalid_auth or channel_not_found
-        let result: SlackMessageApiResponse = json::from_json(&response.body)?;
+        let result: SlackMessageApiResponse = json::from_json(response_body)?;
         if !result.ok {
-            return Err(exception!(format!("failed to send message to slack, response={}", response.body)));
+            return Err(exception!(format!("failed to send message to slack, response={response_body}")));
         }
 
         Ok(())

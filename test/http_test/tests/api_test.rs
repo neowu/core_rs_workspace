@@ -13,6 +13,8 @@ use framework_macro::integration_test;
 use http_test::GreetRequest;
 use http_test::GreetResponse;
 use http_test::TestServer;
+use http_test::execute;
+use http_test::http_client;
 
 #[api]
 trait GreetingService {
@@ -64,7 +66,8 @@ impl GreetingService for GreetingServiceImpl {
 #[integration_test]
 async fn api() -> Result<(), Exception> {
     let mut server = TestServer::start(GreetingService::route(Arc::new(GreetingServiceImpl))).await;
-    let client = GreetingServiceClient::new(Arc::clone(&server.client), server.url.clone());
+    let http1 = http_client(false);
+    let client = GreetingServiceClient::new(Arc::clone(&http1), server.url.clone());
 
     let response = client.greet(GreetRequest { name: "world & 世界 + ?".to_owned() }).await?;
     assert_eq!(response.greeting, "hello, world & 世界 + ?");
@@ -74,7 +77,7 @@ async fn api() -> Result<(), Exception> {
     assert_eq!(response.greeting, "updated, world");
     client.ping().await?;
 
-    let response = server.client.execute(server.request(Method::GET, "/api/ping")?).await?;
+    let response = execute(&http1, Method::GET, server.url("/api/ping")).await?;
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty(), "unit response must have an empty body");
 
@@ -91,15 +94,15 @@ async fn api() -> Result<(), Exception> {
     assert!(error.message.contains("status=500"), "message={}", error.message);
     assert!(error.message.contains("expected failure"), "message={}", error.message);
 
-    let response = server.client.execute(server.request(Method::POST, "/api/fail")?).await?;
+    let response = execute(&http1, Method::POST, server.url("/api/fail")).await?;
     assert_eq!(response.status, 500);
     assert_eq!(response.headers[header::CONTENT_TYPE], "application/json");
-    let error: ErrorResponse = json::from_json(&response.body)?;
+    let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.severity, Severity::Warn);
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
     assert_eq!(error.message, "expected failure");
 
-    let missing_client = GreetingServiceClient::new(Arc::clone(&server.client), format!("{}/unknown", server.url));
+    let missing_client = GreetingServiceClient::new(Arc::clone(&http1), format!("{}/unknown", server.url));
     let error = missing_client.ping().await.unwrap_err();
     assert!(error.message.contains("status=404"), "message={}", error.message);
 

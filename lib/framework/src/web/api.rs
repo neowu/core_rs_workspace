@@ -83,12 +83,14 @@ where
     Res: DeserializeOwned,
 {
     let status = response.status;
+    // lossy to keep the status in the error when an error body is not utf-8
+    let body = String::from_utf8_lossy(&response.body);
     if status < 300 {
         // empty body (204) deserializes to ()
-        json::from_json(if response.body.is_empty() { "null" } else { &response.body })
+        json::from_json(if body.is_empty() { "null" } else { &body })
     } else if let Some(content_type) = response.headers.get(header::CONTENT_TYPE)
         && content_type == "application/json"
-        && let Ok(error) = json::from_json::<ErrorResponse>(&response.body)
+        && let Ok(error) = json::from_json::<ErrorResponse>(&body)
     {
         if let Some(ref code) = error.code {
             Err(exception!(
@@ -103,6 +105,6 @@ where
             ))
         }
     } else {
-        Err(exception!(format!("failed to call api, status={status}, body={}", response.body)))
+        Err(exception!(format!("failed to call api, status={status}, body={body}")))
     }
 }

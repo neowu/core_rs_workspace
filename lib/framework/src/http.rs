@@ -121,7 +121,7 @@ pub struct HttpRequest {
     port: u16,
     // pool key = scheme://host:port
     key: String,
-    headers: HeaderMap,
+    pub headers: HeaderMap,
     // Bytes to share across retries without copying
     body: Option<Bytes>,
 }
@@ -179,7 +179,13 @@ impl HttpRequest {
 pub struct HttpResponse {
     pub status: u16,
     pub headers: HeaderMap,
-    pub body: String,
+    pub body: Bytes,
+}
+
+impl HttpResponse {
+    pub fn text(&self) -> Result<&str, Exception> {
+        str::from_utf8(&self.body).map_err(|err| exception!("response body is not utf-8", source = err))
+    }
 }
 
 enum Connection {
@@ -291,12 +297,10 @@ impl HttpClient {
         if matches!(connection, Connection::Http1(_)) {
             self.release(&request.key, connection);
         }
-        let body = String::from_utf8(Vec::from(body))
-            .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned());
         if let Some(content_type) = headers.get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok())
             && (content_type.contains("json") || content_type.contains("text"))
         {
-            log!("[response] body={body}");
+            log!("[response] body={}", String::from_utf8_lossy(&body));
         }
         stats!(http_read_bytes = body.len());
 

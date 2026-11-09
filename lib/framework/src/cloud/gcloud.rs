@@ -46,5 +46,5 @@ async fn instance_id() -> Result<String, Exception> {
     if response.status != 200 {
         return Err(exception!(format!("failed to get instance id, status={}", response.status)));
     }
-    Ok(response.body)
+    Ok(response.text()?.to_owned())
 }
