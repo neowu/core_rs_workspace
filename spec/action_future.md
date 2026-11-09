@@ -118,7 +118,7 @@ is deferred to the `.await`, where `F::Output` is known.
 
 ### Dependency
 
-`pin-project-lite`, already in the lockfile via tokio/reqwest/tower. A hand-rolled
+`pin-project-lite`, already in the lockfile via tokio/tower. A hand-rolled
 `map_unchecked_mut` projection would work (the repo uses `unsafe` in `network.rs`,
 `metrics/collector.rs`) but pin-project-lite is the safer default for a single-field structural pin.
 

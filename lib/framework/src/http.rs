@@ -113,6 +113,7 @@ impl HttpClientConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct HttpRequest {
     pub method: Method,
     uri: Uri,
@@ -345,7 +346,8 @@ impl HttpClient {
                 Some(connection) => (connection, true),
                 None => (self.connect(request).await?, false),
             };
-            if let Some(shared) = connection.shared() {
+            // a pooled http2 connection never left the pool, a new one is shared right away
+            if !pooled && let Some(shared) = connection.shared() {
                 self.release(&request.key, shared);
             }
             let http_request = create_request(request, matches!(connection, Connection::Http2(_)))?;
@@ -360,7 +362,21 @@ impl HttpClient {
 
     async fn checkout(&self, key: &str) -> Option<Connection> {
         loop {
-            let IdleConnection { mut connection, idle_at } = self.pool.lock().unwrap().get_mut(key)?.pop()?;
+            let IdleConnection { mut connection, idle_at } = {
+                let mut pool = self.pool.lock().unwrap();
+                let connections = pool.get_mut(key)?;
+                let idle = connections.last_mut()?;
+                // http2 stays in the pool while in use, otherwise a concurrent request on another thread
+                // can find it missing in between and open another connection
+                if let Some(shared) = idle.connection.shared()
+                    && !idle.connection.is_closed()
+                    && idle.idle_at.elapsed() < POOL_IDLE_TIMEOUT
+                {
+                    idle.idle_at = Instant::now();
+                    return Some(shared);
+                }
+                connections.pop()?
+            };
             if idle_at.elapsed() < POOL_IDLE_TIMEOUT && connection.ready().await.is_ok() {
                 return Some(connection);
             }
@@ -428,17 +444,19 @@ fn log_headers(headers: &HeaderMap) {
 
 fn create_request(request: &HttpRequest, http2: bool) -> Result<Request<Full<Bytes>>, Exception> {
     log!("[request] method={}, url={}", request.method.as_str(), request.uri);
-    let mut builder = Request::builder().method(request.method.clone());
+    let mut http_request = Request::new(Full::new(request.body.clone().unwrap_or_default()));
+    *http_request.method_mut() = request.method.clone();
     // http2 takes :scheme/:authority from absolute uri, http1 sends origin-form uri with host header
-    builder = if http2 {
-        builder.uri(request.uri.clone())
+    *http_request.uri_mut() = if http2 {
+        request.uri.clone()
     } else {
-        builder
-            .uri(request.uri.path_and_query().map_or("/", PathAndQuery::as_str))
-            .header(header::HOST, request.uri.authority().map_or("", Authority::as_str))
+        Uri::from(request.uri.path_and_query().cloned().unwrap_or_else(|| PathAndQuery::from_static("/")))
     };
-    let mut http_request = builder.body(Full::new(request.body.clone().unwrap_or_default()))?;
-    http_request.headers_mut().extend(request.headers.clone());
+    let headers = http_request.headers_mut();
+    *headers = request.headers.clone();
+    if !http2 && !headers.contains_key(header::HOST) {
+        headers.insert(header::HOST, HeaderValue::from_str(request.uri.authority().map_or("", Authority::as_str))?);
+    }
     log_headers(http_request.headers());
     if let Some(ref body) = request.body {
         log!("[request] body={}", String::from_utf8_lossy(body));

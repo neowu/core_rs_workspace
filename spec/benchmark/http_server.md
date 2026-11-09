@@ -79,14 +79,17 @@ CREATE TABLE "benchmark_entity" (
 - **Only `TraceAppender`**: action construction and channel send stay (real cost), nothing is
   written per request, so output never becomes the bottleneck.
 - **h2c**, matching `framework::http::HttpClient` for internal calls, which holds one connection per
-  host. `verify` asserts HTTP/2. `--concurrency` is streams, spread round robin over `--connections`
-  (default 1, one `reqwest::Client` each, since a client keeps one h2 connection per host).
+  host. The client uses h2 prior knowledge with no http/1.1 fallback, so a server without h2c fails
+  `verify`. `--concurrency` is streams, spread round robin over `--connections` (default 1, one
+  `HttpClient` each, since a client shares one h2 connection per host); each client connects before
+  the load starts, a burst on an empty pool would open a connection per request.
 - **One connection caps the rate, not the server**: hyper runs a connection's framing (hpack, flow
   control, reads and writes) in one task, so it never uses more than one core (2026-09-29: ~42k
   req/s at ~50% of 2 cores whatever the concurrency). Finding the server's ceiling needs a few
   connections; many are worse, each carries fewer streams per wakeup, so cpu per request rises.
-- **Client uses `reqwest` directly, not `HttpClient`**, which logs every request and would make the
-  instrument the bottleneck.
+- **Client uses `framework::http::HttpClient`** (no retry, 10s timeout) outside any action, so its
+  logging and stats are no-ops (a failed task-local lookup, `format_args!` never rendered). Measured
+  2026-11-09 against `reqwest` on one host: ~15% more req/s at ~25% less client cpu.
 - **The measured loop never parses a response**; one `verify` request at startup parses and
   asserts, so a wrong url fails fast. Urls, headers and bodies are prepared once.
 - **Browser-like headers on every scenario request**: the framework's `client` and `ref-id` plus a

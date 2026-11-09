@@ -11,7 +11,9 @@ Built directly on `hyper::client::conn` (no reqwest / tower), TLS via `tokio-rus
 - `HttpClient` is not `Clone`; it owns its pool, share it via `Arc<HttpClient>` (e.g. `#[api]` clients take one).
 - Connection pool keyed by `scheme://host:port`. HTTP/1 connections go back to the pool only after
   the response body is fully read; an SSE connection is never pooled and closes when the stream ends.
-  One HTTP/2 connection is shared by all concurrent requests to the same key.
+  One HTTP/2 connection is shared by all concurrent requests to the same key: it stays in the pool
+  while in use (checkout clones it), so a concurrent request never finds the pool empty in between
+  and opens another one. Concurrent requests on an empty pool still each connect; the extras idle out.
 - Idle connections expire after 90s (same as reqwest default); closed ones are dropped on checkout/release.
   At most 32 idle connections per key, the oldest is evicted, to bound sockets kept after an HTTP/1 burst.
   No background sweep: idle connections of a key that is no longer used stay until the peer closes them.

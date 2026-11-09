@@ -1,8 +1,19 @@
 use std::fs::write;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use bytes::Bytes;
+use framework::http::HeaderName;
+use framework::http::HeaderValue;
+use framework::http::HttpClient;
+use framework::http::HttpClientConfig;
+use framework::http::HttpRequest;
+use framework::http::Method;
+use framework::http::RetryConfig;
+use framework::http::header::ACCEPT;
+use framework::http::header::ACCEPT_ENCODING;
+use framework::http::header::ACCEPT_LANGUAGE;
+use framework::http::header::USER_AGENT;
 use http_test_server::DbInsertRequest;
 use http_test_server::DbInsertResponse;
 use http_test_server::DbSelectResponse;
@@ -14,20 +25,6 @@ use http_test_server::PostResponse;
 use http_test_server::info::MachineInfo;
 use http_test_server::info::ProcessUsage;
 use http_test_server::info::ServerInfo;
-use reqwest::Body;
-use reqwest::Client;
-use reqwest::Method;
-use reqwest::Request;
-use reqwest::Url;
-use reqwest::Version;
-use reqwest::header::ACCEPT;
-use reqwest::header::ACCEPT_ENCODING;
-use reqwest::header::ACCEPT_LANGUAGE;
-use reqwest::header::CONTENT_TYPE;
-use reqwest::header::HeaderMap;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
-use reqwest::header::USER_AGENT;
 use serde_json::json;
 
 use crate::args::Args;
@@ -75,65 +72,42 @@ fn main() {
 #[derive(Clone)]
 struct Target {
     scenario: Scenario,
-    method: Method,
-    url: Url,
-    headers: HeaderMap,
-    body: Option<Bytes>,
+    request: HttpRequest,
 }
 
 impl Target {
     fn new(args: &Args) -> Target {
         let scenario = args.scenario;
         let path = scenario.path();
-        let mut headers: HeaderMap =
-            HEADERS.into_iter().map(|(name, value)| (name, HeaderValue::from_static(value))).collect();
-        if scenario.is_post() {
-            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        let mut request = if scenario.is_post() {
             let body = match scenario {
                 // one id past the seeded rows: the first insert lands, every later one conflicts
-                Scenario::DbInsertIgnore => serde_json::to_vec(&DbInsertRequest {
+                Scenario::DbInsertIgnore => serde_json::to_string(&DbInsertRequest {
                     id: args.rows + 1,
                     name: "benchmark".to_owned(),
                     amount: 100,
                 }),
-                _ => serde_json::to_vec(&PostRequest {
+                _ => serde_json::to_string(&PostRequest {
                     id: ID,
                     name: "benchmark".to_owned(),
                     values: vec![1; args.values],
                 }),
             }
             .expect("failed to serialize body");
-            Target {
-                scenario,
-                method: Method::POST,
-                url: url(&format!("{}{path}", args.url)),
-                headers,
-                body: Some(Bytes::from(body)),
-            }
+            let mut request = request(Method::POST, &format!("{}{path}", args.url));
+            request.body(body, "application/json");
+            request
         } else {
-            Target {
-                scenario,
-                method: Method::GET,
-                url: url(&format!("{}{path}?id={ID}", args.url)),
-                headers,
-                body: None,
-            }
-        }
-    }
-
-    fn request(&self) -> Request {
-        let mut request = Request::new(self.method.clone(), self.url.clone());
-        *request.headers_mut() = self.headers.clone();
-        if let Some(ref body) = self.body {
-            *request.body_mut() = Some(Body::from(body.clone()));
-        }
-        request
+            request(Method::GET, &format!("{}{path}?id={ID}", args.url))
+        };
+        request.headers.extend(HEADERS.into_iter().map(|(name, value)| (name, HeaderValue::from_static(value))));
+        Target { scenario, request }
     }
 }
 
 async fn run(args: Args) {
     // a client holds one h2 connection per host, so each connection is its own client
-    let clients: Vec<Client> = (0..args.connections).map(|_| client()).collect();
+    let clients: Vec<Arc<HttpClient>> = (0..args.connections).map(|_| Arc::new(client())).collect();
     let client = &clients[0];
 
     if args.scenario.is_db() {
@@ -142,6 +116,11 @@ async fn run(args: Args) {
 
     let target = Target::new(&args);
     verify(client, &target, &args).await;
+
+    // opens each client's connection up front, a burst of requests on an empty pool would each connect
+    for client in &clients[1..] {
+        execute(client, target.request.clone()).await;
+    }
 
     if !args.warmup.is_zero() {
         load(&clients, &target, args.concurrency, args.warmup).await;
@@ -185,35 +164,33 @@ async fn run(args: Args) {
     println!("result written to {path}");
 }
 
-async fn server_info(client: &Client, base_url: &str) -> ServerInfo {
+async fn server_info(client: &HttpClient, base_url: &str) -> ServerInfo {
     let address = format!("{base_url}/benchmark/info");
-    let (_, body) = execute(client, Request::new(Method::GET, url(&address)), &address).await;
+    let body = execute(client, request(Method::GET, &address)).await;
     serde_json::from_str(&body).unwrap_or_else(|err| panic!("failed to parse server info, url={address}, err={err}"))
 }
 
-/// h2c, matching how framework::http::HttpClient is configured for internal calls
-/// (HttpClientConfig::internal_only -> prefer_http2 -> http2_prior_knowledge): one kept alive
-/// connection carrying every request of this client as a multiplexed stream.
-fn client() -> Client {
-    Client::builder()
-        .http2_prior_knowledge()
-        .pool_idle_timeout(Duration::from_secs(300))
-        .connection_verbose(false)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .expect("failed to build client")
+/// h2c as configured for internal calls (HttpClientConfig::internal_only), one kept alive connection
+/// carrying every request of this client as a multiplexed stream. Without an action context the
+/// client's logging is a no-op. No retry, so every failure is counted.
+fn client() -> HttpClient {
+    HttpClient::new(HttpClientConfig {
+        timeout: Duration::from_secs(10),
+        retry: RetryConfig { max_attempts: 1, interval: Duration::ZERO },
+        ..HttpClientConfig::internal_only()
+    })
 }
 
 /// Closed loop: every worker holds one in flight request and sends the next as soon as the previous
 /// one resolves, so `concurrency` is the number of open h2 streams and the server's own pace sets
 /// the rate. Workers take the connections round robin, so each carries an even share of the streams.
-async fn load(clients: &[Client], target: &Target, concurrency: usize, duration: Duration) -> Summary {
+async fn load(clients: &[Arc<HttpClient>], target: &Target, concurrency: usize, duration: Duration) -> Summary {
     let start = Instant::now();
     let deadline = start + duration;
 
     let mut handles = Vec::with_capacity(concurrency);
     for i in 0..concurrency {
-        let client = clients[i % clients.len()].clone();
+        let client = Arc::clone(&clients[i % clients.len()]);
         handles.push(tokio::spawn(worker(client, target.clone(), deadline)));
     }
 
@@ -225,24 +202,19 @@ async fn load(clients: &[Client], target: &Target, concurrency: usize, duration:
     Summary::merge(recorders, start.elapsed())
 }
 
-async fn worker(client: Client, target: Target, deadline: Instant) -> Recorder {
+async fn worker(client: Arc<HttpClient>, target: Target, deadline: Instant) -> Recorder {
     let mut recorder = Recorder::default();
     loop {
         let start = Instant::now();
         if start >= deadline {
             break;
         }
-        match client.execute(target.request()).await {
-            Ok(response) => {
-                let status = response.status();
-                // the body must be drained, otherwise the connection is not returned to the pool
-                let body = response.bytes().await;
-                if status.is_success() && body.is_ok() {
-                    recorder.record(start.elapsed().as_nanos() as u64);
-                } else {
-                    recorder.failed += 1;
-                }
+        // execute reads the whole body before it returns
+        match client.execute(target.request.clone()).await {
+            Ok(response) if (200..300).contains(&response.status) => {
+                recorder.record(start.elapsed().as_nanos() as u64);
             }
+            Ok(_) => recorder.failed += 1,
             Err(_) => recorder.errors += 1,
         }
     }
@@ -251,12 +223,10 @@ async fn worker(client: Client, target: Target, deadline: Instant) -> Recorder {
 
 /// Sends one request of the selected scenario and parses the response, so a wrong url or a broken
 /// server fails here instead of producing a fast benchmark of 404s. The measured loop never parses.
-async fn verify(client: &Client, target: &Target, args: &Args) {
-    let url = target.url.as_str();
-    let (version, body) = execute(client, target.request(), url).await;
-
-    // a silent fallback to http/1.1 would quietly benchmark a protocol nobody runs internally
-    assert_eq!(version, Version::HTTP_2, "server must speak h2c, url={url}");
+/// The client speaks h2c with prior knowledge and never falls back to http/1.1, a server without h2c
+/// fails here.
+async fn verify(client: &HttpClient, target: &Target, args: &Args) {
+    let body = execute(client, target.request.clone()).await;
 
     match target.scenario {
         Scenario::DbSelect => {
@@ -278,28 +248,24 @@ async fn verify(client: &Client, target: &Target, args: &Args) {
         }
     }
 
-    println!("verified, url={url}, protocol=h2c");
+    println!("verified, scenario={}, protocol=h2c", target.scenario.as_str());
 }
 
 /// Drops and recreates the table, so every db run starts from the same state.
-async fn init_db(client: &Client, base_url: &str, rows: i64) {
-    let address = format!("{base_url}/benchmark/init_db");
-    let mut request = Request::new(Method::PUT, url(&address));
-    request.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let body = serde_json::to_vec(&InitDbRequest { rows }).expect("failed to serialize body");
-    *request.body_mut() = Some(Body::from(body));
-    let (_, body) = execute(client, request, &address).await;
+async fn init_db(client: &HttpClient, base_url: &str, rows: i64) {
+    let mut request = request(Method::PUT, &format!("{base_url}/benchmark/init_db"));
+    request.body(serde_json::to_string(&InitDbRequest { rows }).expect("failed to serialize body"), "application/json");
+    let body = execute(client, request).await;
     let response: InitDbResponse = serde_json::from_str(&body).expect("failed to parse init_db response");
     println!("db initialized, rows={}", response.rows);
 }
 
-async fn execute(client: &Client, request: Request, url: &str) -> (Version, String) {
-    let response = client.execute(request).await.unwrap_or_else(|err| panic!("failed to call, url={url}, err={err}"));
-    let status = response.status();
-    let version = response.version();
-    let body = response.text().await.unwrap_or_else(|err| panic!("failed to read body, url={url}, err={err}"));
-    assert!(status.is_success(), "unexpected status, url={url}, status={status}, body={body}");
-    (version, body)
+async fn execute(client: &HttpClient, request: HttpRequest) -> String {
+    let response = client.execute(request).await.unwrap_or_else(|err| panic!("failed to call, err={err}"));
+    let status = response.status;
+    let body = String::from_utf8_lossy(&response.body).into_owned();
+    assert!((200..300).contains(&status), "unexpected status, status={status}, body={body}");
+    body
 }
 
 /// What this client was asked to do, the `config` part of the result file.
@@ -324,6 +290,6 @@ fn cpu_pct(cpu_us: u64, elapsed: Duration, cores: usize) -> f64 {
     if available > 0.0 { cpu_us as f64 * 100.0 / available } else { 0.0 }
 }
 
-fn url(value: &str) -> Url {
-    Url::parse(value).unwrap_or_else(|err| panic!("invalid url, url={value}, err={err}"))
+fn request(method: Method, url: &str) -> HttpRequest {
+    HttpRequest::new(method, url).unwrap_or_else(|err| panic!("invalid url, url={url}, err={err}"))
 }
