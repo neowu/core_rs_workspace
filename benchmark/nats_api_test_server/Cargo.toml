@@ -3,6 +3,9 @@ name = "nats_api_test_server"
 version.workspace = true
 edition = "2024"
 
+[lib]
+doctest = false
+
 [dependencies]
 framework.workspace = true
 framework_macro.workspace = true

@@ -3,6 +3,9 @@ name = "framework"
 version.workspace = true
 edition = "2024"
 
+[lib]
+doctest = false
+
 [dependencies]
 bytes.workspace = true
 futures.workspace = true

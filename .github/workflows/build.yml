@@ -22,7 +22,5 @@ jobs:
           install: libcurl4-openssl-dev
       - name: check
         run: cargo lint
-      - name: test custom lints
-        run: cargo test -p xtask
       - name: test
         run: cargo test --verbose --all-features

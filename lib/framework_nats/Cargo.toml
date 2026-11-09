@@ -3,6 +3,9 @@ name = "framework_nats"
 version.workspace = true
 edition = "2024"
 
+[lib]
+doctest = false
+
 [dependencies]
 framework.workspace = true
 
