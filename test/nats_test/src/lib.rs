@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use async_nats::Client;
-use async_nats::jetstream;
-use async_nats::jetstream::consumer::AckPolicy;
-use async_nats::jetstream::consumer::DeliverPolicy;
-use async_nats::jetstream::consumer::pull;
-use async_nats::jetstream::stream::Config;
 use framework::console;
+use framework_nats::Client;
+use framework_nats::jetstream;
+use framework_nats::jetstream::consumer::AckPolicy;
+use framework_nats::jetstream::consumer::DeliverPolicy;
+use framework_nats::jetstream::consumer::pull;
+use framework_nats::jetstream::stream::Config;
 use tokio::sync::Semaphore;
 
 #[derive(Clone)]

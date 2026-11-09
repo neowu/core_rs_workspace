@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use async_nats::jetstream;
-use async_nats::jetstream::consumer::AckPolicy;
 use framework::exception::Exception;
 use framework::json::to_json;
 use framework::system::CancellationToken;
@@ -10,6 +8,8 @@ use framework_nats::Subject;
 use framework_nats::consumer::BatchConsumer;
 use framework_nats::consumer::BatchConsumerConfig;
 use framework_nats::consumer::Message;
+use framework_nats::jetstream;
+use framework_nats::jetstream::consumer::AckPolicy;
 use nats_test::STREAM;
 use nats_test::client;
 use nats_test::setup_consumer;

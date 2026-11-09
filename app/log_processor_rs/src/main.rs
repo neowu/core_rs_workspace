@@ -14,15 +14,15 @@ use framework::log;
 use framework::system::System;
 use framework::task::start_executor;
 use framework_clickhouse::ClickHouse;
+use framework_nats::Client;
 use framework_nats::Subject;
 use framework_nats::appender::ACTION_SUBJECT;
 use framework_nats::appender::METRICS_SUBJECT;
-use framework_nats::async_nats::Client;
-use framework_nats::async_nats::jetstream;
-use framework_nats::async_nats::jetstream::stream::Config;
 use framework_nats::consumer::BatchConsumer;
 use framework_nats::consumer::BatchConsumerConfig;
 use framework_nats::consumer::consumer_metrics;
+use framework_nats::jetstream;
+use framework_nats::jetstream::stream::Config;
 use serde::Deserialize;
 
 use crate::alert::AlertService;

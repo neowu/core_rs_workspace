@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_nats::jetstream::consumer::AckPolicy;
 use framework::exception::Exception;
 use framework::log;
 use framework::system::CancellationToken;
@@ -9,6 +8,7 @@ use framework_nats::Subject;
 use framework_nats::consumer::Consumer;
 use framework_nats::consumer::ConsumerConfig;
 use framework_nats::consumer::Message;
+use framework_nats::jetstream::consumer::AckPolicy;
 use framework_nats::producer::Producer;
 use nats_test::AppState;
 use nats_test::STREAM;

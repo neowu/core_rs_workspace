@@ -1402,7 +1402,6 @@ dependencies = [
 name = "nats_test"
 version = "1.0.0"
 dependencies = [
- "async-nats",
  "framework",
  "framework_macro",
  "framework_nats",

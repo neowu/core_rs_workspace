@@ -6,6 +6,12 @@ Code: [`framework_nats/src/service.rs`](../lib/framework_nats/src/service.rs),
 
 ## Design decisions
 
+### Callers do not depend on async-nats
+
+`framework_nats` re-exports `Client` and the `jetstream` module, the only async-nats surface callers
+need (connection handle, stream / consumer setup), so apps, tests and `nats_api` generated code
+depend on `framework_nats` alone.
+
 ### The task name is the subject
 
 `Service` and `Consumer` each own a `TaskExecutor`, and spawn every request / message under the

@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 
-pub use async_nats;
-use async_nats::Client;
+// callers use these through framework_nats, without depending on async-nats directly
+pub use async_nats::Client;
 use async_nats::HeaderMap;
 use async_nats::HeaderName;
+pub use async_nats::jetstream;
 use framework::console;
 use framework::log;
 use framework::system;

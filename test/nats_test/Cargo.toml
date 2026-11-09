@@ -11,6 +11,5 @@ framework = { workspace = true }
 framework_macro = { workspace = true }
 framework_nats = { workspace = true }
 
-async-nats.workspace = true
 serde.workspace = true
 tokio.workspace = true

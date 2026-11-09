@@ -47,7 +47,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
     trait_def.items.push(TraitItem::Fn(parse_quote! {
         fn service(
-            nats_client: ::framework_nats::async_nats::Client,
+            nats_client: ::framework_nats::Client,
             service: ::std::sync::Arc<Self>,
             config: ::framework_nats::service::ServiceConfig,
         ) -> ::framework_nats::service::Service
@@ -73,7 +73,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
         }
 
         impl #client_ident {
-            #trait_vis fn new(client: ::framework_nats::async_nats::Client) -> #client_ident {
+            #trait_vis fn new(client: ::framework_nats::Client) -> #client_ident {
                 #client_ident { client: ::framework_nats::service::ServiceClient::__new(client) }
             }
         }
@@ -240,7 +240,7 @@ mod tests {
                     fn create_user(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<CreateUserResponse, Exception> > + Send;
 
                     fn service(
-                        nats_client: ::framework_nats::async_nats::Client,
+                        nats_client: ::framework_nats::Client,
                         service: ::std::sync::Arc<Self>,
                         config: ::framework_nats::service::ServiceConfig,
                     ) -> ::framework_nats::service::Service
@@ -282,7 +282,7 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(client: ::framework_nats::async_nats::Client) -> UserServiceClient {
+                    pub fn new(client: ::framework_nats::Client) -> UserServiceClient {
                         UserServiceClient { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
@@ -326,7 +326,7 @@ mod tests {
                     fn delete_user(&self, request: DeleteUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
 
                     fn service(
-                        nats_client: ::framework_nats::async_nats::Client,
+                        nats_client: ::framework_nats::Client,
                         service: ::std::sync::Arc<Self>,
                         config: ::framework_nats::service::ServiceConfig,
                     ) -> ::framework_nats::service::Service
@@ -367,7 +367,7 @@ mod tests {
                 }
 
                 impl UserServiceClient {
-                    pub fn new(client: ::framework_nats::async_nats::Client) -> UserServiceClient {
+                    pub fn new(client: ::framework_nats::Client) -> UserServiceClient {
                         UserServiceClient { client: ::framework_nats::service::ServiceClient::__new(client) }
                     }
                 }
