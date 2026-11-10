@@ -15,7 +15,6 @@ framework_lint = { path = "lib/framework_lint" }
 framework_macro = { path = "lib/framework_macro" }
 framework_nats = { path = "lib/framework_nats" }
 
-async-nats = "0"
 bytes = "1"
 futures = "0"
 hyper-util = "0"

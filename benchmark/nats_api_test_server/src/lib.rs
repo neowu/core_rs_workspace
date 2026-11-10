@@ -1,6 +1,6 @@
 //! The contract, and the only reason this crate has a lib target: `nats_api_test_client` shares
-//! these payload types, subjects and the info subject's shape so they cannot drift between the two
-//! processes.
+//! these payload types and calls the service through the generated `BenchmarkServiceClient`, so the
+//! contract cannot drift between the two processes.
 
 pub mod info;
 
@@ -11,12 +11,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::info::ServerInfo;
-
-// the #[subject] attribute takes a literal, so these repeat it for the client to address; they sit
-// beside the trait so the two cannot be changed apart
-pub const GET: &str = "api.benchmark.get";
-pub const POST: &str = "api.benchmark.post";
-pub const INFO: &str = "api.benchmark.info";
 
 /// Request of the get subjects, one scalar so decoding is not the subject.
 #[derive(Debug, Serialize, Deserialize, Validate)]

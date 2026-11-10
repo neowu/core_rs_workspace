@@ -9,7 +9,7 @@ doctest = false
 [dependencies]
 framework.workspace = true
 
-async-nats.workspace = true
+async-nats = "0"
 futures.workspace = true
 serde.workspace = true
 tokio.workspace = true

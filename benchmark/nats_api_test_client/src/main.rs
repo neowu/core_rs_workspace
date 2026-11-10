@@ -1,14 +1,13 @@
 use std::fs::write;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use async_nats::Client;
-use async_nats::HeaderMap;
-use async_nats::Message;
-use bytes::Bytes;
-use nats_api_test_server::GetResponse;
+use framework::exception::Exception;
+use nats_api_test_server::BenchmarkService as _;
+use nats_api_test_server::BenchmarkServiceClient;
+use nats_api_test_server::GetRequest;
 use nats_api_test_server::PostRequest;
-use nats_api_test_server::PostResponse;
 use nats_api_test_server::info::MachineInfo;
 use nats_api_test_server::info::ProcessUsage;
 use nats_api_test_server::info::ServerInfo;
@@ -23,9 +22,8 @@ mod args;
 mod stats;
 
 const ID: i64 = 7;
-const CLIENT: &str = "client";
-const REF_ID: &str = "ref_id";
-const ERROR: &str = "error";
+const NO_RESPONDERS: &str = "NATS_NO_RESPONDERS";
+const TIMEOUT: &str = "NATS_TIMEOUT";
 
 fn main() {
     let args = Args::parse();
@@ -39,55 +37,33 @@ fn main() {
     runtime.block_on(run(args));
 }
 
-/// One prepared request, built once per run so the measured loop does no serialization, only what
-/// it takes to put bytes on the connection.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct Target {
     scenario: Scenario,
-    subject: &'static str,
-    payload: Bytes,
-    headers: HeaderMap,
-}
-
-impl Target {
-    fn new(args: &Args) -> Target {
-        let scenario = args.scenario;
-        let payload = if scenario.is_post() {
-            let request = PostRequest { id: ID, name: "benchmark".to_owned(), values: vec![1; args.values] };
-            serde_json::to_vec(&request).expect("failed to serialize payload")
-        } else {
-            format!(r#"{{"id":{ID}}}"#).into_bytes()
-        };
-
-        // what framework_nats::link_context puts on every internal call, so the service does the
-        // same header work it does in production -- reading them is part of what is measured
-        let mut headers = HeaderMap::new();
-        headers.insert(CLIENT, env!("CARGO_PKG_NAME"));
-        headers.insert(REF_ID, "benchmark");
-
-        Target { scenario, subject: scenario.subject(), payload: Bytes::from(payload), headers }
-    }
+    values: usize,
 }
 
 async fn run(args: Args) {
-    // one connection, matching how a framework app holds framework_nats::connect: every request
-    // rides it multiplexed, replies come back on the one shared inbox subscription
-    let client = async_nats::connect(&args.url)
-        .await
-        .unwrap_or_else(|err| panic!("failed to connect, url={}, err={err}", args.url));
+    // one connection, as a framework app holds framework_nats::connect: every request rides it
+    // multiplexed, replies come back on the one shared inbox subscription
+    let nats_client = framework_nats::connect(&args.url).await;
+    // the client #[nats_api] generates, what a framework app calls the service with. Without an
+    // action context its logging is a no-op, so the measured loop pays only for encoding the
+    // request and decoding the reply
+    let client = Arc::new(BenchmarkServiceClient::new(nats_client.clone()));
 
-    let target = Target::new(&args);
-    verify(&client, &target, args.values).await;
+    let target = Target { scenario: args.scenario, values: args.values };
+    verify(&client, target).await;
 
     if !args.warmup.is_zero() {
-        load(&client, &target, args.concurrency, args.warmup).await;
+        load(&client, target, args.concurrency, args.warmup).await;
         println!("warmup done");
     }
 
     // sampled around the measured phase only, so server cpu per request excludes the warmup
     let before = server_info(&client).await;
     let client_before = ProcessUsage::current();
-    let summary = load(&client, &target, args.concurrency, args.duration).await;
+    let summary = load(&client, target, args.concurrency, args.duration).await;
     let client_after = ProcessUsage::current();
     let after = server_info(&client).await;
 
@@ -117,7 +93,7 @@ async fn run(args: Args) {
         },
         "broker": {
             "url": args.url,
-            "version": client.server_info().version,
+            "version": nats_client.server_info().version,
         },
     });
     let text = serde_json::to_string_pretty(&result).expect("failed to serialize result");
@@ -125,27 +101,20 @@ async fn run(args: Args) {
     println!("result written to {path}");
 }
 
-async fn server_info(client: &Client) -> ServerInfo {
-    let subject = nats_api_test_server::INFO;
-    let reply = client
-        .request(subject, Bytes::from_static(b"null"))
-        .await
-        .unwrap_or_else(|err| panic!("failed to call, subject={subject}, err={err}"));
-    assert!(!is_error(&reply), "unexpected error reply, subject={subject}");
-    serde_json::from_slice(&reply.payload)
-        .unwrap_or_else(|err| panic!("failed to parse server info, subject={subject}, err={err}"))
+async fn server_info(client: &BenchmarkServiceClient) -> ServerInfo {
+    client.info().await.unwrap_or_else(|err| panic!("failed to get server info, err={err:?}"))
 }
 
 /// Closed loop: every worker holds one in flight request and sends the next as soon as the reply
 /// arrives, so `concurrency` is the number of outstanding requests and the server's own pace sets
 /// the rate.
-async fn load(client: &Client, target: &Target, concurrency: usize, duration: Duration) -> Summary {
+async fn load(client: &Arc<BenchmarkServiceClient>, target: Target, concurrency: usize, duration: Duration) -> Summary {
     let start = Instant::now();
     let deadline = start + duration;
 
     let mut handles = Vec::with_capacity(concurrency);
     for _ in 0..concurrency {
-        handles.push(tokio::spawn(worker(client.clone(), target.clone(), deadline)));
+        handles.push(tokio::spawn(worker(Arc::clone(client), target, deadline)));
     }
 
     let mut recorders = Vec::with_capacity(concurrency);
@@ -156,73 +125,65 @@ async fn load(client: &Client, target: &Target, concurrency: usize, duration: Du
     Summary::merge(recorders, start.elapsed())
 }
 
-async fn worker(client: Client, target: Target, deadline: Instant) -> Recorder {
+async fn worker(client: Arc<BenchmarkServiceClient>, target: Target, deadline: Instant) -> Recorder {
     let mut recorder = Recorder::default();
     loop {
         let start = Instant::now();
         if start >= deadline {
             break;
         }
-        match request(&client, &target).await {
-            Ok(reply) => {
-                if is_error(&reply) {
-                    recorder.failed += 1;
-                } else {
-                    recorder.record(start.elapsed().as_nanos() as u64);
-                }
-            }
-            Err(_) => recorder.errors += 1,
+        match request(&client, target).await {
+            Ok(()) => recorder.record(start.elapsed().as_nanos() as u64),
+            // no reply at all is an error, anything else is a reply that failed
+            Err(err) if matches!(err.code, Some(NO_RESPONDERS | TIMEOUT)) => recorder.errors += 1,
+            Err(_) => recorder.failed += 1,
         }
     }
     recorder
 }
 
-/// Cloning is a refcount bump on the payload and a two entry map copy for the headers, which is
-/// what `ServiceClient` builds per call anyway.
-async fn request(client: &Client, target: &Target) -> Result<Message, async_nats::RequestError> {
-    client.request_with_headers(target.subject, target.headers.clone(), target.payload.clone()).await
+async fn request(client: &BenchmarkServiceClient, target: Target) -> Result<(), Exception> {
+    match target.scenario {
+        Scenario::Get => client.get(GetRequest { id: ID }).await.map(drop),
+        Scenario::Post => client.post(post_request(target.values)).await.map(drop),
+    }
 }
 
-/// The framework marks an error reply with a header rather than a status, so this is the status
-/// check: one lookup, no parsing.
-fn is_error(reply: &Message) -> bool {
-    reply.headers.as_ref().is_some_and(|headers| headers.get(ERROR).is_some())
+fn post_request(values: usize) -> PostRequest {
+    PostRequest { id: ID, name: "benchmark".to_owned(), values: vec![1; values] }
 }
 
-/// Waits for the service to subscribe, then sends one request of the selected scenario and parses
-/// the reply, so a wrong subject or a broken server fails here instead of producing a fast
-/// benchmark of errors. The measured loop never parses.
-async fn verify(client: &Client, target: &Target, values: usize) {
-    let subject = target.subject;
-    let mut reply = None;
+/// Waits for the service to subscribe, then sends one request of the selected scenario and checks
+/// the reply, so a broken server fails here instead of producing a fast benchmark of errors.
+async fn verify(client: &BenchmarkServiceClient, target: Target) {
+    let scenario = target.scenario.as_str();
+    let mut ready = false;
     // no responders until the service subscribes, which is this protocol's readiness signal
     for _ in 0..100 {
         match request(client, target).await {
-            Ok(message) => {
-                reply = Some(message);
+            Ok(()) => {
+                ready = true;
                 break;
             }
-            Err(err) if err.kind() == async_nats::RequestErrorKind::NoResponders => {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-            Err(err) => panic!("failed to call, subject={subject}, err={err}"),
+            Err(err) if err.code == Some(NO_RESPONDERS) => tokio::time::sleep(Duration::from_millis(100)).await,
+            Err(err) => panic!("failed to call, scenario={scenario}, err={err:?}"),
         }
     }
-    let reply = reply.unwrap_or_else(|| panic!("service did not start, subject={subject}"));
+    assert!(ready, "service did not start, scenario={scenario}");
 
-    let body = String::from_utf8(reply.payload.to_vec()).expect("reply is not utf8");
-    assert!(!is_error(&reply), "unexpected error reply, subject={subject}, body={body}");
-
-    if target.scenario.is_post() {
-        let response: PostResponse = serde_json::from_str(&body).expect("failed to parse post reply");
-        assert_eq!(response.id, ID, "post subject must echo the id");
-        assert_eq!(response.sum, values as i64, "post subject must sum the values");
-    } else {
-        let response: GetResponse = serde_json::from_str(&body).expect("failed to parse get reply");
-        assert_eq!(response.id, ID, "get subject must echo the id");
+    match target.scenario {
+        Scenario::Get => {
+            let response = client.get(GetRequest { id: ID }).await.expect("failed to call get");
+            assert_eq!(response.id, ID, "get subject must echo the id");
+        }
+        Scenario::Post => {
+            let response = client.post(post_request(target.values)).await.expect("failed to call post");
+            assert_eq!(response.id, ID, "post subject must echo the id");
+            assert_eq!(response.sum, target.values as i64, "post subject must sum the values");
+        }
     }
 
-    println!("verified, subject={subject}");
+    println!("verified, scenario={scenario}");
 }
 
 /// What this client was asked to do, the `config` part of the result file.

@@ -11,7 +11,7 @@ e2e test: `test/`, spec: `@spec/test/spec.md`
 - Keep comments minimal and focused on intent or non-obvious behaviour
 - Prefer straightforward code over unnecessary encapsulation and abstraction
 - Format Rust code with `cargo +nightly fmt --all`
-- Fix all warnings reported by `cargo clippy --workspace --all-targets`
+- Fix all warnings reported by `cargo lint`
 
 # spec
 

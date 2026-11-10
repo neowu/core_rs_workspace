@@ -3,11 +3,12 @@ name = "nats_api_test_client"
 version.workspace = true
 edition = "2024"
 
-# only for the payload types and subjects, so they cannot drift from the server
+# for the payload types and the generated client, so they cannot drift from the server
 [dependencies]
 nats_api_test_server = { path = "../nats_api_test_server" }
 
-async-nats.workspace = true
-bytes.workspace = true
+framework.workspace = true
+framework_nats.workspace = true
+
 serde_json.workspace = true
 tokio.workspace = true
