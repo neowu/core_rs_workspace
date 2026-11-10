@@ -410,23 +410,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
-name = "db_test"
-version = "1.0.0"
-dependencies = [
- "framework",
- "framework_db",
- "framework_macro",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "demo"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
- "framework_db",
  "framework_macro",
+ "framework_postgres",
  "serde",
  "tokio",
  "uuid",
@@ -570,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "bytes",
  "futures",
@@ -601,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "framework_clickhouse"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "clickhouse",
  "framework",
@@ -614,19 +603,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "framework_db"
-version = "0.10.0"
-dependencies = [
- "bytes",
- "framework",
- "postgres-protocol",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "framework_kafka"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "futures",
@@ -638,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "framework_lint"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "proc-macro2",
  "semver",
@@ -650,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -659,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "async-nats",
  "framework",
@@ -667,6 +645,17 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "framework_postgres"
+version = "0.10.1"
+dependencies = [
+ "bytes",
+ "framework",
+ "postgres-protocol",
+ "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]
@@ -904,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "http_test_client"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "http_test_server",
@@ -914,11 +903,11 @@ dependencies = [
 
 [[package]]
 name = "http_test_server"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
- "framework_db",
  "framework_macro",
+ "framework_postgres",
  "libc",
  "serde",
  "tokio",
@@ -1243,7 +1232,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "log_collector"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "framework_kafka",
@@ -1255,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1267,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor_rs"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1311,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "nats_api_test_client"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "framework_nats",
@@ -1322,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "nats_api_test_server"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework",
  "framework_macro",
@@ -1563,6 +1552,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "postgres_test"
+version = "1.0.0"
+dependencies = [
+ "framework",
+ "framework_macro",
+ "framework_postgres",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1796,7 +1796,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "report"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "rustc-demangle",
  "serde_json",
@@ -2872,7 +2872,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "framework_lint",
 ]

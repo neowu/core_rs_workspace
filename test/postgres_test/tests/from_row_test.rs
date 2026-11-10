@@ -1,8 +1,8 @@
-use db_test::client;
 use framework::exception::Exception;
-use framework_db::database;
 use framework_macro::FromRow;
 use framework_macro::integration_test;
+use framework_postgres::database;
+use postgres_test::client;
 
 #[derive(FromRow, Debug, PartialEq)]
 struct TableStats {

@@ -8,7 +8,7 @@ doctest = false
 
 [dependencies]
 framework.workspace = true
-framework_db.workspace = true
+framework_postgres.workspace = true
 framework_macro.workspace = true
 serde.workspace = true
 tokio.workspace = true

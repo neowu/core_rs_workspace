@@ -1,6 +1,6 @@
-# DB e2e test
+# Postgres e2e test
 
-Start `postgres`, then run `cargo test -p db_test`. Code: [`test/db_test`](../../test/db_test).
+Start `postgres`, then run `cargo test -p postgres_test`. Code: [`test/postgres_test`](../../test/postgres_test).
 
 - Each test drops and recreates its table, then exercises the `Entity` derive and `repository`
   against it.
@@ -16,4 +16,4 @@ Start `postgres`, then run `cargo test -p db_test`. Code: [`test/db_test`](../..
   column named differently from its field and a null column; a missing column fails with `DB_ERROR`.
 - Error: connect failure and a failed statement return `DB_ERROR` with the pool uri in the message.
 
-The DB contract is specified in [db.md](../db.md).
+The DB contract is specified in [postgres.md](../postgres.md).

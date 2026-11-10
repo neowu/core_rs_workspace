@@ -3,9 +3,9 @@ use std::sync::Arc;
 use framework::exception::Exception;
 use framework::time::DateTime;
 use framework::web::router::Router;
-use framework_db::Json;
-use framework_db::repository;
-use framework_db::types::Timestamp;
+use framework_postgres::Json;
+use framework_postgres::repository;
+use framework_postgres::types::Timestamp;
 use uuid::Uuid;
 
 use crate::AppState;

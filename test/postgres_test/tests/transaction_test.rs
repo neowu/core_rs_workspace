@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use db_test::client;
 use framework::exception::Exception;
-use framework_db::Database;
-use framework_db::database;
-use framework_db::repository;
 use framework_macro::Entity;
 use framework_macro::integration_test;
+use framework_postgres::Database;
+use framework_postgres::database;
+use framework_postgres::repository;
+use postgres_test::client;
 
 #[derive(Entity, Debug, PartialEq)]
 #[table(name = "transaction_entity")]

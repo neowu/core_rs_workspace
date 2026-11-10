@@ -131,8 +131,8 @@ Goal: handlers reach state through a `Copy` handle, no per request refcount.
 
 Leak only cannot be the only option given to framework users. The framework cannot wrap every third
 party client, and some clean up only in `Drop` (redis pool, message queue client: close connections, stop
-background tasks, flush). In house example: `framework_db` spawns the postgres connection task, which ends
-only when the client is dropped (`lib/framework_db/src/connection.rs`).
+background tasks, flush). In house example: `framework_postgres` spawns the postgres connection task, which ends
+only when the client is dropped (`lib/framework_postgres/src/connection.rs`).
 
 So state must be freeable, and freed while the runtime is alive: such drops often need it (spawn, reactor),
 and their background tasks need it to finish.

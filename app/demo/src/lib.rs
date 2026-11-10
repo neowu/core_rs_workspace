@@ -12,8 +12,8 @@ use framework::time::SignedDuration;
 use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
-use framework_db::Database;
-use framework_db::DbConfig;
+use framework_postgres::Database;
+use framework_postgres::DbConfig;
 use serde::Deserialize;
 
 use crate::job::demo_job;

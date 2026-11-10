@@ -1,11 +1,11 @@
 use syn::Error;
 
 mod api;
-mod db;
-mod enum8;
+mod clickhouse;
 mod integration_test;
 mod model;
 mod nats_api;
+mod postgres;
 mod validate;
 
 /// `#[derive(Validate)]` supports following field validations, see spec/validate.md:
@@ -21,7 +21,7 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     validate::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// Derive `framework_db::Entity` for a struct, plus a `FIELD_<NAME>` const per column.
+/// Derive `framework_postgres::Entity` for a struct, plus a `FIELD_<NAME>` const per column.
 /// struct attributes
 /// ```text
 /// #[table(name = "table_name")]
@@ -34,24 +34,24 @@ pub fn validate(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 #[proc_macro_derive(Entity, attributes(table, column, primary_key))]
 pub fn entity(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    db::entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+    postgres::entity::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
-/// Derive `framework_db::FromRow` for a raw sql row type (a view of a query result), each field is read by column name.
+/// Derive `framework_postgres::FromRow` for a raw sql row type (a view of a query result), each field is read by column name.
 /// field attributes, required on every field
 /// ```text
 /// #[column(name = "column_name")]
 /// ```
 #[proc_macro_derive(FromRow, attributes(column))]
 pub fn from_row(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    db::from_row::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+    postgres::from_row::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// Derive serde `Serialize`/`Deserialize` for a fieldless enum mapped to a clickhouse Enum8 column;
 /// serialized as the i8 discriminant, e.g. `Ok = 1` <-> `1`.
 #[proc_macro_derive(Enum8)]
 pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    enum8::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
+    clickhouse::enum8::build(stream.into()).unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// `#[api]` derives a `framework::web` router builder and an HTTP client from a trait.

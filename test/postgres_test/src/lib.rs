@@ -1,5 +1,5 @@
-use framework_db::Database;
-use framework_db::DbConfig;
+use framework_postgres::Database;
+use framework_postgres::DbConfig;
 
 pub fn client() -> Database {
     let config = DbConfig {

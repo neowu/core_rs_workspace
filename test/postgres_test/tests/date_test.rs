@@ -1,15 +1,15 @@
-use db_test::client;
 use framework::exception::Exception;
 use framework::time::Date as FrameworkDate;
 use framework::time::DateTime;
 use framework::time::Offset;
-use framework_db::Database;
-use framework_db::database;
-use framework_db::repository;
-use framework_db::types::Date;
-use framework_db::types::Timestamp;
 use framework_macro::Entity;
 use framework_macro::integration_test;
+use framework_postgres::Database;
+use framework_postgres::database;
+use framework_postgres::repository;
+use framework_postgres::types::Date;
+use framework_postgres::types::Timestamp;
+use postgres_test::client;
 
 #[derive(Entity, Debug, PartialEq, Clone)]
 #[table(name = "date_entity")]

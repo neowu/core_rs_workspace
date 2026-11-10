@@ -5,9 +5,9 @@ use framework::load_config;
 use framework::log;
 use framework::system::DefaultEnv;
 use framework::system::System;
-use framework_db::Database;
-use framework_db::DbConfig;
-use framework_db::database;
+use framework_postgres::Database;
+use framework_postgres::DbConfig;
+use framework_postgres::database;
 
 #[tokio::main]
 pub async fn main() {

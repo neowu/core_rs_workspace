@@ -1,8 +1,8 @@
-# DB design
+# Postgres design
 
-Code: [`framework_db/src/repository.rs`](../lib/framework_db/src/repository.rs),
-[`framework_db/src/connection.rs`](../lib/framework_db/src/connection.rs),
-[`framework_db/src/transaction.rs`](../lib/framework_db/src/transaction.rs),
+Code: [`framework_postgres/src/repository.rs`](../lib/framework_postgres/src/repository.rs),
+[`framework_postgres/src/connection.rs`](../lib/framework_postgres/src/connection.rs),
+[`framework_postgres/src/transaction.rs`](../lib/framework_postgres/src/transaction.rs),
 [`framework/src/pool.rs`](../lib/framework/src/pool.rs) · siblings:
 [`benchmark/http_server.md`](benchmark/http_server.md)
 

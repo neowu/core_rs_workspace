@@ -5,7 +5,7 @@ Code: [`lib/framework_clickhouse/src/lib.rs`](../lib/framework_clickhouse/src/li
 [`types/date.rs`](../lib/framework_clickhouse/src/types/date.rs),
 [`types/decimal.rs`](../lib/framework_clickhouse/src/types/decimal.rs),
 [`types/map.rs`](../lib/framework_clickhouse/src/types/map.rs),
-[`framework_macro/src/enum8.rs`](../lib/framework_macro/src/enum8.rs) · consumers:
+[`framework_macro/src/clickhouse/enum8.rs`](../lib/framework_macro/src/clickhouse/enum8.rs) · consumers:
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs),
 [`log_processor`](../app/log_processor/src/kafka) · tests:
 [`test/clickhouse_test`](../test/clickhouse_test/tests) · sibling:
@@ -68,7 +68,7 @@ serde behaviour is covered by a test in `framework_clickhouse` instead.
 
 `execute`/`select_one`/`select_all` take `&[&dyn QueryParam]` and each `?` in the sql is replaced by
 the corresponding param, in order (`??` is a literal `?`). The crate's own `Bind` trait is sealed
-and not object-safe, so params cannot be `&[&dyn Bind]` the way `framework_db` uses `&[&dyn ToSql]`;
+and not object-safe, so params cannot be `&[&dyn Bind]` the way `framework_postgres` uses `&[&dyn ToSql]`;
 `QueryParam` is a wrapper trait, blanket-implemented for `Serialize + Debug + Sync`, that folds each
 param into `query.bind()`.
 

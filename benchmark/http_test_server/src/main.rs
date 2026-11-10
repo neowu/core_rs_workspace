@@ -11,7 +11,7 @@ use framework::web::response::Response;
 use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
-use framework_db::Database;
+use framework_postgres::Database;
 use http_test_server::BenchmarkService;
 use http_test_server::DbInsertRequest;
 use http_test_server::DbInsertResponse;

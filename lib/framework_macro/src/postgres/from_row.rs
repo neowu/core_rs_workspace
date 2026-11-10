@@ -18,8 +18,8 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 pub(crate) fn from_row_impl(struct_ident: &Ident, columns: &[(&Ident, String)]) -> TokenStream {
     let assignments = columns.iter().map(|(field, column)| quote! { #field: row.try_get(#column)?, });
     quote! {
-        impl framework_db::FromRow for #struct_ident {
-            fn try_from(row: framework_db::Row) -> ::std::result::Result<#struct_ident, framework_db::PgError> {
+        impl framework_postgres::FromRow for #struct_ident {
+            fn try_from(row: framework_postgres::Row) -> ::std::result::Result<#struct_ident, framework_postgres::PgError> {
                 Ok(#struct_ident {
                     #(#assignments)*
                 })
@@ -53,8 +53,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework_db::FromRow for TableStats {
-                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TableStats, framework_db::PgError> {
+                impl framework_postgres::FromRow for TableStats {
+                    fn try_from(row: framework_postgres::Row) -> ::std::result::Result<TableStats, framework_postgres::PgError> {
                         Ok(TableStats {
                             schema: row.try_get("schema")?,
                             kind: row.try_get("relkind")?,

@@ -36,7 +36,7 @@ use tower_service::Service;
 pub mod types;
 
 // clickhouse's Bind trait is sealed and not object-safe, so params can't be `&[&dyn Bind]`
-// like framework_db's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
+// like framework_postgres's `&[&dyn ToSql]`; this wrapper folds each param into query.bind().
 pub trait QueryParam: Debug + Sync {
     fn bind(&self, query: Query) -> Query;
 }

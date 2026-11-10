@@ -5,9 +5,9 @@ use syn::Ident;
 use syn::Result;
 use syn::Visibility;
 
-use crate::db::from_row;
 use crate::model;
 use crate::model::StructModel;
+use crate::postgres::from_row;
 
 pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     let model = model::parse_struct(tokens)?;
@@ -125,16 +125,16 @@ fn insert_auto_increment_impl(model: &EntityModel) -> TokenStream {
     let sql = format!("INSERT INTO \"{table}\" ({insert_columns}) VALUES ({placeholders}) RETURNING {primary_key}");
     let params = insert_fields.iter().map(|column| {
         let field = &column.field_ident;
-        quote! { &self.#field as &framework_db::QueryParam, }
+        quote! { &self.#field as &framework_postgres::QueryParam, }
     });
     quote! {
-        impl framework_db::InsertWithAutoIncrementId for #struct_ident {
+        impl framework_postgres::InsertWithAutoIncrementId for #struct_ident {
             #[inline]
             fn __insert_sql() -> &'static str {
                 #sql
             }
             #[inline]
-            fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework_postgres::QueryParam> {
                 vec![#(#params)*]
             }
         }
@@ -173,12 +173,12 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
         .iter()
         .map(|column| {
             let field = &column.field_ident;
-            quote! { &self.#field as &framework_db::QueryParam, }
+            quote! { &self.#field as &framework_postgres::QueryParam, }
         })
         .collect();
 
     quote! {
-        impl framework_db::Insert for #struct_ident {
+        impl framework_postgres::Insert for #struct_ident {
             fn __insert_sql() -> &'static str {
                 #sql
             }
@@ -188,7 +188,7 @@ fn insert_impl(model: &EntityModel) -> TokenStream {
             fn __upsert_sql() -> &'static str {
                 #sql_upsert
             }
-            fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
+            fn __insert_params(&self) -> ::std::vec::Vec<&framework_postgres::QueryParam> {
                 vec![#(#params)*]
             }
         }
@@ -202,7 +202,7 @@ fn entity_impl(model: &EntityModel) -> TokenStream {
     let select_sql = format!("SELECT {all_columns} FROM \"{table}\"");
 
     quote! {
-        impl framework_db::Entity for #struct_ident {
+        impl framework_postgres::Entity for #struct_ident {
             #[inline]
             fn __table_name() -> &'static str {
                 #table
@@ -225,7 +225,7 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
         let value_type = column_field_type(column);
         let vis = &column.field_vis;
         quote! {
-            #vis const #const_ident: framework_db::Field<#entity, #value_type> = framework_db::Field::__new(#column_name);
+            #vis const #const_ident: framework_postgres::Field<#entity, #value_type> = framework_postgres::Field::__new(#column_name);
         }
     });
 
@@ -268,8 +268,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework_db::FromRow for TestEntity {
-                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
+                impl framework_postgres::FromRow for TestEntity {
+                    fn try_from(row: framework_postgres::Row) -> ::std::result::Result<TestEntity, framework_postgres::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,
                             col1: row.try_get("col1")?,
@@ -277,7 +277,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::Insert for TestEntity {
+                impl framework_postgres::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2)"
                     }
@@ -287,12 +287,12 @@ mod tests {
                     fn __upsert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id, col1) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
                     }
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
-                        vec![&self.id as &framework_db::QueryParam, &self.col1 as &framework_db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_postgres::QueryParam> {
+                        vec![&self.id as &framework_postgres::QueryParam, &self.col1 as &framework_postgres::QueryParam,]
                     }
                 }
 
-                impl framework_db::Entity for TestEntity {
+                impl framework_postgres::Entity for TestEntity {
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
@@ -304,8 +304,8 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    const ID: framework_db::Field<TestEntity, i32> = framework_db::Field::__new("id");
-                    const COL1: framework_db::Field<TestEntity, String> = framework_db::Field::__new("col1");
+                    const ID: framework_postgres::Field<TestEntity, i32> = framework_postgres::Field::__new("id");
+                    const COL1: framework_postgres::Field<TestEntity, String> = framework_postgres::Field::__new("col1");
                 }
             }
             .to_string()
@@ -334,8 +334,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework_db::FromRow for TestEntity {
-                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
+                impl framework_postgres::FromRow for TestEntity {
+                    fn try_from(row: framework_postgres::Row) -> ::std::result::Result<TestEntity, framework_postgres::PgError> {
                         Ok(TestEntity {
                             id1: row.try_get("id1")?,
                             id2: row.try_get("id2")?,
@@ -344,7 +344,7 @@ mod tests {
                     }
                 }
 
-                impl framework_db::Insert for TestEntity {
+                impl framework_postgres::Insert for TestEntity {
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3)"
                     }
@@ -354,12 +354,12 @@ mod tests {
                     fn __upsert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (id1, id2, col1) VALUES ($1, $2, $3) ON CONFLICT (id1, id2) DO UPDATE SET col1 = EXCLUDED.col1 RETURNING (xmax = 0) AS inserted"
                     }
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
-                        vec![&self.id1 as &framework_db::QueryParam, &self.id2 as &framework_db::QueryParam, &self.col1 as &framework_db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_postgres::QueryParam> {
+                        vec![&self.id1 as &framework_postgres::QueryParam, &self.id2 as &framework_postgres::QueryParam, &self.col1 as &framework_postgres::QueryParam,]
                     }
                 }
 
-                impl framework_db::Entity for TestEntity {
+                impl framework_postgres::Entity for TestEntity {
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
@@ -371,9 +371,9 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    pub const ID1: framework_db::Field<TestEntity, i32> = framework_db::Field::__new("id1");
-                    pub(crate) const ID2: framework_db::Field<TestEntity, String> = framework_db::Field::__new("id2");
-                    const COL1: framework_db::Field<TestEntity, String> = framework_db::Field::__new("col1");
+                    pub const ID1: framework_postgres::Field<TestEntity, i32> = framework_postgres::Field::__new("id1");
+                    pub(crate) const ID2: framework_postgres::Field<TestEntity, String> = framework_postgres::Field::__new("id2");
+                    const COL1: framework_postgres::Field<TestEntity, String> = framework_postgres::Field::__new("col1");
                 }
             }
             .to_string()
@@ -399,8 +399,8 @@ mod tests {
         assert_eq!(
             output.to_string(),
             quote! {
-                impl framework_db::FromRow for TestEntity {
-                    fn try_from(row: framework_db::Row) -> ::std::result::Result<TestEntity, framework_db::PgError> {
+                impl framework_postgres::FromRow for TestEntity {
+                    fn try_from(row: framework_postgres::Row) -> ::std::result::Result<TestEntity, framework_postgres::PgError> {
                         Ok(TestEntity {
                             id: row.try_get("id")?,
                             col1: row.try_get("col1")?,
@@ -408,18 +408,18 @@ mod tests {
                     }
                 }
 
-                impl framework_db::InsertWithAutoIncrementId for TestEntity {
+                impl framework_postgres::InsertWithAutoIncrementId for TestEntity {
                     #[inline]
                     fn __insert_sql() -> &'static str {
                         "INSERT INTO \"test_entity\" (col1) VALUES ($1) RETURNING id"
                     }
                     #[inline]
-                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_db::QueryParam> {
-                        vec![&self.col1 as &framework_db::QueryParam,]
+                    fn __insert_params(&self) -> ::std::vec::Vec<&framework_postgres::QueryParam> {
+                        vec![&self.col1 as &framework_postgres::QueryParam,]
                     }
                 }
 
-                impl framework_db::Entity for TestEntity {
+                impl framework_postgres::Entity for TestEntity {
                     #[inline]
                     fn __table_name() -> &'static str {
                         "test_entity"
@@ -431,8 +431,8 @@ mod tests {
                 }
 
                 impl TestEntity {
-                    const ID: framework_db::Field<TestEntity, i64> = framework_db::Field::__new("id");
-                    const COL1: framework_db::Field<TestEntity, Option<String> > = framework_db::Field::__new("col1");
+                    const ID: framework_postgres::Field<TestEntity, i64> = framework_postgres::Field::__new("id");
+                    const COL1: framework_postgres::Field<TestEntity, Option<String> > = framework_postgres::Field::__new("col1");
                 }
             }
             .to_string()

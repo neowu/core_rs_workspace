@@ -1,8 +1,8 @@
 use framework::exception::Exception;
-use framework_db::Database;
-use framework_db::DbConfig;
-use framework_db::database;
 use framework_macro::integration_test;
+use framework_postgres::Database;
+use framework_postgres::DbConfig;
+use framework_postgres::database;
 
 #[integration_test]
 async fn error() -> Result<(), Exception> {
@@ -20,7 +20,7 @@ async fn error() -> Result<(), Exception> {
     assert_eq!(error.code, Some("DB_ERROR"));
     assert_eq!(error.message, "failed to get db connection, uri=postgres://postgres.test:1/missing_db");
 
-    let db = db_test::client();
+    let db = postgres_test::client();
     let error = database::execute(&db, "SELECT * FROM missing_table", &[]).await.unwrap_err();
     assert_eq!(error.code, Some("DB_ERROR"));
     assert_eq!(error.message, "failed to call db, uri=postgres://postgres.test:5432/postgres");

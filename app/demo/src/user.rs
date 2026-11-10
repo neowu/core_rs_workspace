@@ -1,9 +1,9 @@
 use framework::exception::Exception;
-use framework_db::Json;
-use framework_db::types::Timestamp;
 use framework_macro::Entity;
 use framework_macro::Validate;
 use framework_macro::api;
+use framework_postgres::Json;
+use framework_postgres::types::Timestamp;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
