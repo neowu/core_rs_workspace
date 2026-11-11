@@ -1,3 +1,4 @@
+clickhouse
 gcloud
 jetstream
 nats

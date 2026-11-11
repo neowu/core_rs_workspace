@@ -295,5 +295,4 @@ unused_crate_dependencies = "warn"
 debug = "none"
 
 [profile.release]
-opt-level = 3
 debug = "line-tables-only"

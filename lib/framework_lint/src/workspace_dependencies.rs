@@ -282,6 +282,25 @@ native = { version = "1", features = ["dynamic"] }
     }
 
     #[test]
+    fn parses_multiline_inline_tables() {
+        let diagnostics = run(
+            "",
+            &[r#"
+[target.'cfg(windows)'.dependencies]
+windows-sys = {
+  version = "0.61",
+  default-features = false,
+  features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+  ],
+}
+"#],
+        );
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {:?}", rules(&diagnostics));
+    }
+
+    #[test]
     fn reports_missing_workspace_declarations() {
         let diagnostics = run("", &["[dependencies]\nmissing.workspace = true\n"]);
         assert_eq!(rules(&diagnostics), vec!["missing_workspace_dependency"]);
