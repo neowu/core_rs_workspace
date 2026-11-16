@@ -60,6 +60,10 @@ Path dependencies on workspace members are exempt from the `unused_workspace_dep
 and `unshared_workspace_dependency` rules, so the root can list every workspace crate
 (such as `framework_lint`, used only by `xtask`) and members always inherit them.
 
+A package overridden in any root `[patch.<source>]` table counts the patch as a root use,
+so it is exempt from `unshared_workspace_dependency` and may stay in the root with a
+single inheriting member, keeping the declaration next to its patch.
+
 Packages are identified by their `package` name, so renamed dependencies count as
 the same package. Root use is counted by root key and distinct member; a member
 declaring the same dependency in several sections or targets counts once, and

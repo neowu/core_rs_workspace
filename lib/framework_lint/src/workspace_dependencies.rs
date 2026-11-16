@@ -71,6 +71,7 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
     }
 
     let member_names: BTreeSet<&str> = workspace.members.iter().map(|member| member.package.name.as_str()).collect();
+    let patched = patched_packages(&root_manifest.document);
     for (name, dependency) in &root_dependencies {
         check_wildcard(root_manifest, name, dependency, &mut diagnostics);
         // the root may list every workspace crate, however many members use it
@@ -78,7 +79,10 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
             continue;
         }
         let members = inherited.get(name).map(|members| members.iter().collect::<Vec<_>>()).unwrap_or_default();
-        if let [member] = members.as_slice() {
+        // a [patch] entry is a root-level use, so a single member inheriting it is enough
+        if let [member] = members.as_slice()
+            && !patched.contains(package_name(name, dependency))
+        {
             diagnostics.push(root_manifest.diagnostic(
                 dependency,
                 "unshared_workspace_dependency",
@@ -111,6 +115,19 @@ fn dependencies(document: &Document<String>) -> Vec<(&str, &Item)> {
         .into_iter()
         .flat_map(|table| SECTIONS.iter().filter_map(|section| table.get(section).and_then(Item::as_table_like)))
         .flat_map(TableLike::iter)
+        .collect()
+}
+
+/// Packages overridden by any `[patch.<source>]` table in the root manifest.
+fn patched_packages(document: &Document<String>) -> BTreeSet<&str> {
+    let Some(sources) = document.get("patch").and_then(Item::as_table_like) else {
+        return BTreeSet::new();
+    };
+    sources
+        .iter()
+        .filter_map(|(_, source)| source.as_table_like())
+        .flat_map(TableLike::iter)
+        .map(|(name, dependency)| package_name(name, dependency))
         .collect()
 }
 
@@ -279,6 +296,25 @@ native = { version = "1", features = ["dynamic"] }
             &["[dependencies]\nm1.workspace = true\n", ""],
         );
         assert_eq!(rules(&diagnostics), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn accepts_patched_root_dependency_inherited_by_one_member() {
+        let diagnostics = run(
+            r#"
+[workspace.dependencies]
+async-process = "2"
+renamed = { package = "async-io", version = "2" }
+unpatched = "1"
+[patch.crates-io]
+async-process = { git = "https://example.com/async-process.git", rev = "abc" }
+[patch."https://example.com/registry"]
+async-io = { git = "https://example.com/async-io.git" }
+"#,
+            &["[dependencies]\nasync-process.workspace = true\nrenamed.workspace = true\nunpatched.workspace = true\n"],
+        );
+        assert_eq!(rules(&diagnostics), vec!["unshared_workspace_dependency"]);
+        assert!(diagnostics.iter().all(|diagnostic| diagnostic.message.contains("`unpatched`")));
     }
 
     #[test]
