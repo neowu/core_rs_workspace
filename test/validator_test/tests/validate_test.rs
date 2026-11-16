@@ -1,7 +1,11 @@
+#![allow(clippy::tests_outside_test_module)]
+
 use framework::exception::Exception;
 use framework::validate::Validator;
 use framework_macro::Validate;
 
+// path qualified `String` must still be detected as a string
+#[allow(clippy::absolute_paths)]
 #[derive(Validate)]
 struct Bean {
     #[range(min = -5, max = 10)]
@@ -24,7 +28,7 @@ struct Child {
 }
 
 // an inherent method of the same name must not shadow the derived validator of a nested field
-#[allow(dead_code)]
+#[allow(dead_code, clippy::same_name_method, clippy::unused_self, clippy::unnecessary_wraps)]
 impl Child {
     const fn validate(&self) -> Result<(), Exception> {
         Ok(())
@@ -40,7 +44,7 @@ struct Page<'a, T: Validator> {
 }
 
 // generated code must compile with a caller `Result<T>` alias in scope
-#[allow(dead_code)]
+#[allow(dead_code, clippy::absolute_paths)]
 mod result_alias {
     use framework_macro::Validate;
 

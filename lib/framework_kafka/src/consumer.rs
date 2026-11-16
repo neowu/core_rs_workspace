@@ -395,7 +395,7 @@ fn key(message: &OwnedMessage) -> Option<Cow<'_, str>> {
 }
 
 fn payload(message: &OwnedMessage) -> Cow<'_, str> {
-    message.payload().map(String::from_utf8_lossy).unwrap_or_default()
+    message.payload().map_or_default(String::from_utf8_lossy)
 }
 
 fn timestamp(message: &OwnedMessage) -> Option<DateTime> {

@@ -13,3 +13,6 @@ framework_macro = { workspace = true }
 futures.workspace = true
 serde.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true

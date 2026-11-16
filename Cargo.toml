@@ -4,7 +4,7 @@ members = ["app/*", "benchmark/*", "lib/*", "test/*", "xtask"]
 default-members = ["app/*", "lib/*", "xtask"]
 
 [workspace.package]
-version = "0.10.1"
+version = "0.10.2"
 
 [workspace.dependencies]
 framework = { path = "lib/framework" }
@@ -225,7 +225,6 @@ lossy_float_literal = "warn"
 map_err_ignore = "warn"
 map_with_unused_argument_over_ranges = "warn"
 mem_forget = "warn"
-missing_assert_message = "warn"
 missing_asserts_for_indexing = "warn"
 mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"

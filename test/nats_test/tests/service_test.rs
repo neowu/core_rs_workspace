@@ -14,6 +14,7 @@ use framework_nats::service::ServiceConfig;
 use nats_test::client;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::time::sleep;
 
 #[derive(Serialize, Deserialize, Debug, Validate)]
 struct GreetRequest {
@@ -103,7 +104,7 @@ async fn wait_until_started(client: &GreetingServiceClient) {
         if client.ping().await.is_ok() {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        sleep(Duration::from_millis(20)).await;
     }
     panic!("service did not start");
 }

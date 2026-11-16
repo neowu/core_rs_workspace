@@ -46,9 +46,9 @@ async fn events(_state: Arc<AppState>, request: Request) -> Result<Response, Exc
     Ok(Response::sse(move |channel| async move {
         let event = Event { id: Some("1".to_owned()), event_type: None, data: format!("a\nb{last_event_id}") };
         channel.send(&event).await;
-        let mut event = Event::json(&vec!["x"])?;
-        event.event_type = Some("list".to_owned());
-        channel.send(&event).await;
+        let mut list = Event::json(&vec!["x"])?;
+        list.event_type = Some("list".to_owned());
+        channel.send(&list).await;
         Ok(())
     }))
 }

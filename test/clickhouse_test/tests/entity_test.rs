@@ -55,7 +55,7 @@ async fn entity() -> Result<(), Exception> {
         },
         // the bounds of Int32 and the empty array both round trip
         Entity { id: "2".to_owned(), count: i32::MIN, tags: vec![], levels: vec![Level::Ok] },
-        Entity { id: "3".to_owned(), count: i32::MAX, tags: vec!["".to_owned()], levels: vec![] },
+        Entity { id: "3".to_owned(), count: i32::MAX, tags: vec![String::new()], levels: vec![] },
     ];
     clickhouse.insert("entity", &entities).await?;
     flush(&clickhouse).await?;

@@ -7,6 +7,7 @@ use framework_postgres::Database;
 use framework_postgres::database;
 use framework_postgres::repository;
 use postgres_test::client;
+use tokio::time::timeout;
 
 #[derive(Entity, Debug, PartialEq)]
 #[table(name = "transaction_entity")]
@@ -70,7 +71,7 @@ async fn transaction() -> Result<(), Exception> {
     let mut tx = db.begin().await?;
     repository::insert(&mut tx, &entity(7)).await?;
     let slow = database::execute(&mut tx, "SELECT pg_sleep(1)", &[]);
-    assert!(tokio::time::timeout(Duration::from_millis(100), slow).await.is_err(), "slow statement must be cancelled");
+    assert!(timeout(Duration::from_millis(100), slow).await.is_err(), "slow statement must be cancelled");
     assert!(tx.commit().await.is_err(), "commit after cancelled statement must fail");
     assert_eq!(count(&db).await?, 2);
 

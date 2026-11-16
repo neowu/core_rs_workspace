@@ -20,8 +20,7 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
         .get("workspace")
         .and_then(|item| item.get("dependencies"))
         .and_then(Item::as_table_like)
-        .map(|table| table.iter().collect())
-        .unwrap_or_default();
+        .map_or_default(|table| table.iter().collect());
     let root_packages: BTreeMap<&str, &str> =
         root_dependencies.iter().map(|(name, dependency)| (package_name(name, dependency), *name)).collect();
 
@@ -78,7 +77,7 @@ pub(super) fn check(workspace: &Workspace) -> Vec<Diagnostic> {
         if dependency.get("path").is_some() && member_names.contains(package_name(name, dependency)) {
             continue;
         }
-        let members = inherited.get(name).map(|members| members.iter().collect::<Vec<_>>()).unwrap_or_default();
+        let members = inherited.get(name).map_or_default(|members| members.iter().collect::<Vec<_>>());
         // a [patch] entry is a root-level use, so a single member inheriting it is enough
         if let [member] = members.as_slice()
             && !patched.contains(package_name(name, dependency))

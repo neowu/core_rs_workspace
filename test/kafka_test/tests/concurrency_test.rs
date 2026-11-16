@@ -43,7 +43,7 @@ async fn concurrency() -> Result<(), Exception> {
     let shutdown_signal = CancellationToken::new();
     let mut consumer = consumer_with_config(
         concat!(env!("CARGO_PKG_NAME"), "_concurrency"),
-        ConsumerConfig { max_concurrency: 1, ..Default::default() },
+        &ConsumerConfig { max_concurrency: 1, ..Default::default() },
     );
     consumer.add_handler(&topic_4, test_message_handler);
     consumer.add_bulk_handler(&topic_5, test_bulk_message_handler);

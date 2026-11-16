@@ -57,6 +57,6 @@ async fn batch_consumer_backlog() -> Result<(), Exception> {
 }
 
 async fn handler(sender: UnboundedSender<usize>, messages: Vec<Message<TestMessage>>) -> Result<(), Exception> {
-    sender.send(messages.len()).unwrap();
+    sender.send(messages.len()).expect("receiver dropped");
     Ok(())
 }

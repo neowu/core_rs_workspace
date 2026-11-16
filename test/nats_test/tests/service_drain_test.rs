@@ -1,3 +1,4 @@
+use std::iter;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -53,12 +54,12 @@ async fn service_drain() -> Result<(), Exception> {
     wait_until_started(&client).await;
 
     // the first takes the only permit, the rest are buffered behind it
-    let requests: Vec<_> = (0..5)
-        .map(|_| {
-            let client = Arc::clone(&client);
-            tokio::spawn(async move { client.slow().await })
-        })
-        .collect();
+    let requests: Vec<_> = iter::repeat_with(|| {
+        let client = Arc::clone(&client);
+        tokio::spawn(async move { client.slow().await })
+    })
+    .take(5)
+    .collect();
     sleep(Duration::from_millis(300)).await;
 
     shutdown_signal.cancel();

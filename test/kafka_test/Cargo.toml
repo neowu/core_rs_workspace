@@ -9,6 +9,11 @@ doctest = false
 [dependencies]
 framework = { workspace = true }
 framework_kafka = { workspace = true }
-framework_macro = { workspace = true }
 serde.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+framework_macro = { workspace = true }
+
+[lints]
+workspace = true

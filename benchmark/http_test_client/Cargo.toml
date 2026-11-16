@@ -10,3 +10,5 @@ http_test_server = { path = "../http_test_server" }
 framework.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+
+[lints]

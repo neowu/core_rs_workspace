@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 doctest = false
 
-[dependencies]
+[dev-dependencies]
 framework = { workspace = true }
 framework_macro = { workspace = true }
+
+[lints]
+workspace = true

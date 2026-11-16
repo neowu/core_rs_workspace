@@ -1,4 +1,6 @@
+use std::env;
 use std::fs;
+use std::process;
 
 use framework::exception::Exception;
 use framework::http::HttpRequest;
@@ -12,14 +14,14 @@ use http_test::http_client;
 
 #[integration_test]
 async fn static_files() -> Result<(), Exception> {
-    let root = std::env::temp_dir().join(format!("http_test_{}", std::process::id()));
+    let root = env::temp_dir().join(format!("http_test_{}", process::id()));
     fs::create_dir_all(root.join("www/docs"))?;
     fs::write(root.join("www/index.html"), "<h1>index</h1>")?;
     fs::write(root.join("www/docs/index.html"), "<h1>docs</h1>")?;
     fs::write(root.join("www/app.js"), "console.log(1)")?;
     fs::write(root.join("www/.env"), "secret")?;
     fs::write(root.join("www/empty.txt"), "")?;
-    let large: Vec<u8> = (0..3 * 1024 * 1024 + 7).map(|i| (i % 251) as u8).collect();
+    let large: Vec<u8> = (0..=250).cycle().take(3 * 1024 * 1024 + 7).collect();
     fs::write(root.join("www/large.bin"), &large)?;
     fs::write(root.join("secret.txt"), "secret")?;
     fs::write(root.join("favicon.ico"), "icon")?;
