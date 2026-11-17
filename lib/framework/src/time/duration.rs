@@ -31,16 +31,19 @@ impl SignedDuration {
         SignedDuration(time::SignedDuration::nanoseconds_i128(nanos))
     }
 
+    // lint: allow(unused_pub), public api
     #[inline]
     pub const fn as_days(self) -> i64 {
         self.0.whole_days()
     }
 
+    // lint: allow(unused_pub), public api
     #[inline]
     pub const fn as_hours(self) -> i64 {
         self.0.whole_hours()
     }
 
+    // lint: allow(unused_pub), public api
     #[inline]
     pub const fn as_mins(self) -> i64 {
         self.0.whole_minutes()

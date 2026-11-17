@@ -74,6 +74,7 @@ impl DateTime {
         DateTime(self.0.to_offset(offset.0))
     }
 
+    // lint: allow(unused_pub), public api
     #[inline]
     #[must_use]
     pub const fn with_date(self, date: Date) -> DateTime {

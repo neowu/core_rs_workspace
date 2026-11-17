@@ -13,7 +13,8 @@ The checks live in the `framework_lint` library so other workspaces can run them
 same way this one does. Each workspace keeps a thin `xtask` binary member that calls
 `framework_lint::run(&LintConfig { .. })`, plus the Cargo alias
 `lint = "run --quiet -p xtask -- lint"`. Customization is passed in code through
-`LintConfig` (currently `max_file_lines`, default 500), not a config file. Other
+`LintConfig` (`max_file_lines`, default 500; `unused_pub_exempt_packages`, default
+none), not a config file. Other
 workspaces depend on it via git, like the other framework crates.
 
 The workspace is located at runtime: the library reads `CARGO_MANIFEST_DIR` and
@@ -84,3 +85,34 @@ scripts, `tests/`, benches, and examples are exempt. A test module in a separate
 file (`#[cfg(test)] mod x;`) is not recognized as test code, which is why unit tests
 stay inline. Files that do not parse are skipped and left to the compiler. The
 diagnostic points at the first line past the limit.
+
+## Unused pub functions
+
+| Rule | Requirement |
+| --- | --- |
+| `unused_pub` | A `pub` function or inherent method under a member's `src` is mentioned somewhere else in the workspace. |
+
+rustc's `dead_code` covers everything not exported from a crate (`pub(crate)`, private
+items, and `pub` items in binaries), and `unreachable_pub` forces unexported items to be
+`pub(crate)`. This rule covers the rest: functions a library exports that no one calls.
+The workspace is treated as the universe, so a library's public API must be exercised by
+at least one other crate, test, benchmark, or unit test.
+
+Matching is by name on raw tokens, not resolved references, which keeps the check fast
+and dependency free, and biased against false positives: any mention of the name in any
+`.rs` file of any member counts as a use, including inside macro invocations, `quote!`
+bodies, and string literals (e.g. `#[serde(deserialize_with = "path")]`). Doc comments
+and other definitions of the same name (`fn name`) do not count. The cost is false
+negatives: an unused function sharing its name with any used item is not reported.
+
+Not checked: `pub(crate)` and private functions, trait methods and trait impls,
+`#[cfg(test)]` items, proc macro entry points, and non-function items.
+
+Exceptions, for API meant for callers outside the workspace:
+
+- per function, a `// lint: allow(unused_pub)` comment (a reason may follow) in the
+  comment block directly above the item, or between its doc comments, attributes, and
+  signature. A comment is used because stable Rust rejects attributes and lint names of
+  unknown tools.
+- per package, `LintConfig::unused_pub_exempt_packages`, for libraries consumed only by
+  other workspaces. Exempt packages still count as users of other packages.

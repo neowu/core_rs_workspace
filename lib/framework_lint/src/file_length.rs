@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use proc_macro2::Span;
+use syn::Attribute;
 use syn::Ident;
 use syn::Item;
 use syn::spanned::Spanned as _;
@@ -54,7 +55,7 @@ pub(super) fn check(workspace: &Workspace, max_lines: usize) -> Result<Vec<Diagn
     Ok(diagnostics)
 }
 
-fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
+pub(super) fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -84,7 +85,7 @@ fn lines(span: Span) -> RangeInclusive<usize> {
     span.start().line..=span.end().line
 }
 
-fn is_test(item: &Item) -> bool {
+pub(super) fn is_test(item: &Item) -> bool {
     let attrs = match item {
         Item::Const(item) => &item.attrs,
         Item::Enum(item) => &item.attrs,
@@ -103,6 +104,10 @@ fn is_test(item: &Item) -> bool {
         Item::Use(item) => &item.attrs,
         Item::Verbatim(_) | _ => return false,
     };
+    cfg_test(attrs)
+}
+
+pub(super) fn cfg_test(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident("cfg") && attr.parse_args::<Ident>().is_ok_and(|arg| arg == "test"))
 }
 
