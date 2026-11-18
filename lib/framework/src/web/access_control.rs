@@ -7,21 +7,19 @@ use crate::web::X_FORWARDED_FOR;
 use crate::web::request::Request;
 
 /// For operation endpoints (`/_sys/`), called by each controller, not checked by the server on every request.
-/// Rejects with 403 unless the peer address is loopback or private network and the request was not forwarded,
+/// Rejects with 403 unless the peer address is loopback (same host, or kubectl port-forward which connects inside
+/// the pod network namespace) and the request was not forwarded,
 /// a proxy / load balancer always appends `x-forwarded-for`, so its presence means the request is not a direct call.
 pub fn validate_local_peer(request: &Request) -> Result<(), Exception> {
-    if is_local(request.peer_addr()) && !request.headers().contains_key(X_FORWARDED_FOR) {
+    if is_loopback(request.peer_addr()) && !request.headers().contains_key(X_FORWARDED_FOR) {
         return Ok(());
     }
     Err(exception!("access denied", severity = Severity::Warn, code = error_code::FORBIDDEN))
 }
 
-const fn is_local(ip: IpAddr) -> bool {
+const fn is_loopback(ip: IpAddr) -> bool {
     // dual stack listener reports ipv4 peer as ipv4-mapped ipv6
-    match ip.to_canonical() {
-        IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
-        IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
-    }
+    ip.to_canonical().is_loopback()
 }
 
 #[cfg(test)]
@@ -29,18 +27,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn local_ip() {
-        assert!(is_local("127.0.0.1".parse().unwrap()));
-        assert!(is_local("10.1.2.3".parse().unwrap()));
-        assert!(is_local("172.16.0.1".parse().unwrap()));
-        assert!(is_local("192.168.1.1".parse().unwrap()));
-        assert!(is_local("::1".parse().unwrap()));
-        assert!(is_local("fd00::1".parse().unwrap()));
-        assert!(is_local("::ffff:10.0.0.1".parse().unwrap()));
+    fn loopback_ip() {
+        assert!(is_loopback("127.0.0.1".parse().unwrap()));
+        assert!(is_loopback("127.1.2.3".parse().unwrap()));
+        assert!(is_loopback("::1".parse().unwrap()));
+        assert!(is_loopback("::ffff:127.0.0.1".parse().unwrap()));
 
-        assert!(!is_local("8.8.8.8".parse().unwrap()));
-        assert!(!is_local("172.32.0.1".parse().unwrap()));
-        assert!(!is_local("2001:db8::1".parse().unwrap()));
-        assert!(!is_local("::ffff:8.8.8.8".parse().unwrap()));
+        assert!(!is_loopback("10.1.2.3".parse().unwrap()));
+        assert!(!is_loopback("172.16.0.1".parse().unwrap()));
+        assert!(!is_loopback("192.168.1.1".parse().unwrap()));
+        assert!(!is_loopback("fd00::1".parse().unwrap()));
+        assert!(!is_loopback("::ffff:10.0.0.1".parse().unwrap()));
+        assert!(!is_loopback("8.8.8.8".parse().unwrap()));
+        assert!(!is_loopback("::".parse().unwrap()));
     }
 }

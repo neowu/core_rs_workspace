@@ -132,12 +132,12 @@ extractors, per request handler clones and a tower middleware stack the framewor
 - `client_ip` is for logging / business use only, never for access control.
 - `/_sys/` is for operation endpoints (`PUT /_sys/job/trigger`), local only: each controller calls
   `web::access_control::validate_local_peer`, the server doesn't check the path, so other requests pay
-  nothing; a new `/_sys/` controller must add the call. The connection peer address must be loopback or
-  private network (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`, ipv4-mapped included), and the request must
-  not have `x-forwarded-for`: operation calls are direct (from a pod, port forward), while a proxy / cloud LB
-  always appends it, so traffic through a proxy with a private address (ALB, in-cluster ingress) is denied too.
-  Presence is checked, not the value, it doesn't depend on `max_forwarded_ips`. A proxy with a private address
-  that doesn't add the header (TCP proxy, mesh sidecar) is still trusted, block `/_sys/` at the edge there.
+  nothing; a new `/_sys/` controller must add the call. The connection peer address must be loopback
+  (`127/8`, `::1`, ipv4-mapped included): operation calls come from the same host or `kubectl port-forward`,
+  which connects inside the pod network namespace; private network peers (other pods, VPC) are denied. The
+  request must also not have `x-forwarded-for`, so a reverse proxy on the same host is denied too. Presence is
+  checked, not the value, it doesn't depend on `max_forwarded_ips`. A local proxy that doesn't add the header
+  (mesh sidecar such as Istio connects from `127.0.0.6`) is still trusted, block `/_sys/` at the edge there.
 - `Response` constructors: `empty()` (204), `json(&T)` (logs body and `response_content_length`), `text`,
   `html`, `bytes(body, content_type)`, with `status(..)` / `header(..)` builders.
 - The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse`) implementing `http_body::Body`,

@@ -33,7 +33,7 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
   client are not covered; the unit test covers the closure dropped on shutdown without the body being polled.
 - `interceptor_test`: interceptors run in order around the handler of exact and prefix routes registered before or after them, short circuit
   with `403`, pass a request extension, don't apply to another router with the same state; a `/_sys/` route is
-  reachable from loopback and `403` with `x-forwarded-for` (a non local peer address is
+  reachable from loopback and `403` with `x-forwarded-for` (a non loopback peer address is
   a unit test, the test client is always local).
 - Consume or drop every response body before shutdown: graceful drain has no deadline, an unread h2
   stream keeps the server waiting on flow control.
