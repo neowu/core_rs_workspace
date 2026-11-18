@@ -24,3 +24,5 @@ jobs:
         run: cargo lint
       - name: test
         run: cargo test --verbose --all-features
+      - name: e2e test
+        run: cargo e2e-local

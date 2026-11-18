@@ -7,9 +7,10 @@ edition = "2024"
 doctest = false
 
 [dependencies]
-framework = { workspace = true }
-framework_clickhouse = { workspace = true }
-framework_macro = { workspace = true }
+framework.workspace = true
+framework_clickhouse.workspace = true
+framework_macro.workspace = true
+
 serde.workspace = true
 tokio.workspace = true
 

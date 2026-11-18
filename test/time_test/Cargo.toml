@@ -1,0 +1,13 @@
+[package]
+name = "time_test"
+version = "1.0.0"
+edition = "2024"
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+framework.workspace = true
+
+[lints]
+workspace = true
