@@ -28,8 +28,7 @@ use crate::AppState;
 use crate::kafka::EventMessage;
 
 pub(super) fn routes(state: Arc<AppState>) -> Router {
-    Router::new()
-        .state(state)
+    Router::state(state)
         .route(Method::GET, "/robots.txt", robots_txt)
         .route(Method::GET, "/1x1.png", png_1x1)
         .route(Method::OPTIONS, "/event/submit", event_submit_options)

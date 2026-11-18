@@ -18,7 +18,7 @@ use crate::user::UserService;
 
 pub(crate) fn routes(state: &'static AppState) -> Router {
     let service = UserServiceImpl { state };
-    UserService::route(Arc::new(service))
+    UserService::route(Arc::new(service)).into()
 }
 
 pub(crate) struct UserServiceImpl {

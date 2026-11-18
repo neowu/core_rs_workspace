@@ -112,8 +112,7 @@ async fn assert_retry(mut source: EventSource, expected: &[&str]) -> Result<(), 
 #[integration_test]
 async fn sse() -> Result<(), Exception> {
     let (signal, mut signals) = mpsc::unbounded_channel();
-    let router = Router::new()
-        .state(Arc::new(AppState { signal }))
+    let router = Router::state(Arc::new(AppState { signal }))
         .route(Method::GET, "/events", events)
         .route(Method::GET, "/forbidden", forbidden)
         .route(Method::GET, "/fail", fail)

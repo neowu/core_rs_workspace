@@ -15,10 +15,7 @@ pub(crate) fn routes() -> Router {
     Router::new()
         .file("/", asset_path!("assets/web/index.html"))
         .dir("/static/", asset_path!("assets/web/"))
-        .state(Arc::new(()))
-        .route(Method::GET, "/503", http_503)
-        .route(Method::GET, "/long", long)
-        .into()
+        .merge(Router::state(Arc::new(())).route(Method::GET, "/503", http_503).route(Method::GET, "/long", long))
 }
 
 async fn http_503(_state: Arc<()>, _request: Request) -> Result<Response, Exception> {

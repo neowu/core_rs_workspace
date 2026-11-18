@@ -40,7 +40,7 @@ async fn main() {
     let database = db::database();
     system.add_metrics(database.metrics());
     let app = Router::new()
-        .merge(Router::new().state(Arc::new(())).route(Method::GET, "/benchmark/get", get_benchmark).route(
+        .merge(Router::state(Arc::new(())).route(Method::GET, "/benchmark/get", get_benchmark).route(
             Method::POST,
             "/benchmark/post",
             post_benchmark,

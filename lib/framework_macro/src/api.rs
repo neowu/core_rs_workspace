@@ -44,7 +44,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     }
 
     trait_def.items.push(TraitItem::Fn(parse_quote! {
-        fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
+        fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::StateRouter<Self>
         where
             Self: Sized + Send + Sync + 'static,
         {
@@ -53,11 +53,10 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
             use framework::http::Method;
             use framework::web::api::__into_response;
             use framework::web::request::Request;
-            use framework::web::router::Router;
 
-            let router = Router::new().state(service);
+            let router = ::framework::web::router::Router::state(service);
             #(#route_statements)*
-            router.into()
+            router
         }
     }));
 
@@ -239,7 +238,7 @@ mod tests {
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<CreateUserResponse, Exception> > + Send;
                     fn update(&self, request: UpdateUserRequest) -> impl ::core::future::Future<Output = Result<UpdateUserResponse, Exception> > + Send;
 
-                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::StateRouter<Self>
                     where
                         Self: Sized + Send + Sync + 'static,
                     {
@@ -248,9 +247,8 @@ mod tests {
                         use framework::http::Method;
                         use framework::web::api::__into_response;
                         use framework::web::request::Request;
-                        use framework::web::router::Router;
 
-                        let router = Router::new().state(service);
+                        let router = ::framework::web::router::Router::state(service);
                         let fn_name: &'static str = format!("{}::search", std::any::type_name::<Self>()).leak();
                         let router = router.__route(Method::GET, "/user/search", fn_name, |service: Arc<Self>, request: Request| async move {
                             let req: SearchUserRequest = request.query()?;
@@ -269,7 +267,7 @@ mod tests {
                             framework::validate::Validator::validate(&req)?;
                             __into_response(service.update(req).await)
                         });
-                        router.into()
+                        router
                     }
                 }
 
@@ -327,7 +325,7 @@ mod tests {
                     fn get_all(&self) -> impl ::core::future::Future<Output = Result<GetAllUserResponse, Exception> > + Send;
                     fn create(&self, request: CreateUserRequest) -> impl ::core::future::Future<Output = Result<(), Exception> > + Send;
 
-                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::Router
+                    fn route(service: ::std::sync::Arc<Self>) -> ::framework::web::router::StateRouter<Self>
                     where
                         Self: Sized + Send + Sync + 'static,
                     {
@@ -336,9 +334,8 @@ mod tests {
                         use framework::http::Method;
                         use framework::web::api::__into_response;
                         use framework::web::request::Request;
-                        use framework::web::router::Router;
 
-                        let router = Router::new().state(service);
+                        let router = ::framework::web::router::Router::state(service);
                         let fn_name: &'static str = format!("{}::get_all", std::any::type_name::<Self>()).leak();
                         let router = router.__route(Method::GET, "/user/get_all", fn_name, |service: Arc<Self>, _request: Request| async move {
                             __into_response(service.get_all().await)
@@ -349,7 +346,7 @@ mod tests {
                             framework::validate::Validator::validate(&req)?;
                             __into_response(service.create(req).await)
                         });
-                        router.into()
+                        router
                     }
                 }
 

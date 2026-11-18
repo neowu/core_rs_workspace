@@ -15,6 +15,21 @@ use crate::web::response::Response;
 
 pub(crate) type HandlerFuture = Pin<Box<dyn Future<Output = Result<Response, Exception>> + Send>>;
 type Handler = Box<dyn Fn(Request) -> HandlerFuture + Send + Sync>;
+type SharedHandler = Arc<dyn Fn(Request) -> HandlerFuture + Send + Sync>;
+type Interceptor<S> = Arc<dyn Fn(Arc<S>, Request, Next) -> HandlerFuture + Send + Sync>;
+// binds the state and interceptors to a handler, the handler type is still known so there is no extra dispatch
+type Bind<S> = Box<dyn FnOnce(&Arc<S>, &[Interceptor<S>]) -> Handler>;
+
+/// Rest of the chain passed to an interceptor, the following interceptors then the handler.
+pub struct Next {
+    handler: SharedHandler,
+}
+
+impl Next {
+    pub fn run(self, request: Request) -> impl Future<Output = Result<Response, Exception>> + Send {
+        (self.handler)(request)
+    }
+}
 
 pub(crate) struct Route {
     pub(crate) name: &'static str,
@@ -87,13 +102,14 @@ impl Router {
         Router::default()
     }
 
-    /// Handlers registered on the returned router take `state` as first argument, convert back with `into()`.
+    /// Handlers registered on the returned router take `state` as first argument,
+    /// one state per router, `merge` it with other routers.
     #[must_use]
-    pub fn state<S>(self, state: Arc<S>) -> StateRouter<S>
+    pub fn state<S>(state: Arc<S>) -> StateRouter<S>
     where
         S: Send + Sync + 'static,
     {
-        StateRouter { state, routes: self.routes }
+        StateRouter { state, routes: Vec::new(), interceptors: Vec::new() }
     }
 
     /// Serves files under `root` for GET / HEAD requests whose path starts with `prefix`,
@@ -136,12 +152,31 @@ impl Router {
 /// Registers handlers sharing one state, see `Router::state`.
 pub struct StateRouter<S> {
     state: Arc<S>,
-    routes: Routes,
+    routes: Vec<StateRoute<S>>,
+    interceptors: Vec<Interceptor<S>>,
 }
 
+struct StateRoute<S> {
+    method: Method,
+    path: &'static str,
+    prefix: bool,
+    name: &'static str,
+    bind: Bind<S>,
+}
+
+/// Handlers are bound here, so interceptors apply to all routes whatever the registration order.
 impl<S> From<StateRouter<S>> for Router {
     fn from(router: StateRouter<S>) -> Router {
-        Router { routes: router.routes }
+        let mut routes = Routes::default();
+        for StateRoute { method, path, prefix, name, bind } in router.routes {
+            let route = Route { name, handler: bind(&router.state, &router.interceptors) };
+            if prefix {
+                routes.add_prefix(method, path, route);
+            } else {
+                routes.add(method, path, route);
+            }
+        }
+        Router { routes }
     }
 }
 
@@ -149,6 +184,19 @@ impl<S> StateRouter<S>
 where
     S: Send + Sync + 'static,
 {
+    /// Wraps all handlers registered on this router, before or after this call,
+    /// `async fn(state, request, next) -> Result<Response, Exception>`,
+    /// call `next.run(request)` to proceed, interceptors run in registration order.
+    #[must_use]
+    pub fn intercept<F, Fut>(mut self, interceptor: F) -> StateRouter<S>
+    where
+        F: Fn(Arc<S>, Request, Next) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
+    {
+        self.interceptors.push(Arc::new(move |state, request, next| Box::pin(interceptor(state, request, next))));
+        self
+    }
+
     #[must_use]
     pub fn route<F, Fut>(self, method: Method, path: &'static str, handler: F) -> StateRouter<S>
     where
@@ -173,8 +221,8 @@ where
         F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
     {
-        let handler = self.handler(handler);
-        self.routes.add(method, path, Route { name, handler });
+        let bind: Bind<S> = Box::new(move |state, interceptors| bind(state, interceptors, handler));
+        self.routes.push(StateRoute { method, path, prefix: false, name, bind });
         self
     }
 
@@ -187,19 +235,31 @@ where
         Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
     {
         let name = type_name_of_val(&handler);
-        let handler = self.handler(handler);
-        self.routes.add_prefix(method, prefix, Route { name, handler });
+        let bind: Bind<S> = Box::new(move |state, interceptors| bind(state, interceptors, handler));
+        self.routes.push(StateRoute { method, path: prefix, prefix: true, name, bind });
         self
     }
+}
 
-    fn handler<F, Fut>(&self, handler: F) -> Handler
-    where
-        F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
-    {
-        let state = Arc::clone(&self.state);
-        Box::new(move |request| Box::pin(handler(Arc::clone(&state), request)))
+fn bind<S, F, Fut>(state: &Arc<S>, interceptors: &[Interceptor<S>], handler: F) -> Handler
+where
+    S: Send + Sync + 'static,
+    F: Fn(Arc<S>, Request) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<Response, Exception>> + Send + 'static,
+{
+    let handler_state = Arc::clone(state);
+    if interceptors.is_empty() {
+        return Box::new(move |request| Box::pin(handler(Arc::clone(&handler_state), request)));
     }
+    // chain is built once, a request costs one boxed future per interceptor
+    let mut next: SharedHandler = Arc::new(move |request| Box::pin(handler(Arc::clone(&handler_state), request)));
+    for interceptor in interceptors.iter().rev() {
+        let interceptor = Arc::clone(interceptor);
+        let state = Arc::clone(state);
+        let inner = next;
+        next = Arc::new(move |request| interceptor(Arc::clone(&state), request, Next { handler: Arc::clone(&inner) }));
+    }
+    Box::new(move |request| next(request))
 }
 
 #[cfg(test)]
@@ -219,14 +279,13 @@ mod tests {
 
     #[test]
     fn find() {
-        let router = Router::new()
-            .dir("/static/", "static")
-            .dir("/static/js/", "js")
-            .file("/favicon.ico", "favicon.ico")
-            .state(Arc::new(()))
-            .route(Method::GET, "/hello", hello)
-            .route(Method::POST, "/hello", hello)
-            .prefix(Method::POST, "/event/", hello);
+        let router: Router =
+            Router::new().dir("/static/", "static").dir("/static/js/", "js").file("/favicon.ico", "favicon.ico").merge(
+                Router::state(Arc::new(()))
+                    .route(Method::GET, "/hello", hello)
+                    .route(Method::POST, "/hello", hello)
+                    .prefix(Method::POST, "/event/", hello),
+            );
         let routes = &router.routes;
 
         assert_eq!(matched(routes, &Method::GET, "/hello"), Some("/hello"));
@@ -246,7 +305,7 @@ mod tests {
 
     #[test]
     fn handler_name() {
-        let router = Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello);
+        let router: Router = Router::state(Arc::new(())).route(Method::GET, "/hello", hello).into();
         let Matched::Found(_, route) = router.routes.find(&Method::GET, "/hello") else {
             panic!("expected route");
         };
@@ -255,9 +314,16 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "duplicate route")]
+    fn duplicate() {
+        let _router: Router =
+            Router::state(Arc::new(())).route(Method::GET, "/hello", hello).route(Method::GET, "/hello", hello).into();
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate route")]
     fn merge_duplicate() {
         let _router = Router::new()
-            .merge(Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello))
-            .merge(Router::new().state(Arc::new(())).route(Method::GET, "/hello", hello));
+            .merge(Router::state(Arc::new(())).route(Method::GET, "/hello", hello))
+            .merge(Router::state(Arc::new(())).route(Method::GET, "/hello", hello));
     }
 }

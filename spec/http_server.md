@@ -71,12 +71,13 @@ extractors, per request handler clones and a tower middleware stack the framewor
 
 - One fixed signature instead of dynamic extractors: easier to read, no per-request handler
   clone. `Result` allows `?` on request parsing.
-- `Router` has no state type: `Router::new().state(Arc<S>)` returns a `StateRouter<S>` carrying the routes so far,
+- `Router` has no state type: `Router::state(Arc<S>)` returns an empty `StateRouter<S>`,
   handlers registered on it (`.route(Method::GET, ..)`, no per-method shortcuts so routes line up for review) are bound to that state, `into()` converts back to `Router`. Plain
   builder calls instead of a closure, easier to read at the call site. Each handler is type erased into
   `Box<dyn Fn(Request) -> Pin<Box<Future>>>` capturing a state clone. Routers built with different states
   are `merge`d into one (`merge` takes `impl Into<Router>`), the server and module fns only deal with `Router`;
-  `dir` / `file` need no state, call them before `state`.
+  `dir` / `file` need no state, they are on `Router`. One state per `StateRouter` and `merge` as the only way to
+  combine, so a router never holds routes outside its own state and interceptors.
 - `Err` is logged with the action and mapped to `ErrorResponse` JSON
   (`BAD_REQUEST` / `VALIDATION_ERROR` 400, `NOT_FOUND` 404, `FORBIDDEN` 403, else 500).
 - A panic in a controller is caught, logged as `handler panicked` error and returned as 500, so the
@@ -85,6 +86,26 @@ extractors, per request handler clones and a tower middleware stack the framewor
   passed in directly instead of wrapped in another async block (smaller future).
 - `fn` context is `type_name_of_val(&handler)`, a `&'static str` taken at registration; `#[api]` passes
   its own name, see [`http_server_api.md`](http_server_api.md).
+
+## Interceptor
+
+`async fn(state: Arc<S>, request: Request, next: Next) -> Result<Response, Exception>`, registered with
+`StateRouter::intercept`, for cross cutting concerns of a group of routes (login, session).
+
+- Scoped to one `StateRouter`: it needs the same state as the handlers, and without annotations there is no
+  per route metadata to select on. Routes with different requirements go to different routers (public /
+  logged in), then `merge`. Per route rules (a permission) are plain calls in the handler.
+- Around style: `next.run(request)` proceeds to the following interceptors (registration order) then the
+  handler, returning without it short circuits, code after it sees the response. An `Err` propagates like a
+  handler error.
+- Applies to every route registered on the `StateRouter`, before or after `intercept`, so ordering can't
+  leave a route unprotected and `#[api]` `route(service).intercept(..)` chains. Handlers are bound when the
+  `StateRouter` converts to `Router`, so duplicate routes of one `StateRouter` panic there.
+- The chain is composed into the route handler once, dispatch is unchanged and routers without
+  interceptors pay nothing; a request costs one boxed future per interceptor.
+- An interceptor passes data to the handler with `request.set_extension(value)` / `request.extension::<T>()`.
+- Unmatched requests (`404` / `405`) have no interceptors. `#[api]` `route` returns a `StateRouter`,
+  see [`http_server_api.md`](http_server_api.md#behaviour).
 
 ## Request / Response
 
@@ -108,11 +129,15 @@ extractors, per request handler clones and a tower middleware stack the framewor
   `ipv4:port`), parsed as a standard IP literal (no scope id, no legacy ipv4 forms like `1.2` / `010.1.1.1`).
   Strict: an invalid node is `BAD_REQUEST`, no fallback. Absent / blank `x-forwarded-for` or
   `max_forwarded_ips = 0` uses the peer address. Never resolves DNS.
-- `client_ip` is for logging / business use only, never for access control. Internal endpoints
-  (`PUT /_sys/job/trigger`) call `web::access_control::validate_local_peer`: the connection peer address must be loopback or
-  private network (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`, ipv4-mapped included), else `FORBIDDEN`.
-  This assumes external traffic reaches the app through an L7 LB with public source addresses; an in-cluster
-  proxy (private address) in front of the app would be trusted.
+- `client_ip` is for logging / business use only, never for access control.
+- `/_sys/` is for operation endpoints (`PUT /_sys/job/trigger`), local only: each controller calls
+  `web::access_control::validate_local_peer`, the server doesn't check the path, so other requests pay
+  nothing; a new `/_sys/` controller must add the call. The connection peer address must be loopback or
+  private network (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`, ipv4-mapped included), and the request must
+  not have `x-forwarded-for`: operation calls are direct (from a pod, port forward), while a proxy / cloud LB
+  always appends it, so traffic through a proxy with a private address (ALB, in-cluster ingress) is denied too.
+  Presence is checked, not the value, it doesn't depend on `max_forwarded_ips`. A proxy with a private address
+  that doesn't add the header (TCP proxy, mesh sidecar) is still trusted, block `/_sys/` at the edge there.
 - `Response` constructors: `empty()` (204), `json(&T)` (logs body and `response_content_length`), `text`,
   `html`, `bytes(body, content_type)`, with `status(..)` / `header(..)` builders.
 - The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse`) implementing `http_body::Body`,

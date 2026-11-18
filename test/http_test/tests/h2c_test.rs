@@ -27,7 +27,7 @@ async fn version(_state: Arc<()>, request: Request) -> Result<Response, Exceptio
 #[integration_test]
 async fn h2c() -> Result<(), Exception> {
     let router =
-        Router::new().state(Arc::new(())).route(Method::POST, "/greet", greet).route(Method::GET, "/version", version);
+        Router::state(Arc::new(())).route(Method::POST, "/greet", greet).route(Method::GET, "/version", version);
     let mut server = TestServer::start(router).await;
 
     let http1 = http_client(false);

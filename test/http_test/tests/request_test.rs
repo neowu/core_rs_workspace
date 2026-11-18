@@ -66,8 +66,7 @@ async fn no_content(_state: Arc<AppState>, _request: Request) -> Result<Response
 async fn request_response() -> Result<(), Exception> {
     let router = Router::new()
         .merge(
-            Router::new()
-                .state(Arc::new(AppState { prefix: "hello" }))
+            Router::state(Arc::new(AppState { prefix: "hello" }))
                 .route(Method::GET, "/greet", greet_query)
                 .route(Method::POST, "/greet", greet_json)
                 .route(Method::POST, "/echo", echo)
@@ -76,7 +75,7 @@ async fn request_response() -> Result<(), Exception> {
                 .route(Method::GET, "/panic", panic)
                 .route(Method::GET, "/no-content", no_content),
         )
-        .merge(Router::new().state(Arc::new(AppState { prefix: "unused" })).route(Method::GET, "/ping", ping));
+        .merge(Router::state(Arc::new(AppState { prefix: "unused" })).route(Method::GET, "/ping", ping));
     let mut server = TestServer::start(router).await;
     let client = &http_client(false);
     let json_request = |method, path, body: &str| {

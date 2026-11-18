@@ -8,8 +8,14 @@ Code: [`framework_macro/src/api.rs`](../lib/framework_macro/src/api.rs),
 
 `#[api]` on a trait generates both sides of one HTTP contract from the trait definition:
 
-- server: a provided `route(Arc<Self>) -> Router` that registers every method on its
+- server: a provided `route(Arc<Self>) -> StateRouter<Self>` that registers every method on its
   `#[path]` with its HTTP method, the service is the bound state, merge it into the server router.
+  Chain `.intercept(..)` on it to apply [interceptors](http_server.md#interceptor) to all methods, the
+  service reads first and no router is built by hand. An interceptor can reject and post process. Service
+  methods don't take `Request` (the trait is shared with the client), so a request extension is not visible
+  to them: the interceptor passes data by scoping an app defined `tokio::task_local!` around `next.run(request)`.
+  Not built into the framework, routes without interceptors pay nothing and the value is typed; it's dropped
+  with the request future and not visible in tasks spawned by the method.
 - client: `{Trait}Client` wrapping `ApiClient`, implementing the same trait over `Arc<HttpClient>`.
 
 Method rules, enforced at expansion time:

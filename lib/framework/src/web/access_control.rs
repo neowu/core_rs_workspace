@@ -3,17 +3,20 @@ use std::net::IpAddr;
 use crate::exception::Exception;
 use crate::exception::error_code;
 use crate::log::Severity;
+use crate::web::X_FORWARDED_FOR;
 use crate::web::request::Request;
 
-/// Rejects with 403 unless the peer address is loopback or private network, `x-forwarded-for` is ignored.
+/// For operation endpoints (`/_sys/`), called by each controller, not checked by the server on every request.
+/// Rejects with 403 unless the peer address is loopback or private network and the request was not forwarded,
+/// a proxy / load balancer always appends `x-forwarded-for`, so its presence means the request is not a direct call.
 pub fn validate_local_peer(request: &Request) -> Result<(), Exception> {
-    if is_local(request.peer_addr()) {
+    if is_local(request.peer_addr()) && !request.headers().contains_key(X_FORWARDED_FOR) {
         return Ok(());
     }
     Err(exception!("access denied", severity = Severity::Warn, code = error_code::FORBIDDEN))
 }
 
-pub const fn is_local(ip: IpAddr) -> bool {
+const fn is_local(ip: IpAddr) -> bool {
     // dual stack listener reports ipv4 peer as ipv4-mapped ipv6
     match ip.to_canonical() {
         IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),

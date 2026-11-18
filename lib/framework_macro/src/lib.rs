@@ -63,6 +63,7 @@ pub fn enum8(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// implementing the trait, both with the trait's own visibility.
 /// ```text
 /// let router = UserService::route(Arc::new(service));
+/// let router = UserService::route(Arc::new(service)).intercept(login);
 /// let client = UserServiceClient::new(http_client, api_url, client);
 /// ```
 #[proc_macro_attribute]

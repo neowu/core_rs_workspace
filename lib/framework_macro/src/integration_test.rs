@@ -35,8 +35,7 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
     Ok(quote! {
         #[::tokio::test(flavor = "multi_thread")]
         // integration test crates under `tests/` only build for test, a `#[cfg(test)]` module adds nothing;
-        // test steps rebind the same name (e.g. `response`) so a later assert can't reach a stale value
-        #[allow(clippy::tests_outside_test_module, clippy::shadow_unrelated)]
+        #[allow(clippy::tests_outside_test_module)]
         #(#attrs)*
         #vis async fn #ident() {
             #function

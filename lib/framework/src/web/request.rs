@@ -94,6 +94,15 @@ impl Request {
         self.peer_addr
     }
 
+    /// Value attached by an interceptor, e.g. the logged in user.
+    pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
+        self.parts.extensions.get()
+    }
+
+    pub fn set_extension<T: Clone + Send + Sync + 'static>(&mut self, value: T) {
+        self.parts.extensions.insert(value);
+    }
+
     pub fn user_agent(&self) -> Option<&str> {
         self.header(header::USER_AGENT)
     }

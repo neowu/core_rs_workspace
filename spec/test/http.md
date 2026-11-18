@@ -24,11 +24,17 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
 - `api_test`: `#[api]` generated routes and clients for GET, POST and PUT, no-argument calls, empty `204`
   responses, validation errors and service exceptions; status, JSON error bodies, and severity, code and
   message kept in client exceptions, including a non-JSON `404`; calls fail after shutdown.
+- `api_interceptor_test`: an interceptor chained on `#[api]` `route` rejects with `403` and passes data to the
+  service method through a scoped task local.
 - `sse_test`: event encoding, headers and `last-event-id`, the stream ends when the closure returns, the
   controller rejecting with `403`, an error in the closure ends the stream normally, HEAD doesn't run the closure,
   client disconnect drops the closure, shutdown with open streams (one without any event) completes, each stream
   ends with a `retry` frame and its closure is dropped, over both protocols. Keepalive (15s) and a stalled h2
   client are not covered; the unit test covers the closure dropped on shutdown without the body being polled.
+- `interceptor_test`: interceptors run in order around the handler of exact and prefix routes registered before or after them, short circuit
+  with `403`, pass a request extension, don't apply to another router with the same state; a `/_sys/` route is
+  reachable from loopback and `403` with `x-forwarded-for` (a non local peer address is
+  a unit test, the test client is always local).
 - Consume or drop every response body before shutdown: graceful drain has no deadline, an unread h2
   stream keeps the server waiting on flow control.
 
