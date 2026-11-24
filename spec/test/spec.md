@@ -2,8 +2,13 @@
 
 Integration crates live under `test/`, one crate per service:
 [http](http.md) · [nats](nats.md) · [kafka](kafka.md) · [postgres](postgres.md) · [clickhouse](clickhouse.md).
-Framework features that need a downstream crate to exercise generated code, but no service, also get a crate,
-e.g. `validator_test` for `#[derive(Validate)]`; they use plain `#[test]` and the rules below do not apply.
+Framework features that need a downstream crate but no service also get a crate: `validator_test` exercises
+the code `#[derive(Validate)]` generates, `time_test` and `number_test` show `framework::time` and `framework::number`
+usage and keep that public API used for the `unused_pub` lint. They use plain `#[test]` and the rules below
+do not apply.
+
+`cargo e2e-local` runs the crates that need no external service (`http_test` and the plain `#[test]` crates),
+CI runs it too; the package list is in `.cargo/config.toml`, add new service-free crates there.
 
 - Every test uses `#[integration_test]`: it initializes `System`, runs the body in a log action
   named after the fn, and fails with the exception backtrace. Keep one integration test per file,
