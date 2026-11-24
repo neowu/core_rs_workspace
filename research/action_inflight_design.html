@@ -1,0 +1,1672 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>In-flight action design</title>
+    <style>
+        :root {
+            --bg: #f6f4ef;
+            --panel: #ffffff;
+            --panel2: #efece5;
+            --ink: #1d1c1a;
+            --muted: #6a665e;
+            --line: #d9d4c8;
+            --before: #a8620a;
+            --before-bg: #fbf0dc;
+            --after: #0b6e69;
+            --after-bg: #dff2ef;
+            --unsafe: #b3261e;
+            --unsafe-bg: #fbe6e3;
+            --hot: #fff3b8;
+            --hot-line: #c79a00;
+            --code-bg: #1f2227;
+            --code-ink: #e6e3dc;
+            --code-com: #8f9aa8;
+            --code-kw: #8cc4ff;
+            --code-str: #b7dba0;
+            --code-unsafe: #ff9d8f;
+            --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --bg: #17181b;
+                --panel: #202226;
+                --panel2: #292c31;
+                --ink: #e9e6df;
+                --muted: #a09b90;
+                --line: #3a3d44;
+                --before: #f0b45a;
+                --before-bg: #3a2d14;
+                --after: #5fd0c8;
+                --after-bg: #12332f;
+                --unsafe: #ff8c80;
+                --unsafe-bg: #3d1c19;
+                --hot: #4a4012;
+                --hot-line: #d9b930;
+                --code-bg: #101114;
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --bg: #17181b;
+            --panel: #202226;
+            --panel2: #292c31;
+            --ink: #e9e6df;
+            --muted: #a09b90;
+            --line: #3a3d44;
+            --before: #f0b45a;
+            --before-bg: #3a2d14;
+            --after: #5fd0c8;
+            --after-bg: #12332f;
+            --unsafe: #ff8c80;
+            --unsafe-bg: #3d1c19;
+            --hot: #4a4012;
+            --hot-line: #d9b930;
+            --code-bg: #101114;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 64px;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font: 16px/1.55 var(--sans);
+        }
+
+        main {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 0 20px 96px;
+        }
+
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--bg);
+            border-bottom: 1px solid var(--line);
+        }
+
+        nav .in {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 10px 20px;
+            display: flex;
+            gap: 4px 16px;
+            flex-wrap: wrap;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        nav a {
+            color: var(--muted);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        nav a:hover {
+            color: var(--ink);
+        }
+
+        nav .sp {
+            flex: 1;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.15;
+            margin: 48px 0 12px;
+            letter-spacing: -0.02em;
+            text-wrap: balance;
+        }
+
+        h2 {
+            font-size: 24px;
+            margin: 72px 0 6px;
+            letter-spacing: -0.01em;
+        }
+
+        h3 {
+            font-size: 17px;
+            margin: 28px 0 6px;
+        }
+
+        p {
+            margin: 10px 0;
+            max-width: 72ch;
+        }
+
+        .lede {
+            font-size: 19px;
+            color: var(--muted);
+            max-width: 66ch;
+        }
+
+        .sub {
+            color: var(--muted);
+            margin-top: 0;
+        }
+
+        code {
+            font: 0.88em var(--mono);
+            background: var(--panel2);
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
+
+        pre {
+            margin: 0;
+            background: var(--code-bg);
+            color: var(--code-ink);
+            padding: 14px 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font: 13px/1.5 var(--mono);
+        }
+
+        pre .c {
+            color: var(--code-com);
+        }
+
+        pre .k {
+            color: var(--code-kw);
+        }
+
+        pre .s {
+            color: var(--code-str);
+        }
+
+        pre .u {
+            color: var(--code-unsafe);
+            font-weight: 700;
+        }
+
+        button {
+            font: inherit;
+            color: var(--ink);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+        }
+
+        button:hover:not(:disabled) {
+            border-color: var(--muted);
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        summary:focus-visible {
+            outline: 2px solid var(--after);
+            outline-offset: 2px;
+        }
+
+        button.on {
+            background: var(--ink);
+            color: var(--bg);
+            border-color: var(--ink);
+        }
+
+        .tag {
+            display: inline-block;
+            font: 600 11px/1 var(--sans);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 4px 7px;
+            border-radius: 4px;
+        }
+
+        .tag.b {
+            color: var(--before);
+            background: var(--before-bg);
+        }
+
+        .tag.a {
+            color: var(--after);
+            background: var(--after-bg);
+        }
+
+        .tag.u {
+            color: var(--unsafe);
+            background: var(--unsafe-bg);
+        }
+
+        .tag.n {
+            color: var(--muted);
+            background: var(--panel2);
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 16px 18px;
+        }
+
+        .two {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .three {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 820px) {
+
+            .two,
+            .three {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card h3 {
+            margin-top: 6px;
+        }
+
+        .card p {
+            font-size: 15px;
+        }
+
+        /* stepper */
+        .bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 14px 0;
+        }
+
+        .dots {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .dots button {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border-radius: 50%;
+            font: 600 13px var(--mono);
+        }
+
+        .stage {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 10px 0 14px;
+        }
+
+        @media (max-width: 900px) {
+            .stage {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .stage {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .box {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 10px 12px;
+            min-height: 150px;
+        }
+
+        .box.off {
+            opacity: 0.35;
+        }
+
+        .box .bt {
+            font: 600 11px/1.3 var(--sans);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .slot {
+            font: 12.5px/1.4 var(--mono);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 5px 7px;
+            margin-top: 6px;
+            overflow-wrap: anywhere;
+        }
+
+        .slot b {
+            display: block;
+            font-weight: 600;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .slot.hot {
+            background: var(--hot);
+            border-color: var(--hot-line);
+        }
+
+        .slot.gone {
+            border-style: dashed;
+            color: var(--muted);
+        }
+
+        .explain {
+            display: grid;
+            grid-template-columns: 5fr 6fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        @media (max-width: 820px) {
+            .explain {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .explain h3 {
+            margin-top: 0;
+        }
+
+        /* simulator */
+        .sim {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 14px;
+            align-items: stretch;
+        }
+
+        @media (max-width: 760px) {
+            .sim {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .sim .who {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sim .who .st {
+            font: 13px var(--mono);
+            color: var(--muted);
+            min-height: 2.8em;
+        }
+
+        .byte {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 190px;
+        }
+
+        .byte .v {
+            font: 700 24px var(--mono);
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 2px solid var(--line);
+            background: var(--panel);
+            min-width: 170px;
+            text-align: center;
+        }
+
+        .byte .v.POLLING {
+            border-color: var(--after);
+            color: var(--after);
+            background: var(--after-bg);
+        }
+
+        .byte .v.DUMPING {
+            border-color: var(--before);
+            color: var(--before);
+            background: var(--before-bg);
+        }
+
+        .byte small {
+            color: var(--muted);
+            text-align: center;
+            max-width: 190px;
+        }
+
+        .simlog {
+            margin-top: 12px;
+            max-height: 230px;
+            overflow-y: auto;
+            font: 13px/1.5 var(--mono);
+            background: var(--panel2);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .simlog div {
+            padding: 2px 0;
+        }
+
+        .simlog .w {
+            color: var(--after);
+        }
+
+        .simlog .d {
+            color: var(--before);
+        }
+
+        .simlog .o {
+            color: var(--muted);
+        }
+
+        /* layout strip */
+        .fields {
+            display: grid;
+            gap: 6px;
+            margin: 12px 0;
+        }
+
+        .field {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 12px;
+            align-items: center;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-left-width: 5px;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 14px;
+        }
+
+        .field code {
+            background: none;
+            padding: 0;
+        }
+
+        .field.im {
+            border-left-color: var(--muted);
+        }
+
+        .field.at {
+            border-left-color: var(--before);
+        }
+
+        .field.ow {
+            border-left-color: var(--line);
+        }
+
+        .field.un {
+            border-left-color: var(--unsafe);
+        }
+
+        @media (max-width: 700px) {
+            .field {
+                grid-template-columns: 1fr;
+                gap: 2px;
+            }
+        }
+
+        /* tables */
+        .tw {
+            overflow-x: auto;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 14.5px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            vertical-align: top;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        th {
+            font: 600 12px var(--sans);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+        }
+
+        tr:last-child td {
+            border-bottom: 0;
+        }
+
+        td.v {
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .better {
+            color: var(--after);
+        }
+
+        .worse {
+            color: var(--unsafe);
+        }
+
+        .same {
+            color: var(--muted);
+        }
+
+        /* audit + glossary */
+        details {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+
+        summary {
+            cursor: pointer;
+            padding: 10px 14px;
+            display: flex;
+            gap: 10px;
+            align-items: baseline;
+            flex-wrap: wrap;
+            list-style: none;
+        }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        summary .loc {
+            font: 12px var(--mono);
+            color: var(--muted);
+            margin-left: auto;
+        }
+
+        summary .t {
+            font: 600 14px var(--mono);
+        }
+
+        summary .s {
+            color: var(--muted);
+            font-size: 14px;
+            flex-basis: 100%;
+        }
+
+        details .body {
+            padding: 0 14px 14px;
+            font-size: 15px;
+        }
+
+        details .body pre {
+            margin: 8px 0;
+        }
+
+        details[open] {
+            border-color: var(--muted);
+        }
+
+        .filters {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin: 12px 0;
+            align-items: center;
+        }
+
+        .filters input {
+            font: inherit;
+            padding: 6px 10px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: var(--panel);
+            color: var(--ink);
+            min-width: 220px;
+        }
+
+        .lanes {
+            display: grid;
+            grid-template-columns: 34px 1fr 1fr;
+            gap: 6px 10px;
+            font-size: 14.5px;
+        }
+
+        .lanes .h {
+            font: 600 12px var(--sans);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+        }
+
+        .lanes .n {
+            font: 600 13px var(--mono);
+            color: var(--muted);
+            padding-top: 9px;
+        }
+
+        .lanes .l {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+
+        .lanes .l.e {
+            background: none;
+            border-style: dashed;
+            color: var(--muted);
+        }
+
+        @media (max-width: 700px) {
+            .lanes {
+                grid-template-columns: 26px 1fr;
+            }
+
+            .lanes .l.e,
+            .lanes .h.t2 {
+                display: none;
+            }
+        }
+
+        ul {
+            padding-left: 20px;
+            max-width: 72ch;
+        }
+
+        li {
+            margin: 5px 0;
+        }
+
+        .note {
+            border-left: 4px solid var(--hot-line);
+            background: var(--panel);
+            padding: 10px 14px;
+            border-radius: 0 8px 8px 0;
+            font-size: 15px;
+            margin: 14px 0;
+            max-width: 78ch;
+        }
+    </style>
+</head>
+
+<body>
+    <nav>
+        <div class="in">
+            <strong>In-flight actions</strong>
+            <a href="#idea">Idea</a><a href="#walk">Walkthrough</a><a href="#layout">Cell layout</a><a href="#sim">State
+                byte</a>
+            <a href="#why">Why this shape</a><a href="#audit">Unsafe audit</a><a href="#thread">Thread dump</a>
+            <a href="#trade">Trade-offs</a><a href="#gloss">Rust glossary</a>
+            <span class="sp"></span><button id="theme" aria-label="Toggle light or dark theme">Theme</button>
+        </div>
+    </nav>
+    <main>
+
+        <h1>How <code>/sys/action</code> reads an action that is still running</h1>
+        <p class="lede">The uncommitted change moves the action out of a tokio task local and into the future itself,
+            at a fixed address, so a diagnostic request can find it and copy its trace. That needs raw pointers, a
+            hand-rolled lock and <code>unsafe</code>. This page walks through each piece and what it cost.</p>
+
+        <h2 id="idea">The idea in one screen</h2>
+        <p class="sub">An action only produces its record when it finishes. A stuck one never finishes, so it was
+            invisible.</p>
+        <div class="two">
+            <div class="card">
+                <span class="tag b">Before</span>
+                <h3>tokio <code>task_local!</code></h3>
+                <p>The <code>Action</code> is a value that tokio <em>moves</em>: on every poll it is swapped from the
+                    future into the worker's thread local, and swapped back when the poll returns.</p>
+                <p>All safe code, nothing shared. But the action has no stable address and no list of live actions
+                    exists, so nothing outside the task can look at it.</p>
+            </div>
+            <div class="card">
+                <span class="tag a">After</span>
+                <h3><code>ActionCell</code> + registry</h3>
+                <p>The <code>Action</code> stays inside the pinned future. The thread local holds only a
+                    <em>pointer</em> to it during a poll. A global registry holds the same pointer for as long as the
+                    action is in flight.
+                </p>
+                <p>A dump follows the registry pointer and copies the trace. One atomic byte decides whether the
+                    worker or the dump may touch the action right now.</p>
+            </div>
+        </div>
+        <div class="note">Three things keep the dump from reading freed or half-written memory. Keep them in mind, every
+            <code>unsafe</code> block below leans on one of them:
+            <br><b>1. Pinning</b> — the cell cannot move, so its address stays valid.
+            <b>2. The shard lock</b> — a cell removes itself from the registry under the lock before it dies, so a
+            listed pointer is alive.
+            <b>3. The state byte</b> — <code>IDLE / POLLING / DUMPING</code>, whoever holds it owns the action's
+            contents.
+        </div>
+
+        <h2 id="walk">Walkthrough: one action, step by step</h2>
+        <p class="sub">Switch between the two designs and step through the same lifecycle. Highlighted slots changed in
+            this step. Arrow keys work too.</p>
+        <div class="bar">
+            <button id="modeB">Before · task local</button>
+            <button id="modeA">After · ActionCell</button>
+            <span style="flex:1"></span>
+            <button id="prev">← Prev</button><span class="dots" id="dots"></span><button id="next">Next →</button>
+        </div>
+        <div class="stage" id="stage"></div>
+        <div class="explain">
+            <div>
+                <h3 id="stTitle"></h3>
+                <div id="stText"></div>
+            </div>
+            <pre id="stCode"></pre>
+        </div>
+
+        <h2 id="layout">What is inside an <code>ActionCell</code></h2>
+        <p class="sub">The struct is split by who may touch each field. This split is the whole safety argument.</p>
+        <div class="fields">
+            <div class="field im"><code>id: [u8; 24], id_len, kind, start_time</code><span><b>Anyone, any time.</b>
+                    Copied out of the action once in <code>new</code>, never written again. This is why a dump can print
+                    <code>state=running</code> for an action that is being mutated right now.</span></div>
+            <div class="field at"><code>state: AtomicU8</code><span><b>Anyone, atomically.</b> The lock.
+                    <code>IDLE</code>, <code>POLLING</code> or <code>DUMPING</code>.</span></div>
+            <div class="field ow"><code>slot: Cell&lt;Option&lt;(u32, u32)&gt;&gt;</code><span><b>Owner only.</b> Which
+                    registry shard and index this cell sits in. A plain <code>Cell</code>, the dump never reads
+                    it.</span></div>
+            <div class="field un"><code>inner: UnsafeCell&lt;Inner&gt;</code><span><b>Whoever holds
+                        <code>state</code>.</b> The <code>Option&lt;RefCell&lt;Action&gt;&gt;</code>,
+                    <code>AllocStats</code>, <code>PollStats</code>. Compiler checks are off here, every access is an
+                    <code>unsafe</code> block.</span></div>
+            <div class="field im"><code>_pinned: PhantomPinned</code><span><b>Zero bytes.</b> Makes the type
+                    <code>!Unpin</code>, so once pinned it can never be moved by safe code.</span></div>
+        </div>
+        <p>Two layers of interior mutability are stacked on purpose. <code>UnsafeCell</code> plus the state byte
+            arbitrates between <em>threads</em> (worker vs dump). The <code>RefCell</code> inside it arbitrates
+            between <em>call sites on the same thread</em> (a <code>log!</code> inside a <code>Display</code> impl
+            inside another <code>log!</code>), exactly as it did before the change.</p>
+
+        <h2 id="sim">The state byte, live</h2>
+        <p class="sub">Drive a worker and a dump against one cell. Try starting a dump mid-poll, and starting a poll
+            mid-dump.</p>
+        <div class="card">
+            <div class="sim">
+                <div class="who">
+                    <span class="tag a">Worker thread</span>
+                    <div class="st" id="wSt"></div>
+                    <button id="wIn">poll starts</button>
+                    <button id="wOut">poll returns</button>
+                </div>
+                <div class="byte">
+                    <small>cell.state</small>
+                    <div class="v" id="stateV">IDLE</div>
+                    <small id="owner"></small>
+                </div>
+                <div class="who">
+                    <span class="tag b">Dump (another thread)</span>
+                    <div class="st" id="dSt"></div>
+                    <button id="dIn">snapshot this cell</button>
+                    <button id="dOut">copy finished</button>
+                </div>
+            </div>
+            <div class="simlog" id="simlog" aria-live="polite"></div>
+        </div>
+        <div class="two" style="margin-top:16px">
+            <div>
+                <h3>The two sides are not symmetric</h3>
+                <p>The worker <b>must</b> get in, so it spins until it does. It only ever waits for one trace to be
+                    copied, at most about 512KB.</p>
+                <p>The dump <b>must never wait</b> on a worker: a stuck action might hold <code>POLLING</code> for
+                    ever (blocking call, deadlock). So it tries three times, yields in between, then gives up and prints
+                    <code>state=running</code> from the immutable fields. This is also what prevents a deadlock between
+                    the
+                    shard lock (held by the dump) and the state byte.
+                </p>
+            </div>
+            <pre id="simCode"></pre>
+        </div>
+
+        <h2 id="why">Why the code has this shape</h2>
+        <p class="sub">Four of the less obvious pieces each answer a finding in
+            <code>plan/action_in_flight_review.md</code>.</p>
+        <div class="two">
+            <div class="card"><span class="tag u">P1 · undefined behaviour</span>
+                <h3>Reading a running action</h3>
+                <p>The first version printed id and kind by reading the <code>Action</code> while a worker held
+                    <code>&amp;mut Action</code> inside <code>log!</code>. Reading through an exclusive borrow is UB
+                    even if the
+                    bytes read are not the ones written.
+                </p>
+                <p><b>Now:</b> id, kind and start time are copied into the cell's own immutable fields. The running
+                    branch never touches <code>inner</code>.</p>
+            </div>
+            <div class="card"><span class="tag u">P1 · wrong behaviour</span>
+                <h3>Dropping the task outside its action</h3>
+                <p>If a parent times out a child, the child future is dropped while the <em>parent</em> is the
+                    current action. A <code>Span</code> the child held would log its elapsed time into the parent.
+                    Tokio's
+                    wrapper used to prevent this.</p>
+                <p><b>Now:</b> <code>task</code> is an <code>Option&lt;F&gt;</code>. It is set to <code>None</code>
+                    inside
+                    <code>cell.poll</code> on completion, and inside <code>cell.enter</code> from
+                    <code>PinnedDrop</code> on
+                    cancellation, so its destructors always run with their own action current.
+                </p>
+            </div>
+            <div class="card"><span class="tag n">P2 · memory</span>
+                <h3>One dump could hold every trace</h3>
+                <p>1,000 stuck actions × 512KB of trace, copied into one string, then copied again by masking.</p>
+                <p><b>Now:</b> <code>dump()</code> only lists <code>(pointer, shard, index, start_time)</code>. It
+                    returns an <code>Iterator</code>, and the new <code>Body::Chunks</code> pulls one action per chunk
+                    as
+                    the socket is ready. One trace is in memory at a time.</p>
+            </div>
+            <div class="card"><span class="tag n">P2 · latency</span>
+                <h3>A shard locked across all its traces</h3>
+                <p>Starting and finishing an action take the shard lock, so they waited for the whole scan.</p>
+                <p><b>Now:</b> the lock is taken per trace. Because it is released between entries, each entry is
+                    <em>re-validated</em>: is that slot still holding the same pointer, with the same start time? If
+                    not,
+                    the action finished meanwhile and is skipped.
+                </p>
+            </div>
+        </div>
+
+        <h2 id="audit">Unsafe audit</h2>
+        <p class="sub">Every <code>unsafe</code> is a promise the compiler cannot check. For each one: what is promised,
+            and what keeps it true. Click a row.</p>
+        <div id="auditList"></div>
+        <div class="note"><b>How to check these claims mechanically.</b> Miri interprets the tests and reports aliasing
+            violations and data races, which is exactly what these blocks risk:
+            <code>cargo +nightly miri test -p framework --lib log::inflight</code>. Run on 2026-11-18: the in-flight,
+            <code>ActionFuture</code> drop and span tests are clean under Stacked Borrows and Tree Borrows, and the
+            in-flight tests across 64 thread schedules. Not covered: a poll spinning while the dump copies (no test
+            reaches it), and the thread dump, which Miri cannot run at all (signals and FFI). Command and flags are in
+            <code>spec/action_inflight.md</code>.
+        </div>
+
+        <h2 id="thread">The thread dump, briefly</h2>
+        <p class="sub"><code>/sys/thread</code> is the other half: a <code>running</code> action shows no trace, its
+            stack is here, matched by action id.</p>
+        <p>Rust cannot walk another thread's stack from inside the process. So the dump sends each thread a
+            signal, and the thread walks <em>its own</em> stack inside the signal handler. A handler runs on top of
+            whatever the thread was doing, possibly while it holds the allocator's lock, so it may not allocate or
+            lock: it writes raw numbers into preallocated atomics.</p>
+        <div class="lanes">
+            <div></div>
+            <div class="h">Dump thread</div>
+            <div class="h t2">Target thread</div>
+            <div class="n">1</div>
+            <div class="l">Take the <code>DUMP</code> mutex (one dump at a time). Install the handler once with
+                <code>Once::call_once</code> + <code>libc::sigaction</code>. List threads from
+                <code>/proc/self/task</code>.</div>
+            <div class="l e">running anything</div>
+            <div class="n">2</div>
+            <div class="l"><code>CAPTURED = 0</code>, <code>TARGET = tid</code>, then <code>tgkill(pid, tid,
+                    SIGURG)</code>.</div>
+            <div class="l e">interrupted by the kernel</div>
+            <div class="n">3</div>
+            <div class="l e">spins on <code>CAPTURED</code> with <code>thread::yield_now()</code>, gives up after 100ms
+            </div>
+            <div class="l"><code>extern "C" fn capture</code> runs. Not the target? return. Save <code>errno</code>.
+                <code>backtrace::trace_unsynchronized</code> stores each return address into <code>FRAMES[i]</code>.
+                <code>copy_current_id</code> reads the <code>CURRENT</code> thread local. Restore <code>errno</code>.
+                <code>CAPTURED = tid</code>.</div>
+            <div class="n">4</div>
+            <div class="l">Copy frames and id out of the statics into a <code>Vec</code>. <code>TARGET = 0</code>. Next
+                thread.</div>
+            <div class="l e">resumes exactly where it was</div>
+            <div class="n">5</div>
+            <div class="l">After all threads: group identical stacks, turn addresses into names with
+                <code>backtrace::resolve</code> (slow, allocates, so done here), then <code>clear_symbol_cache()</code>.
+            </div>
+            <div class="l e"></div>
+        </div>
+        <p style="margin-top:14px">This is where the two features meet: the handler calls
+            <code>inflight::copy_current_id</code>, which
+            reads the same <code>CURRENT</code> pointer <code>log!</code> uses, and only the immutable id bytes behind
+            it.
+            That is safe mid-poll for the same reason the <code>running</code> branch is.</p>
+
+        <h2 id="trade">Trade-offs</h2>
+        <p class="sub">What was bought and what was paid. Nothing here is benchmarked yet, the spec lists that as a
+            known gap.</p>
+        <div class="tw">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Aspect</th>
+                        <th>Before · task local</th>
+                        <th>After · ActionCell</th>
+                        <th>Verdict</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Seeing a stuck action</td>
+                        <td>Impossible. No record until it finishes.</td>
+                        <td><code>/sys/action</code>: id, kind, elapsed, idle time, poll and alloc stats, trace so far.
+                        </td>
+                        <td class="v better">gained</td>
+                    </tr>
+                    <tr>
+                        <td>Which thread runs what</td>
+                        <td>Unknown.</td>
+                        <td><code>/sys/thread</code> tags each stack with the action id.</td>
+                        <td class="v better">gained</td>
+                    </tr>
+                    <tr>
+                        <td><code>unsafe</code> in this crate's log path</td>
+                        <td>None. Tokio's internals carry it.</td>
+                        <td>10 sites in <code>inflight.rs</code>, more in <code>thread_dump.rs</code>. Invariants live
+                            in comments and in reviewers' heads.</td>
+                        <td class="v worse">cost</td>
+                    </tr>
+                    <tr>
+                        <td>Work per poll</td>
+                        <td>Swap ~220 bytes into the thread local, swap back.</td>
+                        <td>One compare-and-swap, one pointer swap in, one pointer store and one atomic store out. The
+                            action is not moved.</td>
+                        <td class="v same">likely even or better, unmeasured</td>
+                    </tr>
+                    <tr>
+                        <td>Work per <code>log!</code></td>
+                        <td>Thread local read, <code>RefCell</code> borrow.</td>
+                        <td>Thread local read, pointer deref, <code>RefCell</code> borrow.</td>
+                        <td class="v same">same</td>
+                    </tr>
+                    <tr>
+                        <td>Work per action</td>
+                        <td>Nothing extra.</td>
+                        <td>Two shard lock acquisitions (first poll, finish or drop). Uncontended unless the task
+                            migrated threads or a dump is running.</td>
+                        <td class="v worse">small cost</td>
+                    </tr>
+                    <tr>
+                        <td>Future size</td>
+                        <td><code>Action</code> + stats + tokio bookkeeping.</td>
+                        <td>Adds an id copy, kind, start time, state, slot and <code>last_polled</code>. My estimate is
+                            under 100 bytes, not measured.</td>
+                        <td class="v worse">small cost</td>
+                    </tr>
+                    <tr>
+                        <td>Drop inside the action</td>
+                        <td>Free, tokio did it.</td>
+                        <td>Re-implemented by hand: <code>Option&lt;F&gt;</code> + <code>PinnedDrop</code>, with two
+                            regression tests.</td>
+                        <td class="v same">same behaviour, more code</td>
+                    </tr>
+                    <tr>
+                        <td>Interference while dumping</td>
+                        <td>n/a</td>
+                        <td>A poll of the action being copied spins. Starts and finishes on that shard wait. Both for
+                            one trace copy. The dump itself runs synchronously on a worker.</td>
+                        <td class="v worse">cost, only during a dump</td>
+                    </tr>
+                    <tr>
+                        <td>Dependencies</td>
+                        <td>tokio <code>task_local</code>.</td>
+                        <td><code>backtrace</code> (with <code>addr2line</code>, <code>gimli</code>,
+                            <code>object</code>, <code>miniz_oxide</code>) for the thread dump. The in-flight part adds
+                            none.</td>
+                        <td class="v worse">cost</td>
+                    </tr>
+                    <tr>
+                        <td>Portability</td>
+                        <td>Anywhere tokio runs.</td>
+                        <td>In-flight: anywhere. Thread dump: Linux and macOS only, and per the spec the Linux half has
+                            only been type-checked.</td>
+                        <td class="v same">watch</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <h3>My read</h3>
+        <ul>
+            <li>The trade is fair for a framework whose point is always-on observability: the hot path
+                (<code>log!</code>) is unchanged and the new cost is per action and per poll.</li>
+            <li>The real price is the unsafe code. It is small and the invariants are clear, but it is the kind that
+                stays correct only if every future edit respects them. Miri passes today (see the unsafe audit), running
+                it in CI would keep those comments checked.</li>
+            <li>The spin while a 512KB trace is copied is the one place a healthy request can be delayed by a diagnostic
+                one. Acceptable for a manual, local-only endpoint, worth knowing before anyone scrapes it on a timer.
+            </li>
+            <li>The benchmark comparison with the old task local is still missing, so "likely even" in the table is
+                reasoning, not data.</li>
+        </ul>
+
+        <h2 id="gloss">Rust glossary</h2>
+        <p class="sub">Every language feature and library call the change uses that is not everyday Rust, with where it
+            appears.</p>
+        <div class="filters"><input id="q" type="search" placeholder="Search, e.g. Pin, Ordering, as_ref"
+                aria-label="Search glossary"><span id="cats"></span></div>
+        <div id="glossList"></div>
+
+    </main>
+    <script>
+        const R = String.raw;
+        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const KW = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|\b(unsafe)\b|\b(fn|let|mut|impl|struct|static|const|pub|use|if|else|for|while|match|return|self|Self|as|in|where|type|move|extern|crate|loop|continue|macro_rules)\b/g;
+        function hl(src) {
+            let out = '', last = 0, m;
+            KW.lastIndex = 0;
+            while ((m = KW.exec(src))) {
+                out += esc(src.slice(last, m.index));
+                const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'u' : 'k';
+                out += '<span class="' + cls + '">' + esc(m[0]) + '</span>';
+                last = KW.lastIndex;
+            }
+            return out + esc(src.slice(last));
+        }
+        const $ = id => document.getElementById(id);
+
+        /* ---------- theme ---------- */
+        $('theme').onclick = () => {
+            const root = document.documentElement;
+            const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+            root.dataset.theme = dark ? 'light' : 'dark';
+        };
+
+        /* ---------- walkthrough ---------- */
+        // slot: [label, value, flag]  flag: 'hot' | 'gone' | ''
+        const ADDR = '0x7f3c…a0';
+        const STEPS = {
+            before: [
+                {
+                    title: 'Created', panels: {
+                        fut: [['slot', 'Some(RefCell<Action>)', 'hot'], ['future', 'task', '']],
+                        tls: [['CURRENT_ACTION', 'None', '']], reg: null, out: [['can see', 'nothing', '']]
+                    },
+                    text: `<p><code>CURRENT_ACTION.scope(value, task)</code> returns tokio's <code>TaskLocalFuture</code>. It stores the action in its own <code>slot</code> next to the task.</p><p>The "task local" is really a thread local plus this slot.</p>`,
+                    code: R`task_local! {
+    static CURRENT_ACTION: RefCell<Action>;
+}
+
+ActionFuture {
+    inner: CURRENT_ACTION.scope(RefCell::new(action), task),
+    alloc_stats: AllocStats::new(),
+    poll_stats: PollStats::new(),
+}` },
+                {
+                    title: 'Poll starts: swap in', panels: {
+                        fut: [['slot', 'None (moved out)', 'gone'], ['future', 'task (being polled)', '']],
+                        tls: [['CURRENT_ACTION', 'Some(RefCell<Action>)', 'hot']], reg: null, out: [['can see', 'nothing', '']]
+                    },
+                    text: `<p>Tokio swaps the slot with the worker's thread local: the whole <code>RefCell&lt;Action&gt;</code>, about 220 bytes, is <b>moved</b>.</p><p>While the task runs, the action does not live in the future at all. Its address changes on every poll, and across threads when the task migrates.</p>`,
+                    code: R`// inside tokio, simplified
+fn poll(self: Pin<&mut Self>, cx) {
+    mem::swap(&mut self.slot, &mut *THREAD_LOCAL.borrow_mut());
+    let res = self.future.poll(cx);
+    mem::swap(&mut self.slot, &mut *THREAD_LOCAL.borrow_mut());
+    res
+}` },
+                {
+                    title: 'log! writes', panels: {
+                        fut: [['slot', 'None', 'gone'], ['future', 'task (being polled)', '']],
+                        tls: [['CURRENT_ACTION', 'Some(RefCell<Action>)  ← borrow_mut()', 'hot']], reg: null, out: [['can see', 'nothing', '']]
+                    },
+                    text: `<p><code>try_with</code> finds the value in the thread local and hands a reference to the closure. <code>borrow_mut()</code> checks at runtime that nobody else on this thread is borrowing.</p><p>Outside an action <code>try_with</code> returns <code>Err</code> and the call is a no-op.</p>`,
+                    code: R`let _result = CURRENT_ACTION.try_with(|action| {
+    action.borrow_mut().log(severity, error_code, Some(location), message);
+});` },
+                {
+                    title: 'Poll returns Pending: swap out', panels: {
+                        fut: [['slot', 'Some(RefCell<Action>)', 'hot'], ['future', 'task (suspended)', '']],
+                        tls: [['CURRENT_ACTION', 'None', '']], reg: null, out: [['can see', 'nothing', '']]
+                    },
+                    text: `<p>The action moves back into the future. The worker thread is free for other tasks, whose own actions will occupy the same thread local.</p>`,
+                    code: R`let polled = this.poll_stats.poll(||
+    this.alloc_stats.poll(||
+        this.inner.as_mut().poll(cx)));
+let Poll::Ready(result) = polled else {
+    return Poll::Pending;
+};` },
+                {
+                    title: 'Stuck: nobody can look', panels: {
+                        fut: [['slot', 'Some(RefCell<Action>)', ''], ['future', 'task (awaiting something that never comes)', 'hot']],
+                        tls: [['CURRENT_ACTION', 'None', '']], reg: null, out: [['can see', 'nothing: no list of futures, no address, the task privately owns it', 'hot']]
+                    },
+                    text: `<p>This is the problem. The trace that says what the action is waiting on exists, but it is inside a future that tokio owns exclusively. A stuck task is never polled again, so it cannot be asked to report itself.</p><p>Safe Rust is doing its job here: exclusive ownership means no outside reader.</p>`,
+                    code: R`// there is no code to show:
+// nothing in the process holds a reference to this action
+// except the task that will never run again` },
+                {
+                    title: 'Finish (if it ever does)', panels: {
+                        fut: [['slot', 'None (taken)', 'gone'], ['future', 'done', '']],
+                        tls: [['CURRENT_ACTION', 'None', '']], reg: null, out: [['appender', 'receives ActionMessage', 'hot']]
+                    },
+                    text: `<p><code>take_value()</code> pulls the action out of the slot after the scope has ended. Stats are written, and the record goes to the appender over a channel.</p>`,
+                    code: R`let mut current_action = this.inner.take_value()
+    .map(RefCell::into_inner)
+    .expect("current action must be within the scope");
+this.alloc_stats.write_to(&mut current_action);
+this.poll_stats.write_to(&mut current_action);
+current_action.finish();
+sender.send(Message::Action(current_action.into()));` },
+            ],
+            after: [
+                {
+                    title: 'Created', panels: {
+                        fut: [['task', 'Some(task)', ''], ['cell @ not pinned yet', 'state=IDLE, slot=None, inner.action=Some(..)', 'hot']],
+                        tls: [['CURRENT', 'null', '']], reg: [['shard 3', '[ ]', '']], out: [['can see', 'nothing yet', '']]
+                    },
+                    text: `<p>The future owns an <code>ActionCell</code>. Nothing is registered: until the future is pinned it can still be moved (returned from a function, boxed, spawned), so it has no address worth publishing.</p><p>An action created but never polled is never listed.</p>`,
+                    code: R`pin_project! {
+    pub struct ActionFuture<F> {
+        #[pin] task: Option<F>,
+        #[pin] cell: ActionCell,
+    }
+}
+
+ActionFuture { task: Some(task), cell: ActionCell::new(action) }` },
+                {
+                    title: 'First poll: register the address', panels: {
+                        fut: [['task', 'Some(task)', ''], ['cell @ ' + ADDR, 'state=IDLE, slot=Some((3, 0))', 'hot']],
+                        tls: [['CURRENT', 'null', ''], ['SHARD', '3', '']], reg: [['shard 3 (locked briefly)', 'cells[0] = ' + ADDR, 'hot']], out: [['can see', 'the pointer', '']]
+                    },
+                    text: `<p><code>poll</code> receives <code>Pin&lt;&amp;mut Self&gt;</code>: a guarantee the future will not move again. Now the cell's address is stable, so it writes that address into the registry.</p><p>Each thread has its own shard number, so this lock is normally uncontended. The slab reuses freed indices through a <code>free</code> list.</p>`,
+                    code: R`fn register(&self) {
+    let shard = SHARD.with(|shard| *shard);
+    let mut slab = REGISTRY[shard].0.lock().unwrap();
+    let cell = ptr::from_ref(self);          // &ActionCell -> *const ActionCell
+    let index = if let Some(index) = slab.free.pop() {
+        slab.cells[index as usize] = cell;
+        index
+    } else {
+        slab.cells.push(cell);
+        (slab.cells.len() - 1) as u32
+    };
+    self.slot.set(Some((shard as u32, index)));
+}` },
+                {
+                    title: 'Enter: take the state, point the thread at the cell', panels: {
+                        fut: [['task', 'Some(task) (being polled)', ''], ['cell @ ' + ADDR, 'state=POLLING', 'hot']],
+                        tls: [['CURRENT', ADDR + '  (guard remembers: null)', 'hot']], reg: [['shard 3', 'cells[0] = ' + ADDR, '']], out: [['would print', 'state=running', '']]
+                    },
+                    text: `<p>A compare-and-swap flips <code>IDLE → POLLING</code>. It can only fail while a dump is copying this cell, then it spins.</p><p><code>CURRENT.replace</code> stores an 8-byte pointer and returns the previous one, which the guard keeps. That is how nested actions restore the outer one.</p><p>Compare with <em>Before</em>: nothing is moved, only a pointer is written.</p>`,
+                    code: R`fn enter_with<T>(&self, f: impl FnOnce(&mut AllocStats, &mut PollStats) -> T) -> T {
+    while self.state
+        .compare_exchange_weak(IDLE, POLLING, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        hint::spin_loop();
+    }
+    let _guard = EnterGuard { cell: self, previous: CURRENT.replace(ptr::from_ref(self)) };
+
+    let inner = self.inner.get();            // *mut Inner
+    // SAFETY: POLLING keeps the dump out, the action is only reached through its RefCell
+    let (alloc_stats, poll_stats) =
+        unsafe { (&mut (*inner).alloc_stats, &mut (*inner).poll_stats) };
+    f(alloc_stats, poll_stats)
+}` },
+                {
+                    title: 'log! writes', panels: {
+                        fut: [['task', 'Some(task) (being polled)', ''], ['cell @ ' + ADDR, 'inner.action ← borrow_mut()', 'hot']],
+                        tls: [['CURRENT', ADDR, 'hot']], reg: [['shard 3', 'cells[0] = ' + ADDR, '']], out: [['would print', 'state=running', '']]
+                    },
+                    text: `<p><code>with_current</code> replaces <code>try_with</code>. It reads the pointer, turns it into a reference with <code>as_ref()</code> (null becomes <code>None</code>), and reaches the <code>RefCell&lt;Action&gt;</code> in place.</p><p>Note the API shape: it takes a closure instead of returning a reference. A reference made from a raw pointer has no real lifetime, so the function keeps it from escaping the poll by only lending it to <code>f</code>.</p>`,
+                    code: R`pub(crate) fn with_current<R>(f: impl FnOnce(&RefCell<Action>) -> R) -> Option<R> {
+    let cell = CURRENT.get();                // *const ActionCell, maybe null
+    // SAFETY: points at the cell entered further up this stack,
+    // which holds POLLING, the guard resets it on exit
+    let action = unsafe { (*cell.as_ref()?.inner.get()).action.as_ref() }?;
+    Some(f(action))
+}` },
+                {
+                    title: 'Poll returns Pending: guard resets', panels: {
+                        fut: [['task', 'Some(task) (suspended)', ''], ['cell @ ' + ADDR, 'state=IDLE, last_polled=now', 'hot']],
+                        tls: [['CURRENT', 'null (previous restored)', 'hot']], reg: [['shard 3', 'cells[0] = ' + ADDR, '']], out: [['would print', 'state=suspended + trace', '']]
+                    },
+                    text: `<p><code>EnterGuard</code> is a struct whose only job is its <code>Drop</code>. Dropping runs on every exit path, including a panic unwinding through the poll, so <code>CURRENT</code> can never be left pointing at a cell that is no longer being polled.</p><p>Order matters: the pointer is reset first, the state is released last.</p>`,
+                    code: R`impl Drop for EnterGuard<'_> {
+    fn drop(&mut self) {
+        CURRENT.set(self.previous);
+        self.cell.state.store(IDLE, Ordering::Release);
+    }
+}` },
+                {
+                    title: 'Stuck, and a dump arrives', panels: {
+                        fut: [['task', 'Some(task) (awaiting forever)', ''], ['cell @ ' + ADDR, 'state=DUMPING, logs being copied', 'hot']],
+                        tls: [['CURRENT', 'null', '']], reg: [['shard 3 (locked for this one copy)', 'cells[0] = ' + ADDR + '  ✓ same ptr, same start_time', 'hot']], out: [['Dump::next()', 'lock shard → validate → DUMPING → copy → IDLE → unlock → mask', 'hot']]
+                    },
+                    text: `<p>The request handler only <em>lists</em> entries. Later, each call to <code>next()</code> produces one action's text.</p><p>Between listing and reading the lock was released, so the action may have finished and its slot or even its memory address may be reused by a new action. The pointer comparison plus the <code>start_time</code> comparison catch that. This is the classic <b>ABA problem</b>.</p><p>Only after that check is the raw pointer dereferenced.</p>`,
+                    code: R`let slab = shard.0.lock().unwrap();
+// finished since it was listed, or its slot went to another action
+if slab.cells.get(entry.index).is_none_or(|cell| !ptr::eq(*cell, entry.cell)) {
+    continue;
+}
+// SAFETY: still registered, so alive while the lock is held
+let cell = unsafe { &*entry.cell };
+if cell.start_time != entry.start_time {
+    continue;
+}
+let mut out = cell.snapshot();
+drop(slab);
+mask_logs(&mut out);
+return Some(out);` },
+                {
+                    title: 'A dump arrives mid-poll instead', panels: {
+                        fut: [['task', 'Some(task) (being polled, maybe blocked)', ''], ['cell @ ' + ADDR, 'state=POLLING  (dump reads only id, kind, start_time)', 'hot']],
+                        tls: [['CURRENT', ADDR, '']], reg: [['shard 3 (locked)', 'cells[0] = ' + ADDR, '']], out: [['Dump::next()', 'CAS fails ×3 → "state=running, elapsed=3.1s"', 'hot']]
+                    },
+                    text: `<p>The dump cannot take the state, so it must not read <code>inner</code>: the worker may be in the middle of appending to the log buffer, which can reallocate.</p><p>It prints what it can from the immutable copies and moves on. An action that keeps showing <code>running</code> is holding a worker thread, and <code>/sys/thread</code> has its stack.</p>`,
+                    code: R`fn lock_for_dump(&self) -> bool {
+    for _ in 0..3 {
+        if self.state
+            .compare_exchange(IDLE, DUMPING, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            return true;
+        }
+        thread::yield_now();
+    }
+    false
+}` },
+                {
+                    title: 'Finish', panels: {
+                        fut: [['task', 'None (dropped inside the action)', 'gone'], ['cell @ ' + ADDR, 'slot=None, inner.action=None (taken)', 'hot']],
+                        tls: [['CURRENT', 'null', '']], reg: [['shard 3', 'cells[0] = null, free=[0]', 'hot']], out: [['appender', 'receives ActionMessage', '']]
+                    },
+                    text: `<p>On <code>Ready</code> the task is destroyed <em>inside</em> the poll closure, so its destructors see their own action.</p><p><code>finish</code> unregisters first. Taking the shard lock doubles as "wait for any dump that is reading me". After that the owner is provably alone, so it may create <code>&amp;mut Inner</code> and take the action out.</p>`,
+                    code: R`pub(crate) fn finish(self: Pin<&ActionCell>) -> (Action, AllocStats, PollStats) {
+    let cell = self.get_ref();
+    cell.unregister();
+    // SAFETY: unregistered and not being polled, only the owner reaches inner
+    let inner = unsafe { &mut *cell.inner.get() };
+    let action = inner.action.take().map(RefCell::into_inner)
+        .expect("action must not be finished twice");
+    let alloc_stats = mem::replace(&mut inner.alloc_stats, AllocStats::new());
+    let poll_stats = mem::replace(&mut inner.poll_stats, PollStats::new());
+    (action, alloc_stats, poll_stats)
+}` },
+                {
+                    title: 'Or: cancelled', panels: {
+                        fut: [['task', 'None (dropped inside the action)', 'gone'], ['cell @ ' + ADDR, 'Drop → unregister()', 'hot']],
+                        tls: [['CURRENT', ADDR + ' during task drop, then restored', 'hot']], reg: [['shard 3', 'cells[0] = null, free=[0]', 'hot']], out: [['appender', 'nothing, a cancelled action is not emitted', '']]
+                    },
+                    text: `<p>A timeout or <code>select!</code> drops the future without completing it. <code>PinnedDrop</code> is pin-project's way to write a destructor that still sees pinned fields.</p><p>It enters the cell, drops the task there, and leaves. Then the fields drop in order and <code>ActionCell::drop</code> unregisters. This <em>must</em> happen: Rust's pinning contract promises pinned memory is not reused before <code>Drop</code> runs, which is what makes publishing the address sound.</p>`,
+                    code: R`impl<F> PinnedDrop for ActionFuture<F> {
+    fn drop(this: Pin<&mut Self>) {
+        let mut this = this.project();
+        // cancelled, what the task holds (a span, a guard)
+        // still logs into its own action, not an outer one
+        if this.task.is_some() {
+            this.cell.as_ref().enter(|| this.task.set(None));
+        }
+    }
+}
+
+impl Drop for ActionCell {
+    fn drop(&mut self) { self.unregister(); }
+}` },
+            ],
+        };
+        const PANELS = [['fut', 'ActionFuture (in the tokio task)'], ['tls', 'Worker thread local'], ['reg', 'Global REGISTRY'], ['out', 'Outside the task']];
+        let mode = 'after', step = 0;
+        function renderWalk() {
+            const steps = STEPS[mode], s = steps[step];
+            $('modeB').classList.toggle('on', mode === 'before');
+            $('modeA').classList.toggle('on', mode === 'after');
+            $('dots').innerHTML = steps.map((_, i) => '<button class="' + (i === step ? 'on' : '') + '" data-i="' + i + '" aria-label="Step ' + (i + 1) + '">' + (i + 1) + '</button>').join('');
+            $('stage').innerHTML = PANELS.map(([k, label]) => {
+                const p = s.panels[k];
+                if (!p) return '<div class="box off"><div class="bt">' + label + '</div><div class="slot gone">does not exist in this design</div></div>';
+                return '<div class="box"><div class="bt">' + label + '</div>' + p.map(([l, v, f]) => '<div class="slot ' + f + '"><b>' + esc(l) + '</b>' + esc(v) + '</div>').join('') + '</div>';
+            }).join('');
+            $('stTitle').innerHTML = '<span class="tag ' + (mode === 'before' ? 'b' : 'a') + '">' + (mode === 'before' ? 'Before' : 'After') + ' · ' + (step + 1) + '/' + steps.length + '</span> ' + esc(s.title);
+            $('stText').innerHTML = s.text;
+            $('stCode').innerHTML = hl(s.code);
+            $('prev').disabled = step === 0;
+            $('next').disabled = step === steps.length - 1;
+        }
+        $('modeB').onclick = () => {mode = 'before'; step = 0; renderWalk();};
+        $('modeA').onclick = () => {mode = 'after'; step = 0; renderWalk();};
+        $('prev').onclick = () => {if (step > 0) {step--; renderWalk();} };
+        $('next').onclick = () => {if (step < STEPS[mode].length - 1) {step++; renderWalk();} };
+        $('dots').onclick = e => {const i = e.target.dataset.i; if (i !== undefined) {step = +i; renderWalk();} };
+        document.addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === 'ArrowLeft') $('prev').click();
+            if (e.key === 'ArrowRight') $('next').click();
+        });
+        renderWalk();
+
+        /* ---------- simulator ---------- */
+        const sim = {state: 'IDLE', worker: 'idle', dumper: 'idle'};
+        function simLog(cls, msg) {
+            const el = document.createElement('div');
+            el.className = cls; el.innerHTML = msg;
+            $('simlog').prepend(el);
+        }
+        function renderSim() {
+            $('stateV').textContent = sim.state; $('stateV').className = 'v ' + sim.state;
+            $('owner').textContent = sim.state === 'IDLE' ? 'nobody owns inner' : sim.state === 'POLLING' ? 'the worker owns inner' : 'the dump owns inner';
+            $('wSt').textContent = {idle: 'not polling this action', polling: 'inside poll: log!, context!, stats! all work', spinning: 'spin_loop()… burning CPU until the dump lets go'}[sim.worker];
+            $('dSt').textContent = {idle: 'not looking at this cell', copying: 'holding the shard lock, copying the trace'}[sim.dumper];
+            $('wIn').disabled = sim.worker !== 'idle'; $('wOut').disabled = sim.worker !== 'polling';
+            $('dIn').disabled = sim.dumper !== 'idle'; $('dOut').disabled = sim.dumper !== 'copying';
+        }
+        $('wIn').onclick = () => {
+            if (sim.state === 'IDLE') {sim.state = 'POLLING'; sim.worker = 'polling'; simLog('w', 'worker: compare_exchange_weak(IDLE → POLLING) ok, CURRENT = &amp;cell');}
+            else {sim.worker = 'spinning'; simLog('w', 'worker: compare_exchange_weak fails, state is DUMPING → hint::spin_loop() and retry');}
+            renderSim();
+        };
+        $('wOut').onclick = () => {sim.state = 'IDLE'; sim.worker = 'idle'; simLog('w', 'worker: EnterGuard dropped → CURRENT = previous, state.store(IDLE, Release)'); renderSim();};
+        $('dIn').onclick = () => {
+            if (sim.state === 'IDLE') {sim.state = 'DUMPING'; sim.dumper = 'copying'; simLog('d', 'dump: compare_exchange(IDLE → DUMPING) ok, reading inner');}
+            else {simLog('d', 'dump: compare_exchange failed 3× with yield_now() between → gives up, never waits'); simLog('o', 'output: # [in-flight] id=…, kind=http, state=running, elapsed=3.1s');}
+            renderSim();
+        };
+        $('dOut').onclick = () => {
+            sim.dumper = 'idle'; sim.state = 'IDLE';
+            simLog('d', 'dump: state.store(IDLE, Release), shard unlocked');
+            simLog('o', 'output: # [in-flight] id=…, state=suspended, elapsed=12.5s, idle=12.4s, poll_count=3, … + trace');
+            if (sim.worker === 'spinning') {sim.state = 'POLLING'; sim.worker = 'polling'; simLog('w', 'worker: the spinning compare_exchange_weak now succeeds → POLLING');}
+            renderSim();
+        };
+        simLog('o', 'the cell is registered and suspended. press a button.');
+        renderSim();
+        $('simCode').innerHTML = hl(R`const IDLE: u8 = 0;
+const POLLING: u8 = 1;
+const DUMPING: u8 = 2;
+
+// worker: must get in, so it loops
+while self.state
+    .compare_exchange_weak(IDLE, POLLING, Ordering::Acquire, Ordering::Relaxed)
+    .is_err()
+{
+    hint::spin_loop();
+}
+
+// dump: must not wait, so it tries and reports
+if self.lock_for_dump() {
+    // SAFETY: DUMPING keeps the poll out
+    let inner = unsafe { &*self.inner.get() };
+    // ... copy stats and logs ...
+    self.state.store(IDLE, Ordering::Release);
+} else {
+    write_str!(out, "state=running, elapsed={elapsed:?}\n");
+}`);
+
+        /* ---------- unsafe audit ---------- */
+        const AUDIT = [
+            {
+                loc: 'inflight.rs:60', t: 'unsafe impl Send for Slab {}', s: 'Lets a Vec of raw pointers live in a global Mutex.',
+                body: `<p><b>Why it is needed.</b> A <code>static</code> must be <code>Sync</code>. <code>Mutex&lt;T&gt;</code> is <code>Sync</code> only if <code>T: Send</code>. Raw pointers are deliberately neither, so the compiler refuses <code>Mutex&lt;Slab&gt;</code> in a static until you vouch for it.</p><p><b>The promise.</b> Pointers in the slab are only dereferenced while the shard lock is held, and every cell nulls its own slot under that same lock before its memory goes away (<code>finish</code>, or <code>Drop for ActionCell</code>).</p><p><b>What keeps it true.</b> Pinning. The cell is <code>!Unpin</code> and registers only once pinned, and Rust's pin contract says pinned memory is not invalidated without running <code>Drop</code>. So "drop always unregisters" is enough.</p>`
+            },
+            {
+                loc: 'inflight.rs:67', t: 'with_current: (*cell.as_ref()?.inner.get()).action.as_ref()', s: 'Turns the thread local pointer into a reference to the action.',
+                body: `<p><b>The promise.</b> <code>CURRENT</code> is either null or points at a live cell that this very thread is inside of.</p><p><b>What keeps it true.</b> It is only written in <code>enter_with</code> and restored by <code>EnterGuard::drop</code>, also on panic. The <code>enter_with</code> frame further up the stack borrows the cell, so it cannot be freed underneath. The state is <code>POLLING</code>, so no dump is reading.</p><p><b>Aliasing.</b> <code>enter_with</code> holds <code>&amp;mut</code> to <code>alloc_stats</code> and <code>poll_stats</code>, this creates <code>&amp;</code> to <code>action</code>. Different fields, each borrowed straight from the raw pointer, never through a <code>&amp;mut Inner</code>, so they do not overlap.</p>`
+            },
+            {
+                loc: 'inflight.rs:76', t: 'copy_current_id: cell.as_ref()', s: 'Same pointer, read from the signal handler.',
+                body: `<p><b>The promise.</b> As above, and it only touches <code>id</code> and <code>id_len</code>, which are immutable for the cell's life.</p><p><b>Why that matters.</b> The handler interrupts the thread at an arbitrary instruction, possibly in the middle of <code>action.borrow_mut().log(..)</code>. Reading anything inside <code>inner</code> here would be a read during an exclusive borrow. The function also takes <code>&amp;[AtomicU8]</code> as output so it needs no allocation and no lock.</p>`
+            },
+            {
+                loc: 'inflight.rs:169', t: 'enter_with: &mut (*inner).alloc_stats, &mut (*inner).poll_stats', s: 'Mutable access to the stats through UnsafeCell.',
+                body: `<p><b>The promise.</b> Nobody else reads or writes the stats while these <code>&amp;mut</code> live.</p><p><b>What keeps it true.</b> We hold <code>POLLING</code>. The dump only reads <code>inner</code> after winning <code>DUMPING</code>. The same cell cannot be entered twice at once because <code>ActionFuture::poll</code> and <code>PinnedDrop</code> both need <code>&amp;mut</code> to the future.</p><p><b>Syntax to notice.</b> <code>&amp;mut (*inner).alloc_stats</code> borrows one field of the place behind a raw pointer. It never materialises <code>&amp;mut Inner</code>, which would overlap with the <code>&amp;RefCell&lt;Action&gt;</code> that <code>with_current</code> hands out during the same poll.</p>`
+            },
+            {
+                loc: 'inflight.rs:178', t: 'finish: &mut *cell.inner.get()', s: 'Exclusive access to everything, to take the action out.',
+                body: `<p><b>The promise.</b> The owner is completely alone.</p><p><b>What keeps it true.</b> The poll closure has returned, so the guard reset the state and <code>CURRENT</code>. <code>unregister()</code> on the line before took the shard lock: a dump that was mid-copy has finished, and no later one can find the cell because its slot is now null.</p>`
+            },
+            {
+                loc: 'inflight.rs:216', t: 'snapshot: &*self.inner.get()', s: 'The dump reads another task\'s stats.',
+                body: `<p><b>The promise.</b> No worker writes <code>inner</code> while this shared reference lives.</p><p><b>What keeps it true.</b> <code>lock_for_dump</code> just won <code>IDLE → DUMPING</code>. Any poll arriving now spins in <code>enter_with</code> until the <code>store(IDLE)</code> at the end of the block. The caller holds the shard lock, so the cell is alive.</p>`
+            },
+            {
+                loc: 'inflight.rs:231', t: 'snapshot: &(*action.as_ptr()).logs', s: 'Reads the log buffer behind the RefCell without borrowing it.',
+                body: `<p><b>Why not just <code>action.borrow()</code>?</b> <code>RefCell</code> keeps its borrow counter in a plain, non-atomic <code>Cell</code>. Updating it from the dump thread would itself be a data race. <code>as_ptr()</code> gives the contents without touching the counter.</p><p><b>The promise.</b> No <code>Ref</code> or <code>RefMut</code> is outstanding.</p><p><b>What keeps it true.</b> Borrows are only created inside <code>with_current</code> closures, which only run inside a poll, and no poll is running under <code>DUMPING</code>.</p>`
+            },
+            {
+                loc: 'inflight.rs:276', t: 'unsafe impl Send for Dump {}', s: 'Lets the iterator of raw pointers travel to the connection task.',
+                body: `<p><b>Why it is needed.</b> <code>Response::chunks</code> wants <code>Iterator + Send + 'static</code>, and <code>Dump</code> contains <code>*const ActionCell</code>.</p><p><b>The promise.</b> A pointer in an <code>Entry</code> is treated as an opaque number until <code>next()</code> has re-checked, under the shard lock, that the registry still holds it.</p>`
+            },
+            {
+                loc: 'inflight.rs:286', t: 'dump: cell.as_ref()', s: 'Listing: read start_time of every registered cell.',
+                body: `<p><b>The promise.</b> A non-null slot points at a live cell.</p><p><b>What keeps it true.</b> The shard lock is held, and unregistering needs it. Only <code>start_time</code>, an immutable field, is read.</p>`
+            },
+            {
+                loc: 'inflight.rs:314', t: 'Dump::next: &*entry.cell', s: 'Dereference a pointer that was saved earlier, after the lock was released.',
+                body: `<p><b>The promise.</b> The pointer is still a live cell.</p><p><b>What keeps it true.</b> The line above compares the registry slot with the saved pointer under the lock. Equal means registered, registered means alive.</p><p><b>The extra <code>start_time</code> check</b> is for correctness, not memory safety: if a new action was allocated at the same address and took the same slot, the pointer is valid but it is not the action that was listed.</p>`
+            },
+            {
+                loc: 'thread_dump.rs:74, 89', t: '*os::errno()', s: 'Save and restore errno around the handler.',
+                body: `<p><code>errno</code> is a thread local C variable reached through a raw pointer from <code>__errno_location()</code>. The handler may clobber it, and the interrupted code may be about to read it, so it is put back.</p>`
+            },
+            {
+                loc: 'thread_dump.rs:78', t: 'backtrace::trace_unsynchronized', s: 'Walk the stack without the crate\'s global lock.',
+                body: `<p>The safe <code>backtrace::trace</code> takes a lock, which a signal handler must not do: the interrupted thread might already hold it. The <code>_unsynchronized</code> variant skips the lock and makes you promise no two calls race. The <code>DUMP</code> mutex and the <code>TARGET</code> check provide that: one thread captures at a time.</p>`
+            },
+            {
+                loc: 'thread_dump.rs:99', t: 'libc::sigaction(..) with mem::zeroed()', s: 'Install the handler through the C API.',
+                body: `<p>Every call into C is <code>unsafe</code> because the compiler cannot see C's rules. <code>mem::zeroed()</code> builds the C struct as all-zero bytes, valid for <code>sigaction</code> but UB for most Rust types. <code>&amp;raw mut action.sa_mask</code> makes a raw pointer to a field without creating a reference first.</p>`
+            },
+            {
+                loc: 'thread_dump.rs:249–328', t: 'gettid, tgkill, pthread_kill, task_threads, CStr::from_ptr, list.add(i)', s: 'OS calls, and on macOS manual memory from the kernel.',
+                body: `<p>Plain FFI. The macOS half receives an array allocated by the kernel, walks it with pointer arithmetic (<code>*list.add(index)</code>), and must free both each port and the array itself. The compiler helps with none of that, which is why the comment says it is for local development.</p>`
+            },
+        ];
+        $('auditList').innerHTML = AUDIT.map(a => '<details><summary><span class="tag u">unsafe</span><span class="t">' + esc(a.t) + '</span><span class="loc">' + a.loc + '</span><span class="s">' + esc(a.s) + '</span></summary><div class="body">' + a.body + '</div></details>').join('');
+
+        /* ---------- glossary ---------- */
+        const CATS = ['All', 'Pointers & unsafe', 'Interior mutability', 'Pinning', 'Atomics', 'Statics & patterns', 'FFI & signals', 'Syntax'];
+        const G = [
+            {
+                c: 1, t: '*const T, *mut T', w: 'inflight.rs:44, 55, 269', s: 'Raw pointer: an address with no lifetime and no borrow checking.',
+                b: `<p>Creating, copying and comparing one is safe. <em>Dereferencing</em> it needs <code>unsafe</code>, because nothing proves the target is still alive or not being mutated. It may be null. It is <code>Copy</code>, and it is neither <code>Send</code> nor <code>Sync</code>.</p><p>Used here because the registry and the thread local must refer to an action they do not own and whose lifetime the compiler cannot express.</p>`,
+                code: R`static CURRENT: Cell<*const ActionCell> = const { Cell::new(ptr::null()) };
+struct Slab { cells: Vec<*const ActionCell>, free: Vec<u32> }` },
+            {
+                c: 1, t: 'ptr::null(), ptr::from_ref(), ptr::eq()', w: 'inflight.rs:44, 165, 188, 287, 310', s: 'The safe helpers for making and comparing raw pointers.',
+                b: `<p><code>ptr::from_ref(&amp;x)</code> is the explicit form of <code>&amp;x as *const T</code>. <code>ptr::eq(a, b)</code> compares addresses, not values. <code>ptr::null()</code> is the "no cell" marker in the slab and in <code>CURRENT</code>.</p>`,
+                code: R`let cell = ptr::from_ref(self);
+if !ptr::eq(cell, current) { /* not the action calling dump() */ }` },
+            {
+                c: 1, t: '<*const T>::as_ref()', w: 'inflight.rs:67, 76, 286', s: 'unsafe: null becomes None, anything else becomes Some(&T).',
+                b: `<p>A convenient way to combine the null check with the dereference. It is <code>unsafe</code> because for a non-null pointer you still promise it is valid. The returned reference has whatever lifetime you ask for, so it is on you not to keep it too long.</p>`,
+                code: R`let Some(cell) = (unsafe { cell.as_ref() }) else { return 0; };`
+            },
+            {
+                c: 1, t: 'unsafe { } and // SAFETY:', w: 'throughout', s: 'A block where you take over five checks from the compiler.',
+                b: `<p><code>unsafe</code> does not turn off the borrow checker. It unlocks a few extra operations: dereference a raw pointer, call an <code>unsafe fn</code> or FFI function, implement an <code>unsafe trait</code>, access a <code>static mut</code>, read a union field. The rules of Rust (no dangling references, no <code>&amp;mut</code> aliasing, no data races) still apply, you are now the one enforcing them.</p><p>The <code>// SAFETY:</code> comment is a strong convention (and a clippy lint in this workspace): it states why the promise holds.</p>`
+            },
+            {
+                c: 1, t: 'unsafe impl Send / Sync', w: 'inflight.rs:60, 276', s: 'Manually vouching that a type may cross threads.',
+                b: `<p><code>Send</code> (may move to another thread) and <code>Sync</code> (may be shared between threads) are auto traits: the compiler derives them from the fields. One raw pointer field removes both. <code>unsafe impl</code> puts them back on your word.</p><p>Chain to remember: <code>static</code> needs <code>Sync</code> → <code>Mutex&lt;T&gt;: Sync</code> needs <code>T: Send</code> → <code>Slab</code> has raw pointers → manual <code>Send</code>.</p>`,
+                code: R`// SAFETY: a registered cell stays alive until it unregisters under the shard lock
+unsafe impl Send for Slab {}` },
+            {
+                c: 1, t: '&mut (*ptr).field', w: 'inflight.rs:169', s: 'Borrow one field behind a raw pointer without borrowing the whole struct.',
+                b: `<p><code>(*ptr)</code> is a <em>place</em>, not a reference. Projecting to a field and borrowing that gives a reference covering only that field. Had the code written <code>let inner = &amp;mut *ptr;</code> first, that <code>&amp;mut Inner</code> would claim the whole struct, including the <code>action</code> that <code>with_current</code> shares during the same poll.</p>`,
+                code: R`let inner = self.inner.get();   // *mut Inner
+let (a, p) = unsafe { (&mut (*inner).alloc_stats, &mut (*inner).poll_stats) };` },
+            {
+                c: 1, t: '&raw const, &raw mut', w: 'thread_dump.rs:103, 104, 295', s: 'Make a raw pointer to a place directly, with no reference in between.',
+                b: `<p>Stable since Rust 1.82. <code>&amp;raw mut x.f</code> is preferred over <code>&amp;mut x.f as *mut _</code> when handing pointers to C, because the intermediate <code>&amp;mut</code> carries guarantees (initialised, unaliased) the C side may not respect.</p>`,
+                code: R`libc::sigemptyset(&raw mut action.sa_mask);
+libc::sigaction(SIGNAL, &raw const action, ptr::null_mut());` },
+            {
+                c: 1, t: 'mem::replace, mem::zeroed', w: 'inflight.rs:180; thread_dump.rs:100', s: 'Swap a value out through &mut; build a value from zero bytes.',
+                b: `<p><code>mem::replace(&amp;mut slot, new)</code> returns the old value and leaves <code>new</code> behind: the way to move something out of a place you only have <code>&amp;mut</code> to. Safe.</p><p><code>mem::zeroed()</code> is <code>unsafe</code>: all-zero bytes are only a valid value for some types (C structs, integers), never for references or <code>Box</code>.</p>`,
+                code: R`let alloc_stats = mem::replace(&mut inner.alloc_stats, AllocStats::new());`
+            },
+            {
+                c: 2, t: 'Cell<T>', w: 'inflight.rs:44, 93', s: 'Mutate through & by replacing the whole value. Single thread only.',
+                b: `<p><code>get</code>, <code>set</code>, <code>replace</code>, <code>take</code>. It never hands out a reference to the inside, so there is nothing to alias, so no runtime check is needed. It is <code>!Sync</code>.</p><p>Here: <code>CURRENT</code> (a pointer per thread) and <code>slot</code> (touched only by the owner).</p>`,
+                code: R`let previous = CURRENT.replace(ptr::from_ref(self));
+if let Some((shard, index)) = self.slot.take() { .. }` },
+            {
+                c: 2, t: 'RefCell<T>, as_ptr(), into_inner()', w: 'inflight.rs:99, 179, 231', s: 'Borrow checking moved to runtime. Single thread only.',
+                b: `<p><code>borrow()</code> and <code>borrow_mut()</code> count borrows and panic on a conflict. This is what makes <code>log!</code> callable from anywhere with only a shared reference, and why calling <code>log!</code> inside a <code>Display</code> impl passed to <code>log!</code> panics.</p><p><code>as_ptr()</code> returns <code>*mut T</code> to the contents without counting, <code>into_inner()</code> consumes the cell and returns the value.</p>`
+            },
+            {
+                c: 2, t: 'UnsafeCell<T>', w: 'inflight.rs:94', s: 'The primitive under Cell, RefCell, Mutex and atomics.',
+                b: `<p>Rust's rule is that data behind <code>&amp;T</code> is never mutated. <code>UnsafeCell</code> is the one exception the compiler knows about: <code>.get()</code> turns <code>&amp;UnsafeCell&lt;T&gt;</code> into <code>*mut T</code>. It provides no synchronisation at all, you bring your own. Here the state byte is that synchronisation.</p><p>Why not a <code>Mutex</code>? The dump must be able to give up instantly (<code>try</code> semantics with a custom third state), and the per-poll cost should be one byte the task already owns.</p>`,
+                code: R`inner: UnsafeCell<Inner>,
+// ...
+let inner = unsafe { &*self.inner.get() };` },
+            {
+                c: 3, t: 'Pin<&mut T>, Pin<&T>', w: 'log.rs:126; inflight.rs:146, 155, 174', s: 'A pointer wrapper that promises the target will never move again.',
+                b: `<p>Normally any value can be moved with a <code>memcpy</code>, which would invalidate a pointer to it. <code>Pin</code> removes the safe ways to move the target. <code>Future::poll</code> takes <code>Pin&lt;&amp;mut Self&gt;</code>, which is why the first poll is the moment the cell may publish its address.</p><p><code>self: Pin&lt;&amp;ActionCell&gt;</code> as a receiver means "only callable on a pinned cell". <code>get_ref()</code> gets the plain <code>&amp;T</code> back, <code>as_ref()</code> turns <code>Pin&lt;&amp;mut T&gt;</code> into <code>Pin&lt;&amp;T&gt;</code>.</p>`,
+                code: R`pub(crate) fn poll<T>(self: Pin<&ActionCell>, poll: impl FnOnce() -> T) -> T {
+    let cell = self.get_ref();` },
+            {
+                c: 3, t: 'PhantomPinned', w: 'inflight.rs:95', s: 'Zero-sized marker that makes a type !Unpin.',
+                b: `<p>Most types are <code>Unpin</code>, meaning <code>Pin</code> has no effect on them. A type that really depends on its address opts out with this field. It also makes <code>ActionFuture</code> <code>!Unpin</code>.</p>`
+            },
+            {
+                c: 3, t: 'pin_project!, #[pin], PinnedDrop', w: 'log.rs:83–108', s: 'Safe access to the fields of a pinned struct.',
+                b: `<p>From the <code>pin-project-lite</code> crate. Given <code>Pin&lt;&amp;mut Struct&gt;</code>, <code>.project()</code> returns a struct of field references: <code>Pin&lt;&amp;mut Field&gt;</code> for <code>#[pin]</code> fields, <code>&amp;mut Field</code> for the rest. Without it this "projection" needs <code>unsafe</code>.</p><p>A normal <code>Drop</code> gets <code>&amp;mut self</code>, which would let you move pinned fields. <code>PinnedDrop</code> gives <code>Pin&lt;&amp;mut Self&gt;</code> instead.</p>`
+            },
+            {
+                c: 3, t: 'Pin::set, Option::as_pin_mut, pin!', w: 'log.rs:104, 131, 134; tests', s: 'Working with a pinned Option<F>.',
+                b: `<p><code>this.task.set(None)</code> drops the old value <em>in place</em> and writes the new one, without moving the pinned future. <code>as_pin_mut()</code> converts <code>Pin&lt;&amp;mut Option&lt;F&gt;&gt;</code> to <code>Option&lt;Pin&lt;&amp;mut F&gt;&gt;</code> so the task can be polled. <code>as_mut()</code> reborrows a <code>Pin&lt;&amp;mut T&gt;</code> so it can be used again afterwards.</p><p><code>pin!(value)</code> pins a value to the current stack frame, used by the tests to get a <code>Pin&lt;&amp;mut ActionCell&gt;</code> without a <code>Box</code>.</p>`,
+                code: R`let task = this.task.as_mut().as_pin_mut().expect("action must not be polled after completion");
+let polled = task.poll(cx);
+if polled.is_ready() { this.task.set(None); }` },
+            {
+                c: 4, t: 'AtomicU8, compare_exchange, _weak', w: 'inflight.rs:91, 162, 244', s: 'Lock-free "if it is X, make it Y" in one CPU instruction.',
+                b: `<p><code>compare_exchange(expected, new, success_order, failure_order)</code> returns <code>Ok</code> if it swapped, <code>Err(actual)</code> if not. This is how two threads agree on who got the cell without a mutex.</p><p><code>_weak</code> may fail spuriously even when the value matched, which lets some CPUs (ARM) use a cheaper instruction. It is the right choice inside a retry loop (the worker), and the wrong one for a bounded number of tries (the dump uses the strong form).</p>`
+            },
+            {
+                c: 4, t: 'Ordering::Acquire, Release, Relaxed', w: 'inflight.rs:112, 162, 233; thread_dump.rs', s: 'How much the atomic operation says about surrounding memory.',
+                b: `<p><code>Relaxed</code>: only this value is atomic, no promise about anything else. Fine for a counter such as <code>NEXT_SHARD</code>.</p><p><code>Release</code> on a store plus <code>Acquire</code> on the load that sees it: everything the storing thread wrote <em>before</em> the store is visible to the loading thread <em>after</em> the load. That pair is what makes the state byte a lock: the dump's reads of <code>inner</code> are guaranteed to see the worker's writes.</p><p>The failure ordering of a compare-exchange is <code>Relaxed</code> because on failure nothing is read.</p>`
+            },
+            {
+                c: 4, t: 'hint::spin_loop(), thread::yield_now()', w: 'inflight.rs:163, 247', s: 'Two ways to wait without sleeping.',
+                b: `<p><code>spin_loop()</code> tells the CPU "I am busy-waiting" (the <code>pause</code> instruction), staying on the core. Right when the wait is known to be short. <code>yield_now()</code> gives the rest of the time slice back to the OS scheduler, used by the dump between its three tries and while waiting for a signal handler.</p>`
+            },
+            {
+                c: 4, t: '#[repr(align(64))]', w: 'inflight.rs:50', s: 'Force each shard onto its own cache line.',
+                b: `<p>CPUs cache memory in 64-byte lines. If two shards shared a line, two threads locking <em>different</em> shards would still bounce that line between cores ("false sharing"). Aligning the struct to 64 bytes gives each mutex its own line.</p>`
+            },
+            {
+                c: 5, t: 'thread_local! with const { }', w: 'inflight.rs:42–47', s: 'One value per OS thread, and the cheap form of it.',
+                b: `<p>A <code>const { .. }</code> initialiser means the value is known at compile time, so access is a plain thread-local read with no "is it initialised yet?" branch. <code>SHARD</code> uses the lazy form because its value comes from a counter at first use.</p><p>For a <code>Cell</code> inside, <code>CURRENT.get()</code>, <code>.set()</code> and <code>.replace()</code> work directly, without the usual <code>.with(|v| ..)</code>.</p>`
+            },
+            {
+                c: 5, t: 'static with interior mutability', w: 'inflight.rs:39–40; thread_dump.rs:42–52', s: 'Global mutable state without static mut.',
+                b: `<p>A <code>static</code> is immutable, so global state is a <code>Mutex</code>, an atomic or a <code>Once</code> inside one. All are <code>Sync</code> and all have <code>const fn new</code>, so no lazy initialisation is needed. <code>static mut</code> is avoided: every access to it is <code>unsafe</code>.</p>`
+            },
+            {
+                c: 5, t: '[const { expr }; N]', w: 'inflight.rs:40; thread_dump.rs:49, 51', s: 'Array of N values of a type that is not Copy.',
+                b: `<p><code>[x; N]</code> needs <code>x: Copy</code>. A <code>Mutex</code> or an atomic is not. Wrapping the expression in an inline <code>const { }</code> block makes the compiler evaluate it afresh for each element.</p>`,
+                code: R`static FRAMES: [AtomicUsize; MAX_FRAMES] = [const { AtomicUsize::new(0) }; MAX_FRAMES];`
+            },
+            {
+                c: 5, t: 'RAII guard (Drop)', w: 'inflight.rs:104–114', s: 'Cleanup that cannot be skipped.',
+                b: `<p>A value whose destructor undoes something. Because <code>Drop</code> runs on normal return, on early <code>return</code> or <code>?</code>, and while a panic unwinds, <code>EnterGuard</code> guarantees <code>CURRENT</code> and the state are reset. The binding must be named (<code>_guard</code>): a bare <code>_</code> would drop it immediately.</p>`
+            },
+            {
+                c: 5, t: 'Slab + free list, sharding', w: 'inflight.rs:53–57, 185–206', s: 'O(1) insert and remove by index, spread over 16 locks.',
+                b: `<p>A <code>Vec</code> of slots plus a <code>Vec</code> of free indices: removing writes null and pushes the index, inserting pops one. The cell remembers its own index, so no search. Splitting into shards keyed by thread means threads rarely contend for the same mutex.</p>`
+            },
+            {
+                c: 5, t: 'Once::call_once', w: 'thread_dump.rs:43, 97', s: 'Run a block exactly once per process, thread safe.',
+                b: `<p>Used to install the signal handler on the first dump, so an app that never calls <code>/sys/thread</code> has no handler installed.</p>`
+            },
+            {
+                c: 5, t: 'Box<dyn Iterator<Item = Bytes> + Send>', w: 'web/response.rs:121, 186', s: 'A heap-allocated iterator whose concrete type is erased.',
+                b: `<p><code>Response::chunks</code> accepts <code>impl Iterator + Send + 'static</code> (any concrete type, chosen by the caller) and stores it as a trait object so <code>Body</code> stays one non-generic enum. <code>poll_frame</code> then just calls <code>.next()</code>, which is what makes the dump lazy.</p>`
+            },
+            {
+                c: 6, t: 'extern "C" fn and the cast to usize', w: 'thread_dump.rs:68, 101', s: 'A Rust function C can call.',
+                b: `<p><code>extern "C"</code> selects the C calling convention, required for a function the kernel will invoke. The <code>sigaction</code> struct stores the handler as an integer, hence the two-step cast: function item → function pointer → address.</p>`,
+                code: R`action.sa_sigaction = capture as extern "C" fn(c_int) as usize;`
+            },
+            {
+                c: 6, t: 'unsafe extern "C" { }', w: 'thread_dump.rs:283', s: 'Declaring C symbols the libc crate does not expose.',
+                b: `<p>Tells the linker these items exist elsewhere. Since edition 2024 the block itself must be written <code>unsafe extern</code>, acknowledging that a wrong signature is undefined behaviour.</p>`
+            },
+            {
+                c: 6, t: 'libc crate', w: 'thread_dump.rs', s: 'Raw bindings to the C library and syscalls.',
+                b: `<p><code>sigaction</code> installs a handler. <code>tgkill(pid, tid, sig)</code> (Linux) and <code>pthread_kill</code> (macOS) send a signal to one specific thread. <code>gettid</code>, <code>pthread_self</code> identify the current thread. <code>SA_RESTART</code> asks the kernel to resume interrupted system calls.</p>`
+            },
+            {
+                c: 6, t: 'Async-signal-safety', w: 'thread_dump.rs:67–93', s: 'The short list of things a signal handler may do.',
+                b: `<p>A handler interrupts a thread between any two instructions. If that thread was inside <code>malloc</code> holding its lock and the handler allocates, it deadlocks on itself. So: no allocation, no locks, no <code>println!</code>. Loads and stores on atomics in statics are fine, which is why all the capture state is preallocated atomics.</p>`
+            },
+            {
+                c: 6, t: 'backtrace crate', w: 'thread_dump.rs:79, 137, 205', s: 'Stack walking and symbol lookup.',
+                b: `<p><code>trace_unsynchronized</code> walks the current stack and calls a closure per frame, returning <code>false</code> stops it. <code>resolve(addr, cb)</code> maps an address to function name, file and line using debug info. <code>{name:#}</code> prints the demangled name without the trailing hash. <code>clear_symbol_cache()</code> frees the parsed debug info.</p><p>std's <code>Backtrace</code> can only capture and print the current thread, it cannot resolve an address captured elsewhere.</p>`
+            },
+            {
+                c: 6, t: '#[cfg(target_os = ..)], #[inline(never)]', w: 'thread_dump.rs:5–14, 209, 274, 344', s: 'Compile different code per platform; keep a frame visible.',
+                b: `<p><code>cfg</code> removes the item entirely on other targets, which is how two <code>mod os</code> with the same functions coexist. <code>#[inline(never)]</code> in the test guarantees <code>blocked_in_test</code> appears as its own stack frame so the assertion can find it.</p>`
+            },
+            {
+                c: 7, t: 'let … else', w: 'inflight.rs:76, 305; log.rs:138', s: 'Destructure or leave.',
+                b: `<p>If the pattern does not match, the <code>else</code> block must diverge (<code>return</code>, <code>continue</code>, <code>panic!</code>). The bindings stay in the surrounding scope.</p>`,
+                code: R`let Poll::Ready(result) = polled else { return Poll::Pending; };`
+            },
+            {
+                c: 7, t: 'if let … && …  (let chains)', w: 'inflight.rs:286–288', s: 'Mix pattern matches and boolean tests in one condition.',
+                b: `<p>Stable in edition 2024. Replaces nested <code>if let</code> blocks.</p>`,
+                code: R`if let Some(registered) = unsafe { cell.as_ref() }
+    && !ptr::eq(cell, current)
+{ .. }` },
+            {
+                c: 7, t: '? on Option', w: 'inflight.rs:67', s: 'Early-return None, as ? does for Err.',
+                b: `<p><code>with_current</code> returns <code>Option&lt;R&gt;</code>, so <code>cell.as_ref()?</code> returns <code>None</code> when the pointer is null and <code>.as_ref()?</code> again when the action has been taken. Two "no current action" cases, zero branches written.</p>`
+            },
+            {
+                c: 7, t: 'is_none_or, is_some_and, map_or', w: 'inflight.rs:310; tests; thread_dump.rs:164', s: 'Option to bool or value in one call.',
+                b: `<p><code>opt.is_none_or(|x| cond)</code>: true if empty or the condition holds. <code>is_some_and</code>: true only if present and it holds. <code>map_or(default, f)</code>: apply <code>f</code> or use the default.</p>`
+            },
+            {
+                c: 7, t: 'impl FnOnce() -> T', w: 'inflight.rs:64, 146, 155, 160', s: 'Take a closure that is called at most once.',
+                b: `<p><code>impl Trait</code> in argument position is shorthand for a generic parameter, so each call site is monomorphised and inlined, no allocation. <code>FnOnce</code> is the least demanding closure trait: it may consume what it captured. The "run this with X set up, then tear X down" shape of <code>poll</code>, <code>enter</code> and <code>with_current</code> depends on it.</p>`
+            },
+            {
+                c: 7, t: 'Iterator tricks', w: 'inflight.rs:79, 120, 304; thread_dump.rs:164', s: 'zip, count, by_ref, rposition.',
+                b: `<p><code>a.zip(b)</code> stops at the shorter side, so it doubles as bounds checking. <code>.count()</code> at the end of <code>copy_current_id</code> both drives the lazy iterator and returns how many bytes were copied. <code>iter.by_ref()</code> lets a <code>for</code> loop consume part of an iterator and leave the rest for the next call. <code>rposition</code> finds the last matching index.</p>`,
+                code: R`out.iter().zip(cell.id().bytes())
+    .map(|(slot, byte)| slot.store(byte, Ordering::Relaxed))
+    .count()` },
+            {
+                c: 7, t: "'_ , as _", w: 'inflight.rs:28, 109', s: 'Two "I do not need to name this" forms.',
+                b: `<p><code>EnterGuard&lt;'_&gt;</code>: an anonymous lifetime, "some lifetime, inferred". <code>use StringExt as _</code>: bring a trait's methods into scope without importing its name.</p>`
+            },
+            {
+                c: 7, t: 'Instant::saturating_duration_since', w: 'inflight.rs:211, 219', s: 'Subtract instants, clamping to zero.',
+                b: `<p><code>last_polled</code> is written by a worker and compared with a <code>now</code> taken by the dump thread slightly earlier, so the difference can be negative. This returns zero instead of panicking.</p>`
+            },
+        ];
+        let gcat = 0;
+        $('cats').innerHTML = CATS.map((c, i) => '<button data-c="' + i + '">' + c.replace('&', '&amp;') + '</button>').join(' ');
+        function renderGloss() {
+            const q = $('q').value.trim().toLowerCase();
+            [...$('cats').children].forEach((b, i) => b.classList.toggle('on', i === gcat));
+            const items = G.filter(g => (gcat === 0 || g.c === gcat) && (!q || (g.t + ' ' + g.s + ' ' + g.b).toLowerCase().includes(q)));
+            $('glossList').innerHTML = items.length ? items.map(g =>
+                '<details><summary><span class="t">' + esc(g.t) + '</span><span class="tag n">' + CATS[g.c].replace('&', '&amp;') + '</span><span class="loc">' + esc(g.w) + '</span><span class="s">' + esc(g.s) + '</span></summary><div class="body">' + g.b + (g.code ? '<pre>' + hl(g.code) + '</pre>' : '') + '</div></details>').join('')
+                : '<p class="sub">No entry matches.</p>';
+        }
+        $('cats').onclick = e => {if (e.target.dataset.c !== undefined) {gcat = +e.target.dataset.c; renderGloss();} };
+        $('q').oninput = renderGloss;
+        renderGloss();
+    </script>
+</body>
+
+</html>

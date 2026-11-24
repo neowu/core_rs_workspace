@@ -82,7 +82,7 @@ impl MetricsCollector {
     fn collect_metrics(&mut self) -> Metrics {
         let timestamp = DateTime::now();
         let mut metrics = Metrics {
-            id: id_generator::next_id(timestamp.unix_timestamp_millis()),
+            id: id_generator::next_id(timestamp.unix_timestamp_millis()).as_str().to_owned(),
             timestamp,
             severity: Severity::Info,
             error: None,

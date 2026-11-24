@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -10,19 +9,18 @@ use pin_project_lite::pin_project;
 use serde::Deserialize;
 use serde::Serialize;
 use smallvec::SmallVec;
-use tokio::task::futures::TaskLocalFuture;
-use tokio::task_local;
 
 use crate::appender::Message;
 use crate::exception::Exception;
 use crate::log::action::Action;
-use crate::log::stats::AllocStats;
-use crate::log::stats::PollStats;
+use crate::log::inflight::ActionCell;
+use crate::log::inflight::with_current;
 use crate::system::SENDER;
 use crate::time::DateTime;
 
 pub(crate) mod action;
 pub mod id_generator;
+pub(crate) mod inflight;
 mod mask;
 mod span;
 mod stats;
@@ -71,19 +69,13 @@ macro_rules! console {
     };
 }
 
-task_local! {
-    // the action is always present for the whole scope, ActionFuture takes it back out of the task
-    // local slot only once the scoped future has finished
-    static CURRENT_ACTION: RefCell<Action>;
-}
-
 pub fn current_action_id() -> Option<String> {
-    CURRENT_ACTION.try_with(|action| action.borrow().id.clone()).ok()
+    with_current(|action| action.borrow().id.as_str().to_owned())
 }
 
 /// Trigger trace for current action.
 pub fn trace() {
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         action.borrow_mut().trace = true;
     });
 }
@@ -96,10 +88,22 @@ pin_project! {
     /// parameters and upvars live in the layout prefix and are never overlapped, so a 6KB task turned
     /// into an 18KB action future and tripped `clippy::large_futures`.
     pub struct ActionFuture<F> {
+        // dropped inside the action, on completion and on cancellation, then None
         #[pin]
-        inner: TaskLocalFuture<RefCell<Action>, F>,
-        alloc_stats: AllocStats,
-        poll_stats: PollStats,
+        task: Option<F>,
+        // the action lives here, not in a task local, so it has an address the in-flight registry can read
+        #[pin]
+        cell: ActionCell,
+    }
+
+    impl<F> PinnedDrop for ActionFuture<F> {
+        fn drop(this: Pin<&mut Self>) {
+            let mut this = this.project();
+            // cancelled, what the task holds (a span, a guard) still logs into its own action, not an outer one
+            if this.task.is_some() {
+                this.cell.as_ref().enter(|| this.task.set(None));
+            }
+        }
     }
 }
 
@@ -110,11 +114,7 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    ActionFuture {
-        inner: CURRENT_ACTION.scope(RefCell::new(action), task),
-        alloc_stats: AllocStats::new(),
-        poll_stats: PollStats::new(),
-    }
+    ActionFuture { task: Some(task), cell: ActionCell::new(action) }
 }
 
 impl<F, R> Future for ActionFuture<F>
@@ -125,22 +125,27 @@ where
 
     fn poll(self: Pin<&mut ActionFuture<F>>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        // not `ready!`: the allocation and poll stats have to be taken on the Pending path too, or every
-        // poll but the last is lost
-        let polled = this.poll_stats.poll(|| this.alloc_stats.poll(|| this.inner.as_mut().poll(cx)));
+        let cell = this.cell.as_ref();
+        // the allocation and poll stats are taken on the Pending path too, or every poll but the last is lost
+        let polled = cell.poll(|| {
+            let task = this.task.as_mut().as_pin_mut().expect("action must not be polled after completion");
+            let polled = task.poll(cx);
+            if polled.is_ready() {
+                this.task.set(None);
+            }
+            polled
+        });
         let Poll::Ready(result) = polled else {
             return Poll::Pending;
         };
 
-        // the scope has ended, so the action comes out of the slot rather than the task local
-        let mut current_action =
-            this.inner.take_value().map(RefCell::into_inner).expect("current action must be within the scope");
+        let (mut current_action, alloc_stats, poll_stats) = cell.finish();
 
         if let Err(e) = &result {
             current_action.log_exception(e);
         }
-        this.alloc_stats.write_to(&mut current_action);
-        this.poll_stats.write_to(&mut current_action);
+        alloc_stats.write_to(&mut current_action);
+        poll_stats.write_to(&mut current_action);
         current_action.finish();
 
         if let Some(sender) = SENDER.get() {
@@ -152,7 +157,7 @@ where
 }
 
 // DO NOT call log! in Display impl, and pass it as message arguments
-// then CURRENT_ACTION will be borrowed twice and panic
+// then the current action will be borrowed twice and panic
 #[macro_export]
 macro_rules! log {
     (exception = $exception:expr) => {
@@ -200,7 +205,7 @@ pub fn __log(
     error_code: Option<&'static str>,
     location: &'static str,
 ) {
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         action.borrow_mut().log(severity, error_code, Some(location), message);
     });
 }
@@ -208,7 +213,7 @@ pub fn __log(
 #[doc(hidden)]
 #[inline]
 pub fn __log_exception(exception: &Exception) {
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         action.borrow_mut().log_exception(exception);
     });
 }
@@ -255,7 +260,7 @@ impl<T: Into<String>> VecContextValue for Vec<T> {
 #[doc(hidden)]
 #[inline]
 pub fn __context(key: &'static str, values: ContextValues, location: &'static str) {
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         let mut action = action.borrow_mut();
 
         if values.len() == 1
@@ -286,7 +291,7 @@ macro_rules! stats {
 #[doc(hidden)]
 #[inline]
 pub fn __stats(key: &'static str, value: u64, location: &'static str) {
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         let mut action = action.borrow_mut();
         action.log(None, None, Some(location), format_args!("[stats] {key}={value}"));
         action.add_stat(key, value);
@@ -295,11 +300,80 @@ pub fn __stats(key: &'static str, value: u64, location: &'static str) {
 
 #[cfg(test)]
 mod tests {
+    use std::future;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::task::Context;
+    use std::task::Poll;
+
+    use futures::executor::block_on;
+    use futures::poll;
 
     use super::ContextValues;
     use super::ScalarContextValue as _;
     use super::VecContextValue as _;
+    use crate::exception::Exception;
     use crate::log::Severity;
+    use crate::log::action;
+    use crate::log::current_action_id;
+
+    // records the current action when dropped
+    struct DropGuard(Arc<Mutex<Option<String>>>);
+
+    impl Drop for DropGuard {
+        fn drop(&mut self) {
+            *self.0.lock().unwrap() = current_action_id();
+        }
+    }
+
+    // completes at once and keeps its guard until it is destroyed
+    struct Retains {
+        _guard: DropGuard,
+    }
+
+    impl Future for Retains {
+        type Output = Result<Option<String>, Exception>;
+
+        fn poll(self: Pin<&mut Retains>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            Poll::Ready(Ok(current_action_id()))
+        }
+    }
+
+    #[test]
+    fn cancelled_task_is_dropped_inside_its_action() {
+        let dropped_in = Arc::new(Mutex::new(None));
+        let guard = DropGuard(Arc::clone(&dropped_in));
+        let child_id = Arc::new(Mutex::new(None));
+        let started = Arc::clone(&child_id);
+
+        let outer_id = block_on(action("test", None, async move {
+            let mut child = Box::pin(action("test", None, async move {
+                let _guard = guard;
+                *started.lock().unwrap() = current_action_id();
+                future::pending::<Result<(), Exception>>().await
+            }));
+            assert!(poll!(child.as_mut()).is_pending());
+            drop(child); // cancelled while the outer action is current
+            Ok::<_, Exception>(current_action_id())
+        }))
+        .expect("outer action must complete");
+
+        let child_id = child_id.lock().unwrap().clone();
+        assert!(child_id.is_some());
+        assert_ne!(child_id, outer_id);
+        assert_eq!(*dropped_in.lock().unwrap(), child_id);
+    }
+
+    #[test]
+    fn completed_task_is_dropped_inside_its_action() {
+        let dropped_in = Arc::new(Mutex::new(None));
+        let id = block_on(action("test", None, Retains { _guard: DropGuard(Arc::clone(&dropped_in)) }))
+            .expect("action must complete");
+
+        assert!(id.is_some());
+        assert_eq!(*dropped_in.lock().unwrap(), id);
+    }
 
     #[test]
     fn context_values_preserve_arrays() {

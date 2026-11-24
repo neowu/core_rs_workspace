@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::log::CURRENT_ACTION;
+use crate::log::inflight::with_current;
 
 pub struct Span {
     name: &'static str,
@@ -28,7 +28,7 @@ macro_rules! span {
 #[inline]
 pub fn __span(name: &'static str, elapsed_key: &'static str, count_key: &'static str, location: &'static str) -> Span {
     let mut log_offset = None;
-    let _result = CURRENT_ACTION.try_with(|action| {
+    let _result = with_current(|action| {
         let mut action = action.borrow_mut();
         action.log(None, None, Some(location), format_args!("[span:{name}] >"));
         log_offset = Some(action.logs.len() - 1); // the last char of logs is always be '\n', truncate to this point
@@ -39,7 +39,7 @@ pub fn __span(name: &'static str, elapsed_key: &'static str, count_key: &'static
 impl Span {
     /// Rolls the trace back to the start of the span, so a long loop cannot fill the action buffer.
     pub fn clear(&self) {
-        let _result = CURRENT_ACTION.try_with(|action| {
+        let _result = with_current(|action| {
             let mut action = action.borrow_mut();
             if let Some(offset) = self.log_offset
                 && offset <= action.logs.len()
@@ -58,7 +58,7 @@ impl Span {
 
 impl Drop for Span {
     fn drop(&mut self) {
-        let _result = CURRENT_ACTION.try_with(|action| {
+        let _result = with_current(|action| {
             let mut action = action.borrow_mut();
             let name = self.name;
             let span_elapsed = self.start_time.elapsed();
@@ -73,23 +73,17 @@ impl Drop for Span {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::pin::pin;
 
-    use futures::executor::block_on;
-
-    use crate::log::CURRENT_ACTION;
     use crate::log::action::Action;
+    use crate::log::id_generator::next_id;
+    use crate::log::inflight::ActionCell;
     use crate::time::DateTime;
 
     fn with_action<F: FnOnce()>(task: F) -> Action {
-        // mirrors ActionFuture: the action comes out of the task local slot after the scope ends
-        let mut scope = pin!(
-            CURRENT_ACTION
-                .scope(RefCell::new(Action::new("id".to_owned(), "test", None, DateTime::now())), async { task() },)
-        );
-        block_on(scope.as_mut());
-        scope.take_value().map(RefCell::into_inner).expect("action must be in scope")
+        let cell = pin!(ActionCell::new(Action::new(next_id(0), "test", None, DateTime::now())));
+        cell.as_ref().poll(task);
+        cell.as_ref().finish().0
     }
 
     #[test]

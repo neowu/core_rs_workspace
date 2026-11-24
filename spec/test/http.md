@@ -32,9 +32,11 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
   ends with a `retry` frame and its closure is dropped, over both protocols. Keepalive (15s) and a stalled h2
   client are not covered; the unit test covers the closure dropped on shutdown without the body being polled.
 - `interceptor_test`: interceptors run in order around the handler of exact and prefix routes registered before or after them, short circuit
-  with `403`, pass a request extension, don't apply to another router with the same state; a `/_sys/` route is
-  reachable from loopback and `403` with `x-forwarded-for` (a non loopback peer address is
-  a unit test, the test client is always local).
+  with `403`, pass a request extension, don't apply to another router with the same state.
+- `diagnostic_test`: sys routes on their own server, next to the app server; `/sys/action` lists a request
+  waiting in its app handler as `suspended` with its masked trace, not the dump request itself, drops it
+  once it completes; `/sys/thread` has the thread serving the request with its action id; both `404` on
+  the app server.
 - Consume or drop every response body before shutdown: graceful drain has no deadline, an unread h2
   stream keeps the server waiting on flow control.
 

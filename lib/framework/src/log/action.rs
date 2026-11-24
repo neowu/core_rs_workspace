@@ -8,6 +8,7 @@ use std::time::Instant;
 use crate::exception::Exception;
 use crate::log::ContextValues;
 use crate::log::Severity;
+use crate::log::id_generator::Id;
 use crate::log::mask::mask_logs;
 use crate::string::StringExt as _;
 use crate::time::DateTime;
@@ -20,7 +21,7 @@ const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
 pub(crate) struct Action {
     pub start_time: Instant,
-    pub id: String,
+    pub id: Id,
     pub kind: &'static str,
     pub timestamp: DateTime,
     pub ref_ids: Option<Vec<String>>,
@@ -38,7 +39,7 @@ pub(crate) struct Error {
 }
 
 impl Action {
-    pub(crate) fn new(id: String, kind: &'static str, ref_ids: Option<Vec<String>>, timestamp: DateTime) -> Action {
+    pub(crate) fn new(id: Id, kind: &'static str, ref_ids: Option<Vec<String>>, timestamp: DateTime) -> Action {
         // fits a typical http action (request headers, context and response), growing copies the whole buffer
         let mut logs = String::with_capacity(2048);
         write_str!(logs, "# [action] id={id}, kind={kind}, date=");
@@ -253,10 +254,11 @@ mod tests {
     use super::Action;
     use super::MAX_LOG_BYTES;
     use crate::log::Severity;
+    use crate::log::id_generator::next_id;
     use crate::time::DateTime;
 
     fn action() -> Action {
-        Action::new("id".to_owned(), "test", None, DateTime::now())
+        Action::new(next_id(0), "test", None, DateTime::now())
     }
 
     #[test]

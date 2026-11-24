@@ -67,7 +67,7 @@ impl From<Action> for ActionMessage {
         };
 
         ActionMessage {
-            id: action.id,
+            id: action.id.as_str().to_owned(),
             timestamp: action.timestamp,
             app: Cow::Borrowed(context.app),
             host: Cow::Borrowed(&context.host),
@@ -232,6 +232,7 @@ mod tests {
     use super::ActionMessage;
     use crate::log::ScalarContextValue as _;
     use crate::log::action::Action;
+    use crate::log::id_generator::next_id;
     use crate::system::CONTEXT;
     use crate::system::Context;
     use crate::time::DateTime;
@@ -239,7 +240,8 @@ mod tests {
     #[test]
     fn action_message_preserves_storage_and_wire_format() {
         let context = CONTEXT.get_or_init(|| Context { app: "test", host: "host".to_owned() });
-        let mut action = Action::new("id".to_owned(), "http", None, DateTime::now());
+        let id = next_id(0);
+        let mut action = Action::new(id, "http", None, DateTime::now());
         action.context.push((Cow::Borrowed("method"), "GET".__into_context_value()));
         action.add_stat("count", 2);
         let context_buffer = action.context.as_ptr();
@@ -258,7 +260,7 @@ mod tests {
         assert_eq!(
             encoded,
             serde_json::json!({
-                "id": "id", "timestamp": message.timestamp, "app": context.app,
+                "id": id.as_str(), "timestamp": message.timestamp, "app": context.app,
                 "host": context.host, "kind": "http", "severity": "INFO",
                 "context": [["method", ["GET"]]], "stats": [["elapsed", 0], ["count", 2]]
             })

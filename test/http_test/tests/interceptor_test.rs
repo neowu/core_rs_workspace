@@ -8,7 +8,6 @@ use framework::http::HeaderValue;
 use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::log::Severity;
-use framework::web::access_control;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Next;
@@ -45,11 +44,6 @@ async fn account(_state: Arc<AppState>, request: Request) -> Result<Response, Ex
     Ok(Response::text(user.0.clone()))
 }
 
-async fn sys_info(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
-    access_control::validate_local_peer(&request)?;
-    Ok(Response::text("info"))
-}
-
 async fn public(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
     Ok(Response::text(request.extension::<User>().is_some().to_string()))
 }
@@ -57,20 +51,14 @@ async fn public(_state: Arc<AppState>, request: Request) -> Result<Response, Exc
 #[integration_test]
 async fn interceptor() -> Result<(), Exception> {
     let state = Arc::new(AppState { token: "secret" });
-    let router = Router::new()
-        .merge(Router::state(Arc::clone(&state)).route(Method::GET, "/public", public).route(
-            Method::GET,
-            "/_sys/info",
-            sys_info,
-        ))
-        .merge(
-            Router::state(state)
-                .intercept(trace)
-                .route(Method::GET, "/account", account)
-                // applies to routes registered before it as well
-                .intercept(login)
-                .prefix(Method::GET, "/account/", account),
-        );
+    let router = Router::new().merge(Router::state(Arc::clone(&state)).route(Method::GET, "/public", public)).merge(
+        Router::state(state)
+            .intercept(trace)
+            .route(Method::GET, "/account", account)
+            // applies to routes registered before it as well
+            .intercept(login)
+            .prefix(Method::GET, "/account/", account),
+    );
     let mut server = TestServer::start(router).await;
     let client = &http_client(false);
 
@@ -93,16 +81,6 @@ async fn interceptor() -> Result<(), Exception> {
         assert_eq!(response.headers[TRACE], "traced");
         assert_eq!(response.text()?, "neo");
     }
-
-    // local only, the test client is on loopback, a non local peer address is covered by unit tests
-    let response = execute(client, Method::GET, server.url("/_sys/info")).await?;
-    assert_eq!(response.text()?, "info");
-
-    // forwarded by a proxy, denied even with a local peer and a local forwarded ip
-    let mut request = HttpRequest::new(Method::GET, server.url("/_sys/info"))?;
-    request.headers.insert(HeaderName::from_static("x-forwarded-for"), HeaderValue::from_static("10.0.0.1"));
-    let response = client.execute(request).await?;
-    assert_eq!(response.status, 403);
 
     server.shutdown().await;
     Ok(())

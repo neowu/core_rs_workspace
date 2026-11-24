@@ -11,7 +11,7 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs),
 [`log_processor_rs`](../app/log_processor_rs/src/nats/action_handler.rs) · siblings:
 [`action_future_design.md`](action_future_design.md),
 [`action_alloc_stats.md`](action_alloc_stats.md), [`task_executor.md`](task_executor.md),
-[`clickhouse.md`](clickhouse.md), [`metrics.md`](metrics.md),
+[`action_inflight.md`](action_inflight.md), [`clickhouse.md`](clickhouse.md), [`metrics.md`](metrics.md),
 [`benchmark/http_server.md`](benchmark/http_server.md)
 
 An **action** is one unit of work an app performs — an http request, a consumed message, a scheduled
@@ -21,7 +21,7 @@ configure, and nothing an app has to remember to emit.
 
 The design follows from a single constraint: **an action's record must be cheap enough to produce on
 every request, in production, always on.** Everything below is a consequence — the record is built
-in a task local with no locking, keys are static strings so nothing hashes, the trace lives in one
+in the task's own future with no locking, keys are static strings so nothing hashes, the trace lives in one
 buffer, and the whole thing leaves the request path over a channel.
 
 ## The record
@@ -39,13 +39,14 @@ buffer, and the whole thing leaves the request path over a channel.
 
 ## Lifecycle
 
-1. `log::action(kind, ref_ids, task)` builds an `Action` and scopes it as the `CURRENT_ACTION` task
-   local for the task's duration. The future is hand written so the task is stored exactly once —
-   that is its own document, [`action_future_design.md`](action_future_design.md).
+1. `log::action(kind, ref_ids, task)` builds an `Action` held by the returned future, which makes
+   it the thread's current action whenever the task is polled. The future is hand written so the
+   task is stored exactly once — that is its own document, [`action_future.md`](action_future.md).
+   Until it finishes it is listed by `GET /sys/action`, [`action_inflight.md`](action_inflight.md).
 2. Framework layers and app code write into it through the macros, which all go through
-   `CURRENT_ACTION.try_with`. Outside an action `try_with` returns `Err` and the call is a no-op;
+   `with_current`. Outside an action it returns `None` and the call is a no-op;
    this is the only "no current action" signal, and it is never an error.
-3. When the task resolves, the `Action` is taken back out of the future's own slot, an `Err` result
+3. When the task resolves, the `Action` is taken out of the future, an `Err` result
    is logged as an exception, `finish` records `elapsed`, and the action converts into an
    `ActionMessage`.
 4. The message goes onto the unbounded channel to the appender daemon and the request path is done
@@ -53,7 +54,7 @@ buffer, and the whole thing leaves the request path over a channel.
 
 ## Design decisions
 
-### The action is a task local, not a parameter
+### The action is ambient, not a parameter
 
 `log!` and `context!` are callable from anywhere inside the action's scope with no plumbing, which
 is what makes it realistic for a framework layer, a controller and a library call to all write into
@@ -219,6 +220,10 @@ random word, so two pods on one host still differ), 2 bytes of a wrapping counte
 time-ordered, which is what makes them usable as a sort key and as a gcloud trace id, and they are
 built into a fixed 20-byte buffer with no formatting machinery.
 
+The id stays that buffer (`id_generator::Id`, `Copy`) for the life of the action and only becomes a
+`String` in the message. The in-flight dump and the thread dump's signal handler read it while the
+action is mutably borrowed, which a copy outside the action allows and a heap string does not.
+
 ### Locally produced metadata is borrowed, scalar context values are inline
 
 `ActionMessage` holds `Cow<'static, str>` for `app`, `host`, `kind` and every context/stats key, and
@@ -292,7 +297,7 @@ multiple `ref_id`s, so the common case stays a scalar column.
 straight from the message's own ordered `(key, values)` pairs rather than a `HashMap` built per row.
 So a batch costs one `Vec` of rows and nothing else — the ordered `Vec` the record has carried since
 `context!` wrote into it reaches clickhouse unchanged, order included. Why the client supports this
-and what it costs is in [`clickhouse.md`](clickhouse.md).
+and what it costs is in [`action_inflight.md`](action_inflight.md), [`clickhouse.md`](clickhouse.md).
 
 One consequence is visible in the data: a context key an action set twice is two map entries rather
 than one, where the `HashMap` used to keep only the last.
@@ -331,7 +336,7 @@ Measured on the http server benchmark, which exists for exactly this question; m
 - **No regression guard on the record's cost.** Every action carries its own allocation counts,
   but nothing fails when they go up; noticing is still a person comparing two reports. The counts
   and what they cost: [`action_alloc_stats.md`](action_alloc_stats.md).
-- **Per-line trace overhead remains.** HTTP logging uses the normal task-local adapters after
+- **Per-line trace overhead remains.** HTTP logging uses the normal current action adapters after
   the [batching experiment](../plan/http_tuning.md) did not justify its extra code. Each accepted
   trace line still reads the clock; sharing timestamps would change the timing shown in traces.
 - **The trace is collected even when no appender could ever emit it.** There is no way for an

@@ -6,6 +6,7 @@ use framework::exception::Exception;
 use framework::http::Method;
 use framework::system::DefaultEnv;
 use framework::system::System;
+use framework::web::diagnostic;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
@@ -55,6 +56,11 @@ async fn main() {
     // nothing per request, so appender output never becomes the bottleneck under load
     let system = system.start_logger(TraceAppender);
     system.start_service(|token| http_server.start(app, token));
+    // diagnostic routes on loopback, as an app would wire them, so their cost is part of what is measured
+    system.start_service(|token| {
+        HttpServer::new(HttpServerConfig { bind_address: "127.0.0.1:8081".to_owned(), ..Default::default() })
+            .start(diagnostic::routes(), token)
+    });
 
     system.wait().await;
     system.shutdown_logger().await;

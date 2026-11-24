@@ -117,6 +117,13 @@ impl Response {
         Response { status: StatusCode::OK, headers: HeaderMap::new(), body: Body::File { stream, remaining: length } }
     }
 
+    // 200 `text/plain; charset=utf-8`, each chunk is produced when the connection is ready to write it
+    pub(crate) fn chunks(chunks: impl Iterator<Item = Bytes> + Send + 'static) -> Response {
+        let mut headers = HeaderMap::with_capacity(1);
+        headers.insert(header::CONTENT_TYPE, TEXT_PLAIN);
+        Response { status: StatusCode::OK, headers, body: Body::Chunks(Box::new(chunks)) }
+    }
+
     // json body without logging, the exception is already logged with the action
     pub(crate) fn error(exception: &Exception) -> Response {
         let status = exception.code.map_or(StatusCode::INTERNAL_SERVER_ERROR, |code| match code {
@@ -157,7 +164,7 @@ impl Response {
     pub(crate) const fn sse_body(&mut self) -> Option<&mut SseBody> {
         match &mut self.body {
             Body::Sse(body) => Some(body),
-            Body::Empty | Body::Full(_) | Body::File { .. } => None,
+            Body::Empty | Body::Full(_) | Body::File { .. } | Body::Chunks(_) => None,
         }
     }
 
@@ -175,6 +182,8 @@ pub(crate) enum Body {
     Full(Bytes),
     File { stream: ReaderStream<Take<File>>, remaining: u64 },
     Sse(SseBody),
+    // pulled synchronously, for diagnostic dumps too large to build in memory
+    Chunks(Box<dyn Iterator<Item = Bytes> + Send>),
 }
 
 impl http_body::Body for Body {
@@ -195,6 +204,7 @@ impl http_body::Body for Body {
                 Frame::data(bytes)
             }),
             Body::Sse(body) => body.poll_frame(cx),
+            Body::Chunks(chunks) => Poll::Ready(chunks.next().map(|bytes| Ok(Frame::data(bytes)))),
         }
     }
 
@@ -204,6 +214,7 @@ impl http_body::Body for Body {
             Body::Full(bytes) => bytes.is_empty(),
             Body::File { remaining, .. } => *remaining == 0,
             Body::Sse(body) => body.is_end_stream(),
+            Body::Chunks(_) => false,
         }
     }
 
@@ -212,7 +223,7 @@ impl http_body::Body for Body {
             Body::Empty => SizeHint::with_exact(0),
             Body::Full(bytes) => SizeHint::with_exact(bytes.len() as u64),
             Body::File { remaining, .. } => SizeHint::with_exact(*remaining),
-            Body::Sse(_) => SizeHint::default(),
+            Body::Sse(_) | Body::Chunks(_) => SizeHint::default(),
         }
     }
 }

@@ -130,17 +130,18 @@ extractors, per request handler clones and a tower middleware stack the framewor
   Strict: an invalid node is `BAD_REQUEST`, no fallback. Absent / blank `x-forwarded-for` or
   `max_forwarded_ips = 0` uses the peer address. Never resolves DNS.
 - `client_ip` is for logging / business use only, never for access control.
-- `/_sys/` is for operation endpoints (`PUT /_sys/job/trigger`), local only: each controller calls
-  `web::access_control::validate_local_peer`, the server doesn't check the path, so other requests pay
-  nothing; a new `/_sys/` controller must add the call. The connection peer address must be loopback
-  (`127/8`, `::1`, ipv4-mapped included): operation calls come from the same host or `kubectl port-forward`,
-  which connects inside the pod network namespace; private network peers (other pods, VPC) are denied. The
-  request must also not have `x-forwarded-for`, so a reverse proxy on the same host is denied too. Presence is
-  checked, not the value, it doesn't depend on `max_forwarded_ips`. A local proxy that doesn't add the header
-  (mesh sidecar such as Istio connects from `127.0.0.6`) is still trusted, block `/_sys/` at the edge there.
+- `/sys/` is for operation endpoints (`PUT /sys/job/trigger`, `GET /sys/action` see
+  [action_inflight.md](action_inflight.md), `GET /sys/thread` see [thread_dump.md](thread_dump.md)). They
+  have no access control of their own: the app serves them from a second `HttpServer` bound to loopback
+  (`127.0.0.1:8081`), never merged into the app router. Isolation is the listener, not a per request check,
+  so nothing depends on peer address or `x-forwarded-for` and the app server pays nothing. Operation calls
+  come from the same host or `kubectl port-forward`, which connects inside the pod network namespace; other
+  pods and the ingress cannot reach the port. Anything else on loopback can (a sidecar in the same pod).
+  Nothing enforces the separation, merging sys routes into the app router exposes them.
 - `Response` constructors: `empty()` (204), `json(&T)` (logs body and `response_content_length`), `text`,
   `html`, `bytes(body, content_type)`, with `status(..)` / `header(..)` builders.
-- The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse`) implementing `http_body::Body`,
+- The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse` / `Chunks`, the last one internal,
+  for diagnostic dumps) implementing `http_body::Body`,
   not `BoxBody`, avoiding an allocation and dynamic dispatch per response; sizes are exact so hyper sets
   `content-length`.
 

@@ -94,7 +94,7 @@ async fn process_events(state: &AppState, app: &str, events: Vec<Event>, request
         }
 
         let mut message = EventMessage {
-            id: log::id_generator::next_id(now.unix_timestamp_millis()),
+            id: log::id_generator::next_id(now.unix_timestamp_millis()).as_str().to_owned(),
             timestamp: now,
             app: app.to_owned(),
             client_timestamp: event.date,

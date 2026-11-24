@@ -7,8 +7,8 @@ use http::HeaderName;
 use crate::exception::Exception;
 use crate::json;
 
-pub mod access_control;
 pub mod api;
+pub mod diagnostic;
 mod file;
 pub mod request;
 pub mod response;

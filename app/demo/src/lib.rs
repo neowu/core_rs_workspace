@@ -9,6 +9,7 @@ use framework::system::System;
 use framework::task::start_executor;
 use framework::time::Offset;
 use framework::time::SignedDuration;
+use framework::web::diagnostic;
 use framework::web::router::Router;
 use framework::web::server::HttpServer;
 use framework::web::server::HttpServerConfig;
@@ -57,14 +58,21 @@ pub async fn run() {
 
     let mut scheduler = Scheduler::new(Offset::new(8, 0));
     scheduler.schedule_fixed_rate("demo", demo_job, SignedDuration::from_hours(1));
-    let app = Router::new().merge(scheduler.routes(state)).merge(user::web::routes(state)).merge(web::routes());
+    let app = Router::new().merge(user::web::routes(state)).merge(web::routes());
+    let sys = Router::new().merge(scheduler.routes(state)).merge(diagnostic::routes());
+
     let http_server = HttpServer::new(HttpServerConfig { shutdown_delay: Duration::ZERO, ..Default::default() });
     system.add_metrics(http_server.metrics());
 
     // let system = system.start_logger(NatsAppender::new(&config.nats_appender_url).await);
     let system = system.start_logger(ConsoleAppender);
+
     system.start_service(|token| scheduler.start(state, token));
     system.start_service(|token| http_server.start(app, token));
+    system.start_service(|token| {
+        HttpServer::new(HttpServerConfig { bind_address: "127.0.0.1:8081".to_owned(), ..Default::default() })
+            .start(sys, token)
+    });
 
     system.wait().await;
     executor.shutdown(Duration::from_secs(15)).await;

@@ -27,6 +27,7 @@ pub mod shell;
 pub mod string;
 pub mod system;
 pub mod task;
+mod thread;
 pub mod time;
 pub mod validate;
 pub mod web;

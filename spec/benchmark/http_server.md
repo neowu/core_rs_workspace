@@ -14,7 +14,7 @@ layer, action log, routing, request parsing, controller, serialization).
 
 | process | role |
 |---|---|
-| `http_test_server` | target under test, a framework app with only the http server wired |
+| `http_test_server` | target under test, a framework app with only the http servers wired |
 | `http_test_client` | measuring instrument, a closed loop load generator |
 
 ## Scenarios
@@ -73,6 +73,8 @@ CREATE TABLE "benchmark_entity" (
   machine (host, ip, cpu, cores, memory, os), tokio
   workers, its own cpu time and peak rss at the moment of the call.
 - The server binds `0.0.0.0:8080`, no override.
+- The server also serves `diagnostic::routes()` on `127.0.0.1:8081`, as an app wires them, so
+  in-flight tracking cost is part of every run; the client never calls it.
 
 ## Design decisions
 
@@ -88,7 +90,7 @@ CREATE TABLE "benchmark_entity" (
   req/s at ~50% of 2 cores whatever the concurrency). Finding the server's ceiling needs a few
   connections; many are worse, each carries fewer streams per wakeup, so cpu per request rises.
 - **Client uses `framework::http::HttpClient`** (no retry, 10s timeout) outside any action, so its
-  logging and stats are no-ops (a failed task-local lookup, `format_args!` never rendered). Measured
+  logging and stats are no-ops (a null current action, `format_args!` never rendered). Measured
   2026-11-09 against `reqwest` on one host: ~15% more req/s at ~25% less client cpu.
 - **The measured loop never parses a response**; one `verify` request at startup parses and
   asserts, so a wrong url fails fast. Urls, headers and bodies are prepared once.

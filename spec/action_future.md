@@ -5,7 +5,7 @@ Code: [`lib/framework/src/log.rs`](../lib/framework/src/log.rs) · consumers:
 [`framework_kafka/src/consumer.rs`](../lib/framework_kafka/src/consumer.rs)
 
 `log::action(kind, ref_ids, task)` wraps a future so an `Action` (id, kind, context, stats, log
-buffer) is a task local for its duration and is emitted to the appender when it resolves.
+buffer) is the thread's current action while it is polled and is emitted to the appender when it resolves.
 
 It is a plain `fn` returning a hand-written `ActionFuture<F>` that stores `task` **exactly once**.
 This document exists because the obvious implementations do not: writing it as an `async fn` costs
@@ -53,7 +53,18 @@ hand-written `Future`.
 pin_project! {
     pub struct ActionFuture<F> {
         #[pin]
-        inner: TaskLocalFuture<RefCell<Action>, F>,
+        task: Option<F>,
+        #[pin]
+        cell: ActionCell,
+    }
+
+    impl<F> PinnedDrop for ActionFuture<F> {
+        fn drop(this: Pin<&mut Self>) {
+            let mut this = this.project();
+            if this.task.is_some() {
+                this.cell.as_ref().enter(|| this.task.set(None));
+            }
+        }
     }
 }
 
@@ -62,7 +73,7 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    ActionFuture { inner: CURRENT_ACTION.scope(RefCell::new(action), task) }
+    ActionFuture { task: Some(task), cell: ActionCell::new(action) }
 }
 
 impl<F, R> Future for ActionFuture<F>
@@ -73,10 +84,18 @@ where
 
     fn poll(self: Pin<&mut ActionFuture<F>>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        let result = ready!(this.inner.as_mut().poll(cx));
-        let mut current_action =
-            this.inner.take_value().map(RefCell::into_inner).expect("current action must be within the scope");
+        let cell = this.cell.as_ref();
+        let polled = cell.poll(|| {
+            let task = this.task.as_mut().as_pin_mut().expect("action must not be polled after completion");
+            let polled = task.poll(cx);
+            if polled.is_ready() { this.task.set(None); }
+            polled
+        });
+        let Poll::Ready(result) = polled else { return Poll::Pending };
+        let (mut current_action, alloc_stats, poll_stats) = cell.finish();
         if let Err(e) = &result { current_action.log_exception(e); }
+        alloc_stats.write_to(&mut current_action);
+        poll_stats.write_to(&mut current_action);
         current_action.finish();
         if let Some(sender) = SENDER.get() {
             let _result = sender.send(Message::Action(current_action.into()));
@@ -86,27 +105,27 @@ where
 }
 ```
 
-The whole design hangs on `TaskLocalFuture::take_value(self: Pin<&mut Self>) -> Option<T>` (tokio
-1.53.1, exported as `tokio::task::futures::TaskLocalFuture`, *not* `tokio::task::TaskLocalFuture`).
-It lets the finish logic recover the `Action` from the future's own slot **after** the scope
-resolves, instead of from inside the scope via `CURRENT_ACTION.with(..)` — which is what forced the
-extra async layer in the first place.
+The action is a field of the future, not a tokio task local. `ActionCell::poll` points the thread
+local `CURRENT_ACTION` at it for the duration of one poll and restores the previous value after, so
+the finish logic takes the `Action` straight out of the cell once the task resolves — no async layer
+is needed to reach it. It also gives the action a fixed address, which the in-flight registry reads:
+[`action_inflight.md`](action_inflight.md).
 
-### The task local is `RefCell<Action>`, not `RefCell<Option<Action>>`
+An earlier version scoped the action with `tokio::task_local!` and recovered it through
+`TaskLocalFuture::take_value`. It was 1x as well, but swapped the whole action in and out of the
+thread local on every poll and left nothing readable from outside the task.
 
-The `Option` only existed so the old in-scope `CURRENT_ACTION.with(|a| a.take())` had a hole to
-leave behind. Nothing empties the slot any more, so the action is present for the whole scope by
-construction and every accessor stops matching on an impossible case:
+### The current action is `RefCell<Action>`
+
+Present for the whole poll by construction, so no accessor matches on an impossible case:
 
 ```rust
-let _result = CURRENT_ACTION.try_with(|action| {
+let _result = with_current(|action| {
     action.borrow_mut().log(severity, error_code, Some(location), message);
 });
 ```
 
-`try_with` returning `Err` outside an action remains the real "no current action" signal. This saved
-zero bytes and was not meant to — `Action` holds a `String`, so `Option<Action>` is niche-optimised
-to the same 216 bytes. It is a readability change only.
+`with_current` returning `None` outside an action is the "no current action" signal.
 
 ### The `Result` bound lives on the `Future` impl, deliberately
 
@@ -124,10 +143,13 @@ is deferred to the `.await`, where `F::Output` is known.
 
 ## Behaviour and invariants
 
-- **Finish work runs outside the task-local scope.** `log_exception`, `finish` and `sender.send`
-  run after `scope_inner` returns. None touch `CURRENT_ACTION`, so behaviour is unchanged — and it
-  removes the double-borrow hazard described above `macro_rules! log`.
-- **Cancellation is unchanged.** A dropped, incomplete action is still not emitted.
+- **Finish work runs outside the poll.** `log_exception`, `finish` and `sender.send` run after the
+  cell has reset the current action, on the `Action` they own.
+- **`ActionFuture` is never `Unpin`**, the cell is registered by address.
+- **A dropped, incomplete action is not emitted.**
+- **The task is dropped inside its action**, when it completes and when the future is cancelled, as
+  the tokio task local did. A span held across an await would otherwise log into whatever action is
+  current where the future is dropped, e.g. the parent that timed it out.
 - **`poll` after `Ready` panics** on the `expect`, as any non-fused future would. Every caller
   drives it through `.await`.
 - **`RefCell` borrow discipline is unchanged** — accessors hold `borrow_mut()` for their closure
@@ -244,7 +266,7 @@ Framework, `log_processor_rs`, lowered-threshold clippy:
 | `init_clickhouse(..)` | 2,208 B |
 | `log::action` + clickhouse execute | 1,592 B |
 
-`log::action`'s overhead is now fixed — the 216-byte `Action` plus `TaskLocalFuture` bookkeeping —
+`log::action`'s overhead is now fixed — the 216-byte `Action` plus the cell's stats and state —
 rather than a multiplier. (The 632 B between rows 1 and 2 covers that overhead *and* the async
 block's own locals.)
 

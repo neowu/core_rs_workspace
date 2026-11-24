@@ -81,4 +81,5 @@ in the action record, which is the thing built to hold it.
   `plan/nats_api_tuning.md`, to be measured across worker counts and concurrency before anything is
   sharded or made optional.
 - **A task's name is the only shutdown diagnostic.** There is no age, no stack, no originating action
-  id, so an overrun tells you which subject hung and not which request.
+  id, so an overrun tells you which subject hung and not which request. While the process is up,
+  `GET /sys/action` has that, [`action_inflight.md`](action_inflight.md).

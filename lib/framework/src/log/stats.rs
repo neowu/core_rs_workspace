@@ -70,8 +70,8 @@ fn high_mem_alloc() -> Option<(u64, u64)> {
 
 /// What one action allocated, accumulated across its polls and written into its stats.
 pub(crate) struct AllocStats {
-    count: u64,
-    bytes: u64,
+    pub(crate) count: u64,
+    pub(crate) bytes: u64,
 }
 
 impl AllocStats {
@@ -114,21 +114,25 @@ impl AllocStats {
 
 pub(crate) struct PollStats {
     // nanos spent inside inner poll, i.e. holding the worker thread; waiting is not counted
-    elapsed: u64,
-    count: u64,
+    pub(crate) elapsed: u64,
+    pub(crate) count: u64,
+    // end of the last poll, the action has been waiting since
+    pub(crate) last_polled: Option<Instant>,
 }
 
 impl PollStats {
     pub(crate) const fn new() -> PollStats {
-        PollStats { elapsed: 0, count: 0 }
+        PollStats { elapsed: 0, count: 0, last_polled: None }
     }
 
     #[inline]
     pub(crate) fn poll<T>(&mut self, poll: impl FnOnce() -> T) -> T {
         let start = Instant::now();
         let result = poll();
-        self.elapsed += start.elapsed().as_nanos() as u64;
+        let end = Instant::now();
+        self.elapsed += end.duration_since(start).as_nanos() as u64;
         self.count += 1;
+        self.last_polled = Some(end);
         result
     }
 
@@ -143,6 +147,7 @@ mod tests {
     use std::hint::black_box;
 
     use crate::log::action::Action;
+    use crate::log::id_generator::next_id;
     use crate::log::stats::AllocStats;
     use crate::time::DateTime;
 
@@ -160,7 +165,7 @@ mod tests {
             allocs.poll(|| drop(black_box(Vec::<u8>::with_capacity(CAPACITY))));
         }
 
-        let mut action = Action::new("id".to_owned(), "test", None, DateTime::now());
+        let mut action = Action::new(next_id(0), "test", None, DateTime::now());
         allocs.write_to(&mut action);
 
         assert!(stat(&action, "alloc_count").expect("alloc_count") >= 2, "stats={:?}", action.stats);
@@ -173,7 +178,7 @@ mod tests {
         let allocs = AllocStats::new();
         drop(black_box(Vec::<u8>::with_capacity(CAPACITY)));
 
-        let mut action = Action::new("id".to_owned(), "test", None, DateTime::now());
+        let mut action = Action::new(next_id(0), "test", None, DateTime::now());
         allocs.write_to(&mut action);
 
         assert_eq!(stat(&action, "alloc_count"), Some(0));
