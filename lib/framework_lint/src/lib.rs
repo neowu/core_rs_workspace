@@ -23,7 +23,7 @@ const USAGE: &str = "Usage: cargo lint [--custom-only] [--message-format=human|j
 pub struct LintConfig {
     /// Maximum lines per Rust source file, not counting top-level `#[cfg(test)]` items.
     pub max_file_lines: usize,
-    /// Packages exempt from `unused_pub`, for libraries whose `pub` functions are used outside the workspace.
+    /// Packages exempt from `unused_pub`, for libraries whose `pub` items are used outside the workspace.
     pub unused_pub_exempt_packages: Vec<String>,
 }
 

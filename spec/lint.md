@@ -86,33 +86,47 @@ file (`#[cfg(test)] mod x;`) is not recognized as test code, which is why unit t
 stay inline. Files that do not parse are skipped and left to the compiler. The
 diagnostic points at the first line past the limit.
 
-## Unused pub functions
+## Unused pub items
 
 | Rule | Requirement |
 | --- | --- |
-| `unused_pub` | A `pub` function or inherent method under a member's `src` is mentioned somewhere else in the workspace. |
+| `unused_pub` | A `pub` function, inherent method or associated const, struct, enum, union, trait, type alias, const, or static under a member's `src` is mentioned somewhere else in the workspace. |
 
 rustc's `dead_code` covers everything not exported from a crate (`pub(crate)`, private
 items, and `pub` items in binaries), and `unreachable_pub` forces unexported items to be
-`pub(crate)`. This rule covers the rest: functions a library exports that no one calls.
+`pub(crate)`. This rule covers the rest: items a library exports that no one uses.
 The workspace is treated as the universe, so a library's public API must be exercised by
 at least one other crate, test, benchmark, or unit test.
 
 Matching is by name on raw tokens, not resolved references, which keeps the check fast
 and dependency free, and biased against false positives: any mention of the name in any
 `.rs` file of any member counts as a use, including inside macro invocations, `quote!`
-bodies, and string literals (e.g. `#[serde(deserialize_with = "path")]`). Doc comments
-and other definitions of the same name (`fn name`) do not count. The cost is false
-negatives: an unused function sharing its name with any used item is not reported.
+bodies, and string literals (e.g. `#[serde(deserialize_with = "path")]`). Doc comments,
+other definitions of the same name (the name after `fn`, `struct`, `const`, ...), and
+the self type of an `impl` block (`impl Type`, `impl Trait for Type`) do not count, so a
+type that only has impls is still unused. The cost is false negatives: an unused item
+sharing its name with any used item is not reported, and neither is one mentioned only
+by a `use`/`pub use` or by its own impl body (`Type {}` rather than `Self {}`).
 
-Not checked: `pub(crate)` and private functions, trait methods and trait impls,
-`#[cfg(test)]` items, proc macro entry points, and non-function items.
+Items named by `macro_rules!` arguments are checked without expansion. A macro whose
+body holds `pub <keyword> $name` (e.g. `pub struct $name;`) defines an item per
+identifier bound to `$name`, so each invocation's arguments are matched against the
+macro's patterns and the bound identifiers become candidates, reported at the invocation.
+That occurrence is the definition, not a mention. Macros are identified by name only,
+across the workspace; matching approximates rustc (fragments parsed with `syn`, greedy
+repetitions), and an invocation no arm matches is skipped.
+
+Not checked: `pub(crate)` and private items, fields and enum variants, trait methods and
+trait impls, `#[cfg(test)]` items, proc macro entry points, modules, and items generated
+any other way: with a name fixed in a macro body, through a macro that calls another
+macro, or by proc macros and derives.
 
 Exceptions, for API meant for callers outside the workspace:
 
-- per function, a `// lint: allow(unused_pub)` comment (a reason may follow) in the
+- per item, a `// lint: allow(unused_pub)` comment (a reason may follow) in the
   comment block directly above the item, or between its doc comments, attributes, and
-  signature. A comment is used because stable Rust rejects attributes and lint names of
+  name. For an item named by a macro argument, the comment goes directly above that
+  name in the argument list. A comment is used because stable Rust rejects attributes and lint names of
   unknown tools.
 - per package, `LintConfig::unused_pub_exempt_packages`, for libraries consumed only by
   other workspaces. Exempt packages still count as users of other packages.
