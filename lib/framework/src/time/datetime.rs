@@ -22,7 +22,7 @@ use crate::time::Time;
 
 /// Timestamp in UTC, the type every app should use to store and transfer a point in time.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct DateTime(time::OffsetDateTime);
+pub struct DateTime(OffsetDateTime);
 
 impl DateTime {
     #[inline]

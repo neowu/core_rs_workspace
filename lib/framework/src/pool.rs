@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;

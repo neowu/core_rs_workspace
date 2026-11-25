@@ -220,7 +220,7 @@ fn fields_impl(model: &EntityModel) -> TokenStream {
 
     let consts = model.columns.iter().map(|column| {
         let const_ident =
-            proc_macro2::Ident::new(&column.field_ident.to_string().to_uppercase(), column.field_ident.span());
+            Ident::new(&column.field_ident.to_string().to_uppercase(), column.field_ident.span());
         let column_name = &column.column;
         let value_type = column_field_type(column);
         let vis = &column.field_vis;

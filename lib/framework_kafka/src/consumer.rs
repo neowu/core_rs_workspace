@@ -2,7 +2,6 @@ use std::any::type_name;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::future::Future;
 use std::pin::Pin;
 use std::str::from_utf8;
 use std::sync::Arc;

@@ -261,8 +261,19 @@ redundant_feature_names = "warn"
 wildcard_dependencies = "warn"
 
 [workspace.lints.rust]
+ambiguous_negative_literals = "warn"
+explicit_outlives_requirements = "warn"
+let_underscore_drop = "warn"
+meta_variable_misuse = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+unit_bindings = "warn"
 unreachable_pub = "warn"
 unused_crate_dependencies = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
 
 [profile.dev]
 debug = "none"

@@ -1,7 +1,6 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::future::Future;
 use std::mem::transmute_copy;
 use std::pin::Pin;
 use std::sync::Arc;

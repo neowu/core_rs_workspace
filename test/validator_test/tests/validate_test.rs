@@ -5,7 +5,7 @@ use framework::validate::Validator;
 use framework_macro::Validate;
 
 // path qualified `String` must still be detected as a string
-#[allow(clippy::absolute_paths)]
+#[allow(unused_qualifications, clippy::absolute_paths)]
 #[derive(Validate)]
 struct Bean {
     #[range(min = -5, max = 10)]

@@ -200,7 +200,6 @@ mod tests {
     use std::fs::create_dir_all;
     use std::fs::remove_dir_all;
     use std::fs::write;
-    use std::path::Path;
 
     use super::*;
 
@@ -287,7 +286,7 @@ mod tests {
     #[should_panic(expected = "config not found")]
     fn load_config_with_missing_file() {
         let dir = test_dir("missing_file");
-        let _: TestConfig = __load_config(None, "assets/conf.json", dir.to_str().unwrap());
+        let _config: TestConfig = __load_config(None, "assets/conf.json", dir.to_str().unwrap());
     }
 
     // __load_config loads .env once per process, which other tests may already have triggered,
