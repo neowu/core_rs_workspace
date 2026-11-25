@@ -49,10 +49,10 @@ impl<S> Scheduler<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    /// `PUT /sys/job/trigger` with `{"job": "name"}` triggers a job. No access control, serve from a separate http server bound to loopback.
+    /// `PUT /_sys/job/trigger` with `{"job": "name"}` triggers a job. No access control, the http server serving it must bind loopback.
     pub fn routes(&self, state: S) -> Router {
         let schedules = self.schedules.iter().map(|schedule| (schedule.name, Arc::clone(schedule))).collect();
         let state = JobState { state, timezone: self.timezone, schedules, executor: Arc::clone(&self.executor) };
-        Router::state(Arc::new(state)).route(Method::PUT, "/sys/job/trigger", trigger_job).into()
+        Router::state(Arc::new(state)).route(Method::PUT, "/_sys/job/trigger", trigger_job).into()
     }
 }

@@ -33,10 +33,10 @@ design: [`http_server.md`](../http_server.md), [`http_server_api.md`](../http_se
   client are not covered; the unit test covers the closure dropped on shutdown without the body being polled.
 - `interceptor_test`: interceptors run in order around the handler of exact and prefix routes registered before or after them, short circuit
   with `403`, pass a request extension, don't apply to another router with the same state.
-- `diagnostic_test`: sys routes on their own server, next to the app server; `/sys/action` lists a request
+- `diagnostic_test`: sys routes on their own server, next to the app server; `/_sys/action` lists a request
   waiting in its app handler as `suspended` with its masked trace, not the dump request itself, drops it
-  once it completes; `/sys/thread` has the thread serving the request with its action id; both `404` on
-  the app server.
+  once it completes; `/_sys/thread` has the thread serving the request with its action id; both `404` on
+  the app server. A `/_sys/` route on a non loopback listener panicking at start is a unit test.
 - Consume or drop every response body before shutdown: graceful drain has no deadline, an unread h2
   stream keeps the server waiting on flow control.
 

@@ -1,5 +1,5 @@
 //! Where an action lives while it runs: the thread's current action, and the registry of actions in
-//! flight that `/sys/action` dumps.
+//! flight that `/_sys/action` dumps.
 //!
 //! Design: `spec/action_inflight.md`.
 

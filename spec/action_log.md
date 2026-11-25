@@ -42,7 +42,7 @@ buffer, and the whole thing leaves the request path over a channel.
 1. `log::action(kind, ref_ids, task)` builds an `Action` held by the returned future, which makes
    it the thread's current action whenever the task is polled. The future is hand written so the
    task is stored exactly once — that is its own document, [`action_future.md`](action_future.md).
-   Until it finishes it is listed by `GET /sys/action`, [`action_inflight.md`](action_inflight.md).
+   Until it finishes it is listed by `GET /_sys/action`, [`action_inflight.md`](action_inflight.md).
 2. Framework layers and app code write into it through the macros, which all go through
    `with_current`. Outside an action it returns `None` and the call is a no-op;
    this is the only "no current action" signal, and it is never an error.

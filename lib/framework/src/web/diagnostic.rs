@@ -19,11 +19,11 @@ async fn thread(_state: Arc<()>, _request: Request) -> Result<Response, Exceptio
     Ok(Response::text(thread::dump()))
 }
 
-/// `GET /sys/action` lists the actions in flight with the trace each has written so far,
-/// `GET /sys/thread` dumps the stack of every thread. No access control, serve from a separate http server bound to loopback.
+/// `GET /_sys/action` lists the actions in flight with the trace each has written so far,
+/// `GET /_sys/thread` dumps the stack of every thread. No access control, the http server serving it must bind loopback.
 pub fn routes() -> Router {
     Router::state(Arc::new(()))
-        .route(Method::GET, "/sys/action", action)
-        .route(Method::GET, "/sys/thread", thread)
+        .route(Method::GET, "/_sys/action", action)
+        .route(Method::GET, "/_sys/thread", thread)
         .into()
 }

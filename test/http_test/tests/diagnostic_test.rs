@@ -46,7 +46,7 @@ async fn in_flight_actions() -> Result<(), Exception> {
     // the handler is still being polled right after it signals, wait until it is suspended
     let deadline = Instant::now() + Duration::from_secs(2);
     let dump = loop {
-        let response = execute(&client, Method::GET, sys_server.url("/sys/action")).await?;
+        let response = execute(&client, Method::GET, sys_server.url("/_sys/action")).await?;
         let dump = response.text()?.to_owned();
         if dump.contains("[context] path=/slow") {
             break dump;
@@ -63,19 +63,19 @@ async fn in_flight_actions() -> Result<(), Exception> {
     assert!(entry.contains("kind=http, state=suspended, elapsed="), "entry={entry}");
     assert!(entry.contains(r#"waiting, body={"password":"**masked**"}"#), "entry={entry}");
     // the dump request is not listed
-    assert!(!dump.contains("path=/sys/action"), "dump={dump}");
+    assert!(!dump.contains("path=/_sys/action"), "dump={dump}");
 
     state.release.notify_one();
     let response = slow_request.await.expect("slow request must not panic")?;
     assert_eq!(response.text()?, "done");
 
-    let response = execute(&client, Method::GET, sys_server.url("/sys/action")).await?;
+    let response = execute(&client, Method::GET, sys_server.url("/_sys/action")).await?;
     let dump = response.text()?;
     // only the test action is left, its trace has the previous dump, so match the count
     assert!(dump.starts_with("in_flight_actions=1\n"), "dump={dump}");
 
     // every thread with its stack, the thread serving the request is polling its http action
-    let response = execute(&client, Method::GET, sys_server.url("/sys/thread")).await?;
+    let response = execute(&client, Method::GET, sys_server.url("/_sys/thread")).await?;
     let dump = response.text()?;
     assert!(dump.starts_with("threads="), "dump={dump}");
     let serving = dump
@@ -86,7 +86,7 @@ async fn in_flight_actions() -> Result<(), Exception> {
     assert!(serving.contains(", action="), "thread={serving}");
 
     // not on the app server
-    for path in ["/sys/action", "/sys/thread"] {
+    for path in ["/_sys/action", "/_sys/thread"] {
         let response = execute(&client, Method::GET, server.url(path)).await?;
         assert_eq!(response.status, 404);
     }

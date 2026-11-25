@@ -728,7 +728,7 @@
     </nav>
     <main>
 
-        <h1>How <code>/sys/action</code> reads an action that is still running</h1>
+        <h1>How <code>/_sys/action</code> reads an action that is still running</h1>
         <p class="lede">The uncommitted change moves the action out of a tokio task local and into the future itself,
             at a fixed address, so a diagnostic request can find it and copy its trace. That needs raw pointers, a
             hand-rolled lock and <code>unsafe</code>. This page walks through each piece and what it cost.</p>
@@ -906,7 +906,7 @@
         </div>
 
         <h2 id="thread">The thread dump, briefly</h2>
-        <p class="sub"><code>/sys/thread</code> is the other half: a <code>running</code> action shows no trace, its
+        <p class="sub"><code>/_sys/thread</code> is the other half: a <code>running</code> action shows no trace, its
             stack is here, matched by action id.</p>
         <p>Rust cannot walk another thread's stack from inside the process. So the dump sends each thread a
             signal, and the thread walks <em>its own</em> stack inside the signal handler. A handler runs on top of
@@ -965,14 +965,14 @@
                     <tr>
                         <td>Seeing a stuck action</td>
                         <td>Impossible. No record until it finishes.</td>
-                        <td><code>/sys/action</code>: id, kind, elapsed, idle time, poll and alloc stats, trace so far.
+                        <td><code>/_sys/action</code>: id, kind, elapsed, idle time, poll and alloc stats, trace so far.
                         </td>
                         <td class="v better">gained</td>
                     </tr>
                     <tr>
                         <td>Which thread runs what</td>
                         <td>Unknown.</td>
-                        <td><code>/sys/thread</code> tags each stack with the action id.</td>
+                        <td><code>/_sys/thread</code> tags each stack with the action id.</td>
                         <td class="v better">gained</td>
                     </tr>
                     <tr>
@@ -1269,7 +1269,7 @@ return Some(out);` },
                         fut: [['task', 'Some(task) (being polled, maybe blocked)', ''], ['cell @ ' + ADDR, 'state=POLLING  (dump reads only id, kind, start_time)', 'hot']],
                         tls: [['CURRENT', ADDR, '']], reg: [['shard 3 (locked)', 'cells[0] = ' + ADDR, '']], out: [['Dump::next()', 'CAS fails ×3 → "state=running, elapsed=3.1s"', 'hot']]
                     },
-                    text: `<p>The dump cannot take the state, so it must not read <code>inner</code>: the worker may be in the middle of appending to the log buffer, which can reallocate.</p><p>It prints what it can from the immutable copies and moves on. An action that keeps showing <code>running</code> is holding a worker thread, and <code>/sys/thread</code> has its stack.</p>`,
+                    text: `<p>The dump cannot take the state, so it must not read <code>inner</code>: the worker may be in the middle of appending to the log buffer, which can reallocate.</p><p>It prints what it can from the immutable copies and moves on. An action that keeps showing <code>running</code> is holding a worker thread, and <code>/_sys/thread</code> has its stack.</p>`,
                     code: R`fn lock_for_dump(&self) -> bool {
     for _ in 0..3 {
         if self.state
@@ -1584,7 +1584,7 @@ if polled.is_ready() { this.task.set(None); }` },
             },
             {
                 c: 5, t: 'Once::call_once', w: 'thread_dump.rs:43, 97', s: 'Run a block exactly once per process, thread safe.',
-                b: `<p>Used to install the signal handler on the first dump, so an app that never calls <code>/sys/thread</code> has no handler installed.</p>`
+                b: `<p>Used to install the signal handler on the first dump, so an app that never calls <code>/_sys/thread</code> has no handler installed.</p>`
             },
             {
                 c: 5, t: 'Box<dyn Iterator<Item = Bytes> + Send>', w: 'web/response.rs:121, 186', s: 'A heap-allocated iterator whose concrete type is erased.',

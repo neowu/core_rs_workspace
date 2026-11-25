@@ -5,11 +5,11 @@ endpoint: [`web/diagnostic.rs`](../lib/framework/src/web/diagnostic.rs) · sibli
 [`action_log.md`](action_log.md), [`action_future.md`](action_future.md),
 [`thread_dump.md`](thread_dump.md), [`http_server.md`](http_server.md)
 
-An action only produces its record when it finishes, so a stuck one is invisible. `GET /sys/action`
+An action only produces its record when it finishes, so a stuck one is invisible. `GET /_sys/action`
 lists the actions that have not finished, oldest first, each with the trace it has written so far:
 the last line of a stuck action is usually what it is waiting on.
 
-Apps serve `web::diagnostic::routes()` from the sys http server, bound to loopback, as every `/sys/`
+Apps serve `web::diagnostic::routes()` from the sys http server, bound to loopback, as every `/_sys/`
 endpoint: [`http_server.md`](http_server.md).
 
 ```
@@ -27,7 +27,7 @@ in_flight_actions=2
 - `running`: being polled right now, only id, kind and elapsed are shown, the rest is being written.
   The cell keeps its own copy of those three, written once, so they are read without touching the action.
   An action that stays `running` is holding a worker thread: blocking call, lock, busy loop,
-  `/sys/thread` has its stack.
+  `/_sys/thread` has its stack.
 - The dump request itself is not listed. The trace is masked, as on finish.
 
 ## Design decisions
@@ -112,5 +112,5 @@ Not covered: a poll spinning while the dump copies its action (no test reaches i
 
 - **Cost is bounded, not measured.** No benchmark run compares it with the task local it replaced.
 - **No await point.** A suspended action shows its trace, not where its future is parked.
-- **A running action shows no trace or context.** `GET /sys/thread` shows the stack of the thread
+- **A running action shows no trace or context.** `GET /_sys/thread` shows the stack of the thread
   polling it, matched by action id: [`thread_dump.md`](thread_dump.md).

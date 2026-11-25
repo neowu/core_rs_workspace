@@ -69,6 +69,10 @@ impl Routes {
         }
     }
 
+    pub(crate) fn has_prefix_route(&self, prefix: &str) -> bool {
+        self.exact.keys().chain(self.prefixes.iter().map(|(p, _)| p)).any(|path| path.starts_with(prefix))
+    }
+
     fn add(&mut self, method: Method, path: &'static str, route: Route) {
         assert!(path.starts_with('/'), "path must start with '/', path={path}");
         let routes = self.exact.entry(path).or_default();

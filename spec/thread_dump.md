@@ -4,8 +4,8 @@ Code: [`lib/framework/src/thread.rs`](../lib/framework/src/thread.rs) ·
 endpoint: [`web/diagnostic.rs`](../lib/framework/src/web/diagnostic.rs) · siblings:
 [`action_inflight.md`](action_inflight.md), [`http_server.md`](http_server.md)
 
-`GET /sys/thread` dumps the stack of every OS thread. In an async app a waiting action is on no
-thread, so this is not where a slow request shows up; [`/sys/action`](action_inflight.md) is. The
+`GET /_sys/thread` dumps the stack of every OS thread. In an async app a waiting action is on no
+thread, so this is not where a slow request shows up; [`/_sys/action`](action_inflight.md) is. The
 thread dump answers the other question: what a thread is doing when it should be idle — a worker
 stuck in a blocking call, a lock, a busy loop.
 
@@ -22,7 +22,7 @@ threads=12
   ..
 ```
 
-- `action` is the id of the action the thread is polling, the one `/sys/action` lists as `running`.
+- `action` is the id of the action the thread is polling, the one `/_sys/action` lists as `running`.
 - Threads with the same stack share one, idle workers are most of a dump.
 - `state` and `cpu` (user + system) are from `/proc`, Linux only.
 

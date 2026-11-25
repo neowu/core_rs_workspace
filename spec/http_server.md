@@ -130,14 +130,18 @@ extractors, per request handler clones and a tower middleware stack the framewor
   Strict: an invalid node is `BAD_REQUEST`, no fallback. Absent / blank `x-forwarded-for` or
   `max_forwarded_ips = 0` uses the peer address. Never resolves DNS.
 - `client_ip` is for logging / business use only, never for access control.
-- `/sys/` is for operation endpoints (`PUT /sys/job/trigger`, `GET /sys/action` see
-  [action_inflight.md](action_inflight.md), `GET /sys/thread` see [thread_dump.md](thread_dump.md)). They
+- `/_sys/` is reserved for operation endpoints, the underscore keeps it from colliding with app paths (`PUT /_sys/job/trigger`, `GET /_sys/action` see
+  [action_inflight.md](action_inflight.md), `GET /_sys/thread` see [thread_dump.md](thread_dump.md)). They
   have no access control of their own: the app serves them from a second `HttpServer` bound to loopback
   (`127.0.0.1:8081`), never merged into the app router. Isolation is the listener, not a per request check,
   so nothing depends on peer address or `x-forwarded-for` and the app server pays nothing. Operation calls
   come from the same host or `kubectl port-forward`, which connects inside the pod network namespace; other
   pods and the ingress cannot reach the port. Anything else on loopback can (a sidecar in the same pod).
-  Nothing enforces the separation, merging sys routes into the app router exposes them.
+  App operation endpoints (`/operation/..`, e.g. a manual migration, plain routes or `#[api]`) go on the same
+  server, merged with the sys routes; keeping them off the app router is the app's job.
+- `HttpServer` panics at start if its router has a route under `/_sys/` and the listener is not loopback, so
+  a sys route merged into the app router fails at boot, not per request. Chosen over a separate router type
+  and start method: one `Router` / `HttpServer::start` api, and apps add their own routes to the sys server.
 - `Response` constructors: `empty()` (204), `json(&T)` (logs body and `response_content_length`), `text`,
   `html`, `bytes(body, content_type)`, with `status(..)` / `header(..)` builders.
 - The response body is an own enum (`Empty` / `Full(Bytes)` / `File` / `Sse` / `Chunks`, the last one internal,

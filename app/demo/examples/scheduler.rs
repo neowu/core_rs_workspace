@@ -32,11 +32,12 @@ pub async fn main() {
         daily_job,
         DateTime::now().add_duration(SignedDuration::from_secs(5)).expect("value must be valid").time(),
     );
-    let app = scheduler.routes(Arc::clone(&state));
+    let sys = scheduler.routes(Arc::clone(&state));
     system.start_service(|token| scheduler.start(state, token));
 
-    let http_server = HttpServer::new(HttpServerConfig::default());
-    system.start_service(|token| http_server.start(app, token));
+    let http_server =
+        HttpServer::new(HttpServerConfig { bind_address: "127.0.0.1:8081".to_owned(), ..Default::default() });
+    system.start_service(|token| http_server.start(sys, token));
 
     system.wait().await;
     system.shutdown_logger().await;

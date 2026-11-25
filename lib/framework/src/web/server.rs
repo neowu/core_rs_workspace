@@ -99,6 +99,11 @@ impl HttpServer {
     /// Serves on an already bound listener, the configured bind address is ignored.
     pub async fn start_with_listener(self, listener: TcpListener, router: Router, shutdown_signal: CancellationToken) {
         let local_addr = listener.local_addr().expect("failed to get local address");
+        // sys routes have no access control
+        assert!(
+            local_addr.ip().is_loopback() || !router.routes.has_prefix_route("/_sys/"),
+            "/_sys/ routes must be served on loopback, bind={local_addr}"
+        );
         let shared = Arc::new(Shared {
             routes: router.routes,
             counter: self.counter,
@@ -301,6 +306,15 @@ mod tests {
     use http::HeaderValue;
 
     use super::*;
+    use crate::web::diagnostic;
+
+    #[tokio::test]
+    #[should_panic(expected = "/_sys/ routes must be served on loopback")]
+    async fn sys_routes_on_non_loopback() {
+        let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let server = HttpServer::new(HttpServerConfig::default());
+        server.start_with_listener(listener, diagnostic::routes(), CancellationToken::new()).await;
+    }
 
     #[test]
     fn request_url_with_host_header() {
