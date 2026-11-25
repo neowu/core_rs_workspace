@@ -8,7 +8,6 @@ use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::hint;
 use std::marker::PhantomPinned;
-use std::mem;
 use std::pin::Pin;
 use std::ptr;
 use std::sync::Mutex;
@@ -23,8 +22,7 @@ use std::vec;
 use crate::log::action::Action;
 use crate::log::id_generator::Id;
 use crate::log::mask::mask_logs;
-use crate::log::stats::AllocStats;
-use crate::log::stats::PollStats;
+use crate::log::stats::PollStart;
 use crate::write_str;
 
 const SHARDS: usize = 16;
@@ -61,7 +59,7 @@ unsafe impl Send for Slab {}
 pub(crate) fn with_current<R>(f: impl FnOnce(&RefCell<Action>) -> R) -> Option<R> {
     let cell = CURRENT.get();
     // SAFETY: points at the cell entered further up this stack, which holds POLLING, the guard resets it on exit
-    let action = unsafe { (*cell.as_ref()?.inner.get()).action.as_ref() }?;
+    let action = unsafe { (*cell.as_ref()?.action.get()).as_ref() }?;
     Some(f(action))
 }
 
@@ -79,25 +77,20 @@ pub(crate) fn copy_current_id(out: &[AtomicU8; Id::LEN]) -> bool {
     true
 }
 
-/// An action and its poll stats, owned by `ActionFuture`. Registered by address on the first poll,
+/// An action, owned by `ActionFuture`. Registered by address on the first poll,
 /// so it must stay pinned.
 pub(crate) struct ActionCell {
     // copied out of the action, never written again, so a dump can read them while the action is being polled
     id: Id,
     kind: &'static str,
     start_time: Instant,
-    // IDLE / POLLING / DUMPING, whoever holds it owns `inner`
+    // IDLE / POLLING / DUMPING, whoever holds it owns `action`
     state: AtomicU8,
     // shard and index in the registry, only touched by the owner
     slot: Cell<Option<(u32, u32)>>,
-    inner: UnsafeCell<Inner>,
+    // None once finished
+    action: UnsafeCell<Option<RefCell<Action>>>,
     _pinned: PhantomPinned,
-}
-
-struct Inner {
-    action: Option<RefCell<Action>>,
-    alloc_stats: AllocStats,
-    poll_stats: PollStats,
 }
 
 struct EnterGuard<'a> {
@@ -120,11 +113,7 @@ impl ActionCell {
             start_time: action.start_time,
             state: AtomicU8::new(IDLE),
             slot: Cell::new(None),
-            inner: UnsafeCell::new(Inner {
-                action: Some(RefCell::new(action)),
-                alloc_stats: AllocStats::new(),
-                poll_stats: PollStats::new(),
-            }),
+            action: UnsafeCell::new(Some(RefCell::new(action))),
             _pinned: PhantomPinned,
         }
     }
@@ -136,38 +125,35 @@ impl ActionCell {
         if cell.slot.get().is_none() {
             cell.register();
         }
-        cell.enter_with(|alloc_stats, poll_stats| poll_stats.poll(|| alloc_stats.poll(poll)))
+        cell.enter(|| {
+            let start = PollStart::now();
+            let result = poll();
+            // SAFETY: POLLING keeps the dump out, no borrow outlives the poll
+            if let Some(action) = unsafe { &*cell.action.get() } {
+                action.borrow_mut().poll_stats.record(&start);
+            }
+            result
+        })
     }
 
-    /// Runs `f` with the action as the thread's current one, for dropping its task.
-    pub(crate) fn enter<T>(self: Pin<&ActionCell>, f: impl FnOnce() -> T) -> T {
-        self.get_ref().enter_with(|_, _| f())
-    }
-
+    /// Runs `f` with the action as the thread's current one.
     #[inline]
-    fn enter_with<T>(&self, f: impl FnOnce(&mut AllocStats, &mut PollStats) -> T) -> T {
+    pub(crate) fn enter<T>(&self, f: impl FnOnce() -> T) -> T {
         // only contended while a dump is copying this action
         while self.state.compare_exchange_weak(IDLE, POLLING, Ordering::Acquire, Ordering::Relaxed).is_err() {
             hint::spin_loop();
         }
         let _guard = EnterGuard { cell: self, previous: CURRENT.replace(ptr::from_ref(self)) };
-
-        let inner = self.inner.get();
-        // SAFETY: POLLING keeps the dump out, the action is only reached through its RefCell
-        let (alloc_stats, poll_stats) = unsafe { (&mut (*inner).alloc_stats, &mut (*inner).poll_stats) };
-        f(alloc_stats, poll_stats)
+        f()
     }
 
     /// Takes the action out once its task has completed, it is no longer in flight.
-    pub(crate) fn finish(self: Pin<&ActionCell>) -> (Action, AllocStats, PollStats) {
+    pub(crate) fn finish(self: Pin<&ActionCell>) -> Action {
         let cell = self.get_ref();
         cell.unregister();
-        // SAFETY: unregistered and not being polled, only the owner reaches inner
-        let inner = unsafe { &mut *cell.inner.get() };
-        let action = inner.action.take().map(RefCell::into_inner).expect("action must not be finished twice");
-        let alloc_stats = mem::replace(&mut inner.alloc_stats, AllocStats::new());
-        let poll_stats = mem::replace(&mut inner.poll_stats, PollStats::new());
-        (action, alloc_stats, poll_stats)
+        // SAFETY: unregistered and not being polled, only the owner reaches the action
+        let action = unsafe { &mut *cell.action.get() };
+        action.take().map(RefCell::into_inner).expect("action must not be finished twice")
     }
 
     fn register(&self) {
@@ -200,23 +186,22 @@ impl ActionCell {
         let mut out = String::new();
         write_str!(out, "\n# [in-flight] id={}, kind={}, ", self.id, self.kind);
         if self.lock_for_dump() {
-            // SAFETY: DUMPING keeps the poll out
-            let inner = unsafe { &*self.inner.get() };
             write_str!(out, "state=suspended, elapsed={elapsed:?}");
-            if let Some(last_polled) = inner.poll_stats.last_polled {
-                write_str!(out, ", idle={:?}", now.saturating_duration_since(last_polled));
-            }
-            write_str!(
-                out,
-                ", poll_count={}, poll_elapsed={:?}, alloc_count={}, alloc_bytes={}\n",
-                inner.poll_stats.count,
-                Duration::from_nanos(inner.poll_stats.elapsed),
-                inner.alloc_stats.count,
-                inner.alloc_stats.bytes
-            );
-            if let Some(action) = &inner.action {
-                // SAFETY: as above, nothing holds a borrow outside a poll
-                out.push_str(unsafe { &(*action.as_ptr()).logs });
+            // SAFETY: DUMPING keeps the poll out, and nothing holds a borrow outside a poll
+            if let Some(action) = unsafe { (*self.action.get()).as_ref().map(|action| &*action.as_ptr()) } {
+                let stats = &action.poll_stats;
+                if let Some(last_polled) = stats.last_polled {
+                    write_str!(out, ", idle={:?}", now.saturating_duration_since(last_polled));
+                }
+                write_str!(
+                    out,
+                    ", poll_count={}, poll_elapsed={:?}, alloc_count={}, alloc_bytes={}\n",
+                    stats.count,
+                    Duration::from_nanos(stats.elapsed),
+                    stats.alloc_count,
+                    stats.alloc_bytes
+                );
+                out.push_str(&action.logs);
             }
             self.state.store(IDLE, Ordering::Release);
         } else {
@@ -396,9 +381,9 @@ mod tests {
             assert!(entry(&dump(), finished_id).is_some());
             assert!(entry(&dump(), dropped_id).is_some());
 
-            let (action, _, poll_stats) = finished.as_ref().finish();
+            let action = finished.as_ref().finish();
             assert_eq!(action.id, finished_id);
-            assert_eq!(poll_stats.count, 1);
+            assert_eq!(action.poll_stats.count, 1);
             assert!(entry(&dump(), finished_id).is_none());
         }
         assert!(entry(&dump(), dropped_id).is_none());

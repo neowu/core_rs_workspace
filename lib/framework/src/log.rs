@@ -139,13 +139,11 @@ where
             return Poll::Pending;
         };
 
-        let (mut current_action, alloc_stats, poll_stats) = cell.finish();
+        let mut current_action = cell.finish();
 
         if let Err(e) = &result {
             current_action.log_exception(e);
         }
-        alloc_stats.write_to(&mut current_action);
-        poll_stats.write_to(&mut current_action);
         current_action.finish();
 
         if let Some(sender) = SENDER.get() {

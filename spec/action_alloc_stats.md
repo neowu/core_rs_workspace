@@ -33,9 +33,10 @@ estimate agrees — one thread local add per allocation, ~50 allocations on a 30
 
 ## Attribution is per poll
 
-`ActionFuture` reads the current thread's counters around every `inner.poll` and accumulates the
-delta. A poll runs start to finish on one thread and two polls never interleave on one thread, so
-the delta is that action's own work even though the task migrates between workers.
+`ActionCell::poll` reads the current thread's counters around every `inner.poll` and accumulates the
+delta into the action's `poll_stats`, after the poll returns, so nothing is borrowed across it. A poll
+runs start to finish on one thread and two polls never interleave on one thread, so the delta is that
+action's own work even though the task migrates between workers.
 
 Taking it **per poll** is not optional: `poll` returns `Pending` on every poll but the last, and
 everything allocated before each of those would be lost if the delta were taken behind `ready!`.

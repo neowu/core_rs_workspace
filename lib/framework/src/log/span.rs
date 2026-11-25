@@ -83,7 +83,7 @@ mod tests {
     fn with_action<F: FnOnce()>(task: F) -> Action {
         let cell = pin!(ActionCell::new(Action::new(next_id(0), "test", None, DateTime::now())));
         cell.as_ref().poll(task);
-        cell.as_ref().finish().0
+        cell.as_ref().finish()
     }
 
     #[test]

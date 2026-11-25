@@ -34,7 +34,7 @@ in_flight_actions=2
 
 ### The action lives in the future, at a fixed address
 
-`ActionFuture` owns an `ActionCell` (the action and its poll stats), and the thread's current action
+`ActionFuture` owns an `ActionCell` (the action, which carries its own poll stats), and the thread's current action
 is a thread local pointer to it, set for the duration of each poll. A tokio task local was not
 readable from outside: it moves the value between the future and the thread on every poll, and only
 hands it back by taking it.

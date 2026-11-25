@@ -10,6 +10,8 @@ use crate::log::ContextValues;
 use crate::log::Severity;
 use crate::log::id_generator::Id;
 use crate::log::mask::mask_logs;
+use crate::log::stats::PollStats;
+use crate::log::stats::write_poll_stats;
 use crate::string::StringExt as _;
 use crate::time::DateTime;
 use crate::write_str;
@@ -31,6 +33,8 @@ pub(crate) struct Action {
     pub stats: Vec<(Cow<'static, str>, u64)>,
     pub logs: String, // All log lines in one buffer, separated by '\n'
     pub trace: bool,
+    // written into stats on finish
+    pub poll_stats: PollStats,
 }
 
 pub(crate) struct Error {
@@ -63,6 +67,7 @@ impl Action {
             },
             logs,
             trace: false,
+            poll_stats: PollStats::new(),
         }
     }
 
@@ -119,6 +124,7 @@ impl Action {
     }
 
     pub(crate) fn finish(&mut self) {
+        write_poll_stats(self);
         let elapsed = self.start_time.elapsed();
         self.add_stat("elapsed", elapsed.as_nanos() as u64);
         if self.flush_trace() {
