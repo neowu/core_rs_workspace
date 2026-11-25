@@ -15,7 +15,7 @@ endpoint: [`http_server.md`](http_server.md).
 ```
 in_flight_actions=2
 
-# [in-flight] id=.., kind=http, state=suspended, elapsed=12.5s, idle=12.4s, poll_count=3, poll_elapsed=1.2ms, alloc_count=40, alloc_bytes=9000
+# [in-flight] id=.., kind=http, state=suspended, elapsed=12.5s
 # [action] id=.., kind=http, date=.., ref_id=None
 00:00.000081292 framework::web::server:231 [context] path=/slow
 ..
@@ -23,7 +23,8 @@ in_flight_actions=2
 # [in-flight] id=.., kind=task, state=running, elapsed=3.1s
 ```
 
-- `suspended`: waiting, not on any thread. `idle` is the time since its last poll returned.
+- `suspended`: waiting, not on any thread. The trace's last line timestamp against `elapsed` shows how long.
+  Poll and alloc stats are not shown, they stay in `ActionFuture` and reach the action log on finish.
 - `running`: being polled right now, only id, kind and elapsed are shown, the rest is being written.
   The cell keeps its own copy of those three, written once, so they are read without touching the action.
   An action that stays `running` is holding a worker thread: blocking call, lock, busy loop,
@@ -34,7 +35,7 @@ in_flight_actions=2
 
 ### The action lives in the future, at a fixed address
 
-`ActionFuture` owns an `ActionCell` (the action, which carries its own poll stats), and the thread's current action
+`ActionFuture` owns an `ActionCell` (the action), and the thread's current action
 is a thread local pointer to it, set for the duration of each poll. A tokio task local was not
 readable from outside: it moves the value between the future and the thread on every poll, and only
 hands it back by taking it.

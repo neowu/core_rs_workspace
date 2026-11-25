@@ -15,14 +15,12 @@ use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
-use std::time::Duration;
 use std::time::Instant;
 use std::vec;
 
 use crate::log::action::Action;
 use crate::log::id_generator::Id;
 use crate::log::mask::mask_logs;
-use crate::log::stats::PollStart;
 use crate::write_str;
 
 const SHARDS: usize = 16;
@@ -125,15 +123,7 @@ impl ActionCell {
         if cell.slot.get().is_none() {
             cell.register();
         }
-        cell.enter(|| {
-            let start = PollStart::now();
-            let result = poll();
-            // SAFETY: POLLING keeps the dump out, no borrow outlives the poll
-            if let Some(action) = unsafe { &*cell.action.get() } {
-                action.borrow_mut().poll_stats.record(&start);
-            }
-            result
-        })
+        cell.enter(poll)
     }
 
     /// Runs `f` with the action as the thread's current one.
@@ -186,22 +176,10 @@ impl ActionCell {
         let mut out = String::new();
         write_str!(out, "\n# [in-flight] id={}, kind={}, ", self.id, self.kind);
         if self.lock_for_dump() {
-            write_str!(out, "state=suspended, elapsed={elapsed:?}");
+            write_str!(out, "state=suspended, elapsed={elapsed:?}\n");
             // SAFETY: DUMPING keeps the poll out, and nothing holds a borrow outside a poll
-            if let Some(action) = unsafe { (*self.action.get()).as_ref().map(|action| &*action.as_ptr()) } {
-                let stats = &action.poll_stats;
-                if let Some(last_polled) = stats.last_polled {
-                    write_str!(out, ", idle={:?}", now.saturating_duration_since(last_polled));
-                }
-                write_str!(
-                    out,
-                    ", poll_count={}, poll_elapsed={:?}, alloc_count={}, alloc_bytes={}\n",
-                    stats.count,
-                    Duration::from_nanos(stats.elapsed),
-                    stats.alloc_count,
-                    stats.alloc_bytes
-                );
-                out.push_str(&action.logs);
+            if let Some(action) = unsafe { (*self.action.get()).as_ref() } {
+                out.push_str(unsafe { &(*action.as_ptr()).logs });
             }
             self.state.store(IDLE, Ordering::Release);
         } else {
@@ -337,7 +315,6 @@ mod tests {
         let dump = dump();
         let entry = entry(&dump, id).expect("action must be in flight");
         assert!(entry.contains("kind=test, state=suspended, elapsed="), "entry={entry}");
-        assert!(entry.contains(", poll_count=1, "), "entry={entry}");
         assert!(entry.contains(&format!("# [action] id={id}, kind=test")), "entry={entry}");
         assert!(entry.contains(r#"body={"password":"**masked**"}"#), "entry={entry}");
     }
@@ -383,7 +360,6 @@ mod tests {
 
             let action = finished.as_ref().finish();
             assert_eq!(action.id, finished_id);
-            assert_eq!(action.poll_stats.count, 1);
             assert!(entry(&dump(), finished_id).is_none());
         }
         assert!(entry(&dump(), dropped_id).is_none());

@@ -4,7 +4,7 @@ members = ["app/*", "benchmark/*", "lib/*", "test/*", "xtask"]
 default-members = ["app/*", "lib/*", "xtask"]
 
 [workspace.package]
-version = "0.11.0"
+version = "0.12.0"
 
 [workspace.dependencies]
 framework = { path = "lib/framework" }

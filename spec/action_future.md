@@ -56,6 +56,7 @@ pin_project! {
         task: Option<F>,
         #[pin]
         cell: ActionCell,
+        poll_stats: PollStats,
     }
 
     impl<F> PinnedDrop for ActionFuture<F> {
@@ -73,7 +74,7 @@ pub fn action<F: Future>(kind: &'static str, ref_ids: Option<Vec<String>>, task:
     let now = DateTime::now();
     let id = id_generator::next_id(now.unix_timestamp_millis());
     let action = Action::new(id, kind, ref_ids, now);
-    ActionFuture { task: Some(task), cell: ActionCell::new(action) }
+    ActionFuture { task: Some(task), cell: ActionCell::new(action), poll_stats: PollStats::new() }
 }
 
 impl<F, R> Future for ActionFuture<F>
@@ -86,14 +87,17 @@ where
         let mut this = self.project();
         let cell = this.cell.as_ref();
         let polled = cell.poll(|| {
+            let start = PollStart::now();
             let task = this.task.as_mut().as_pin_mut().expect("action must not be polled after completion");
             let polled = task.poll(cx);
             if polled.is_ready() { this.task.set(None); }
+            this.poll_stats.record(&start);
             polled
         });
         let Poll::Ready(result) = polled else { return Poll::Pending };
         let mut current_action = cell.finish();
         if let Err(e) = &result { current_action.log_exception(e); }
+        this.poll_stats.write_to(&mut current_action);
         current_action.finish();
         if let Some(sender) = SENDER.get() {
             let _result = sender.send(Message::Action(current_action.into()));
