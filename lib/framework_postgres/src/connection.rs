@@ -94,9 +94,9 @@ impl Drop for BrokenGuard<'_> {
 }
 
 pub(crate) struct ConnectionManager {
-    pub config: Config,
-    pub query_timeout: Duration,
-    pub uri: &'static str,
+    pub(crate) config: Config,
+    pub(crate) query_timeout: Duration,
+    pub(crate) uri: &'static str,
 }
 
 impl ResourceManager for ConnectionManager {

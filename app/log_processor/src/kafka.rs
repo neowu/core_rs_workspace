@@ -10,7 +10,7 @@ pub(crate) mod event_handler;
 pub(crate) mod stat_handler;
 
 // a clickhouse Map column is not nullable, so a map java core-ng left out serializes as empty
-pub(crate) struct OptionMap<'a, V>(pub(crate) Option<&'a HashMap<String, V>>);
+struct OptionMap<'a, V>(pub(crate) Option<&'a HashMap<String, V>>);
 
 impl<V: Serialize> Serialize for OptionMap<'_, V> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -26,9 +26,9 @@ impl<V: Serialize> Serialize for OptionMap<'_, V> {
 // is written. `elapsed` is a field of its own on the message and the tables carry it as a stat, so
 // it leads the map here; a message that also carries an "elapsed" stat leaves both entries, and
 // clickhouse resolves the lookup to this one.
-pub(crate) struct Stats<'a> {
-    pub(crate) elapsed: Option<i64>,
-    pub(crate) stats: Option<&'a HashMap<String, f64>>,
+struct Stats<'a> {
+    elapsed: Option<i64>,
+    stats: Option<&'a HashMap<String, f64>>,
 }
 
 impl Serialize for Stats<'_> {

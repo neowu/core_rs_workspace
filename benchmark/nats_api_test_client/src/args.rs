@@ -17,13 +17,13 @@ usage: nats_api_test_client [options]
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scenario {
+pub(crate) enum Scenario {
     Get,
     Post,
 }
 
 impl Scenario {
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Scenario::Get => "get",
             Scenario::Post => "post",
@@ -32,15 +32,15 @@ impl Scenario {
 }
 
 #[derive(Debug)]
-pub struct Args {
-    pub url: String,
-    pub scenario: Scenario,
-    pub concurrency: usize,
-    pub duration: Duration,
-    pub warmup: Duration,
-    pub values: usize,
-    pub threads: usize,
-    pub output: String,
+pub(crate) struct Args {
+    pub(crate) url: String,
+    pub(crate) scenario: Scenario,
+    pub(crate) concurrency: usize,
+    pub(crate) duration: Duration,
+    pub(crate) warmup: Duration,
+    pub(crate) values: usize,
+    pub(crate) threads: usize,
+    pub(crate) output: String,
 }
 
 impl Default for Args {
@@ -61,7 +61,7 @@ impl Default for Args {
 impl Args {
     /// Fails the process on anything unrecognized, a mistyped flag must not silently run a
     /// different benchmark than the one intended.
-    pub fn parse() -> Args {
+    pub(crate) fn parse() -> Args {
         let mut args = Args::default();
         let mut iter = env::args().skip(1);
 

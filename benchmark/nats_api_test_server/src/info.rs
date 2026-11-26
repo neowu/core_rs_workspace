@@ -9,12 +9,12 @@ use serde::Serialize;
 /// falls back to `unknown` rather than failing a run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MachineInfo {
-    pub host: String,
-    pub ip: String,
-    pub cpu: String,
+    host: String,
+    ip: String,
+    cpu: String,
     pub cores: usize,
-    pub memory_mb: u64,
-    pub os: String,
+    memory_mb: u64,
+    os: String,
 }
 
 impl MachineInfo {

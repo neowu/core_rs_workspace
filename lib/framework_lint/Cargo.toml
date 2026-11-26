@@ -11,7 +11,7 @@ proc-macro2 = { workspace = true, features = ["span-locations"] }
 semver = "1"
 serde.workspace = true
 serde_json.workspace = true
-syn = { workspace = true, features = ["full"] }
+syn = { workspace = true, features = ["full", "visit"] }
 toml_edit = { version = "0.25", default-features = false, features = ["parse"] }
 
 [lints]

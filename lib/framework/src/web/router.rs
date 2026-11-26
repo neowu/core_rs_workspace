@@ -13,7 +13,7 @@ use crate::web::file;
 use crate::web::request::Request;
 use crate::web::response::Response;
 
-pub(crate) type HandlerFuture = Pin<Box<dyn Future<Output = Result<Response, Exception>> + Send>>;
+type HandlerFuture = Pin<Box<dyn Future<Output = Result<Response, Exception>> + Send>>;
 type Handler = Box<dyn Fn(Request) -> HandlerFuture + Send + Sync>;
 type SharedHandler = Arc<dyn Fn(Request) -> HandlerFuture + Send + Sync>;
 type Interceptor<S> = Arc<dyn Fn(Arc<S>, Request, Next) -> HandlerFuture + Send + Sync>;

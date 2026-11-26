@@ -43,7 +43,11 @@ async fn echo(_state: Arc<AppState>, mut request: Request) -> Result<Response, E
 async fn whoami(_state: Arc<AppState>, request: Request) -> Result<Response, Exception> {
     let session = request.cookie("session").unwrap_or_default();
     let agent = request.user_agent().unwrap_or_default();
-    Ok(Response::text(format!("{}|{session}|{agent}", request.client_ip())))
+    let query = request.query_string().unwrap_or_default();
+    let mut response = Response::text(format!("{}|{session}|{agent}|{query}", request.client_ip()));
+    let peer_addr = HeaderValue::from_str(&request.peer_addr().to_string())?;
+    response.headers_mut().insert(HeaderName::from_static("x-peer-addr"), peer_addr);
+    Ok(response)
 }
 
 async fn fail(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
@@ -109,11 +113,14 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(response.headers[header::CONTENT_TYPE], "text/plain; charset=utf-8");
     assert_eq!(response.text()?, "hello\n世界");
 
-    let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
+    let mut request = HttpRequest::new(Method::GET, server.url("/whoami?a=1&b"))?;
     request.header(header::COOKIE, "a=1; session=abc%20def")?;
     request.header(header::USER_AGENT, "test-agent")?;
     request.header(HeaderName::from_static("x-forwarded-for"), "108.0.0.1, 10.0.0.1")?;
-    assert_eq!(client.execute(request).await?.text()?, "108.0.0.1|abc def|test-agent");
+    let response = client.execute(request).await?;
+    // client ip comes from x-forwarded-for, peer addr is the tcp connection
+    assert_eq!(response.headers["x-peer-addr"], "127.0.0.1");
+    assert_eq!(response.text()?, "108.0.0.1|abc def|test-agent|a=1&b");
 
     let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
     let forwarded_for = HeaderName::from_static("x-forwarded-for");

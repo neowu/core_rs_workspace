@@ -130,3 +130,86 @@ Exceptions, for API meant for callers outside the workspace:
   unknown tools.
 - per package, `LintConfig::unused_pub_exempt_packages`, for libraries consumed only by
   other workspaces. Exempt packages still count as users of other packages.
+
+## Excess visibility
+
+| Rule | Requirement |
+| --- | --- |
+| `excess_visibility` | A function, inherent method or associated const, struct, enum, union, trait, type alias, const, static, or named struct field under a member's `src` is no more visible than its mentions need: `pub` only if another crate mentions it, `pub(crate)` only if a module outside the defining module and its children does. |
+
+The goal is the smallest open surface: whatever stays `pub` or `pub(crate)` is what other
+code really depends on. `unused_pub` asks whether an exported item is used at all; this
+rule asks from where, and covers binaries, `pub(crate)` and fields as well. rustc has no
+equivalent: `unreachable_pub` only catches `pub` that the crate does not export.
+
+It shares `unused_pub`'s name matching on raw tokens, and its bias against false positives,
+with these differences:
+
+- A mention is placed by its file: another package, `tests/`, benches, examples, another
+  binary of the package, or a `macro_rules!` body (which expands in the caller) needs `pub`;
+  another module of the crate needs `pub(crate)`. `pub(super)` and `pub(in path)` are treated
+  as `pub(crate)`. Items in inline modules are placed precisely, mentions only by file.
+- A mention in another package counts only if that package depends on the item's package,
+  directly or through other members, with any dependency kind; otherwise it names a
+  different item. Mentions in proc macro crates and `macro_rules!` bodies always count,
+  since they are written into the crates that invoke them.
+- The self type of an `impl` is a mention, since an impl elsewhere needs the type.
+- Methods and associated consts count only mentions after `.` or `::`; fields only after
+  `.` without a call, or where a struct literal or pattern names a field. Field names in
+  definitions and words in string literals do not count for fields. `Type { ..base }`
+  counts as naming every field of `Type`.
+- A field or method is no more visible than its type needs to be, and nothing in a binary
+  needs more than `pub(crate)`; wider mentions are of other items with the same name.
+- A trait is also needed wherever one of its method names is called, since a glob import
+  brings it in without naming it.
+- A name in an interface (signature, field type, bound, alias, enum variant, trait
+  definition) must stay as visible as that interface needs to be, matching rustc's
+  `private_interfaces`. This is solved to a fixed point, so one run reports a whole chain.
+  Associated types of trait impls are taken as public.
+
+An item with no mention at all is left to `unused_pub` and rustc's `dead_code`, except
+fields, which neither sees. Narrowing an item whose only mentions were same-named items
+makes `dead_code` report it; it is then unused in the workspace, to be removed or marked.
+
+Not checked: tuple fields, enum variants, trait items and trait impls, modules, `use`
+declarations, `#[cfg(test)]` items, proc macro entry points, and macro-generated items.
+
+Exceptions:
+
+- `// lint: allow(excess_visibility)` (a reason may follow), placed as for `unused_pub`,
+  on an item or a field.
+- `pub` items in `LintConfig::unused_pub_exempt_packages`, and `pub` items marked
+  `// lint: allow(unused_pub)` together with their fields, are API for other workspaces and
+  keep `pub`. Narrower visibilities in them are still checked.
+
+## Module cycles
+
+| Rule | Requirement |
+| --- | --- |
+| `module_cycle` | Sibling modules of a crate do not use each other in a circle. |
+
+Modules that use each other have no order to be read in and cannot be changed apart, so the
+uses between the children of every module, and of the crate root, form a graph without
+circles. Crates need no check, since Cargo keeps them in order. A module and the modules
+inside it are read together: uses between a module and its own descendants do not count,
+and a use of anything inside a sibling is a use of that sibling.
+
+A use is a path written from `crate`, `self` or `super`, in a `use` declaration or inline,
+read from raw tokens so macro invocations are covered. It is not resolved by the compiler:
+
+- The path belongs to the longest module it starts with. When the next name is brought into
+  that module by a `use` (a re-export such as `pub use date::Date`), the path is followed
+  to the module that owns the item. Glob imports are not followed, so a use through one
+  counts as a use of the module that holds the glob.
+- Paths from a name in scope (`child::Item`, or a module imported earlier) are only read in
+  `use` declarations, where they give re-exports.
+- `#[cfg(test)]` items are skipped; tests may use anything. `$crate` paths in macros
+  belong to the invoking crate and are skipped. `#[path]` attributes are not read.
+
+One diagnostic is reported per set of modules that reach each other. It names the members
+and shows the shortest circle through the use with the fewest mentions, which is the
+cheapest to cut and where the diagnostic points; other circles in the set appear once that
+one is cut.
+
+Exception: `// lint: allow(module_cycle)` (a reason may follow) in the comment block
+directly above a path leaves that use out of the graph.

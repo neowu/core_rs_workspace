@@ -98,9 +98,9 @@ impl SseChannel {
 }
 
 #[derive(Default)]
-pub(crate) struct Written {
-    pub(crate) events: AtomicU64,
-    pub(crate) bytes: AtomicU64,
+struct Written {
+    events: AtomicU64,
+    bytes: AtomicU64,
 }
 
 impl Written {

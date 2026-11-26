@@ -15,8 +15,6 @@ use syn::Visibility;
 use syn::spanned::Spanned as _;
 
 use super::diagnostic::Diagnostic;
-use super::diagnostic::Span;
-use super::diagnostic::SpanLine;
 use super::file_length::cfg_test;
 use super::file_length::is_test;
 use super::file_length::rust_files;
@@ -25,10 +23,10 @@ use crate::unused_pub::macro_rules::Macros;
 
 mod macro_rules;
 
-const ALLOW: &str = "lint: allow(unused_pub)";
+pub(super) const ALLOW: &str = "lint: allow(unused_pub)";
 
 /// Keywords followed by the name they define.
-const DEFINITIONS: [&str; 8] = ["fn", "struct", "enum", "union", "trait", "type", "const", "static"];
+pub(super) const DEFINITIONS: [&str; 8] = ["fn", "struct", "enum", "union", "trait", "type", "const", "static"];
 
 struct Candidate {
     kind: &'static str,
@@ -59,35 +57,17 @@ pub(super) fn check(workspace: &Workspace, exempt_packages: &[String]) -> Result
     let mut diagnostics = Vec::new();
     for ((member, checked, file, source), items) in files.iter().zip(candidates) {
         for item in items.into_iter().filter(|item| *checked && !used.contains(&item.name)) {
-            let text = source.lines().nth(item.line - 1).unwrap_or_default();
-            let line_offset: usize = source.split_inclusive('\n').take(item.line - 1).map(str::len).sum();
-            let byte_start = line_offset + text.char_indices().nth(item.column).map_or(text.len(), |(index, _)| index);
-            let column_start = item.column + 1;
-            let column_end = column_start + item.name.chars().count();
-            diagnostics.push(Diagnostic {
-                path: file.strip_prefix(&workspace.root).unwrap_or(file).to_path_buf(),
-                manifest_path: member.absolute_path.clone(),
-                package_id: member.package.id.clone(),
-                target: member.package.target.clone(),
-                span: Span {
-                    byte_start,
-                    byte_end: byte_start + item.name.len(),
-                    line_start: item.line,
-                    line_end: item.line,
-                    column_start,
-                    column_end,
-                    lines: vec![SpanLine {
-                        text: text.to_owned(),
-                        highlight_start: column_start,
-                        highlight_end: column_end,
-                    }],
-                },
-                rule: "unused_pub",
-                message: format!(
+            diagnostics.push(member.diagnostic_at(
+                file.strip_prefix(&workspace.root).unwrap_or(file).to_path_buf(),
+                source,
+                &item.name,
+                (item.line, item.column),
+                "unused_pub",
+                format!(
                     "pub {} `{}` is not used in the workspace; remove it, or mark it with `// {ALLOW}`",
                     item.kind, item.name
                 ),
-            });
+            ));
         }
     }
     diagnostics.sort_by(|left, right| (&left.path, left.span.line_start).cmp(&(&right.path, right.span.line_start)));
@@ -232,7 +212,7 @@ fn starts_item(previous: Option<&TokenTree>) -> bool {
     }
 }
 
-fn position(ident: &Ident) -> (usize, usize) {
+pub(super) fn position(ident: &Ident) -> (usize, usize) {
     let start = ident.span().start();
     (start.line, start.column)
 }
@@ -241,7 +221,7 @@ fn is_ident(token: &TokenTree, name: &str) -> bool {
     matches!(token, TokenTree::Ident(ident) if ident == name)
 }
 
-fn is_punct(token: &TokenTree, char: char) -> bool {
+pub(super) fn is_punct(token: &TokenTree, char: char) -> bool {
     matches!(token, TokenTree::Punct(punct) if punct.as_char() == char)
 }
 
@@ -249,7 +229,7 @@ fn is_brace(token: &TokenTree) -> bool {
     matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
 }
 
-fn is_doc(group: &Group) -> bool {
+pub(super) fn is_doc(group: &Group) -> bool {
     group.delimiter() == Delimiter::Bracket
         && matches!(group.stream().into_iter().next(), Some(TokenTree::Ident(ident)) if ident == "doc")
 }
@@ -292,7 +272,7 @@ fn collect_candidates(items: &[Item], lines: &[&str], macros: &Macros, candidate
                 for (kind, name) in macro_rules::bind(macros, &name, &item.mac.tokens) {
                     let start = name.span().start();
                     // the marker goes above the name in the argument list
-                    if !allowed(lines, start.line, start.line) {
+                    if !allowed(lines, start.line, start.line, ALLOW) {
                         candidates.push(Candidate {
                             kind,
                             name: name.to_string(),
@@ -325,7 +305,7 @@ fn candidate(
             let path = attr.path();
             path.is_ident("proc_macro") || path.is_ident("proc_macro_derive") || path.is_ident("proc_macro_attribute")
         });
-    (exported && !allowed(lines, item_line, start.line)).then(|| Candidate {
+    (exported && !allowed(lines, item_line, start.line, ALLOW)).then(|| Candidate {
         kind,
         name: name.to_string(),
         line: start.line,
@@ -335,7 +315,7 @@ fn candidate(
 
 /// Looks for the marker in comments from the comment block directly above the item down to the item name,
 /// so it can sit above or below the item's doc comments and attributes.
-fn allowed(lines: &[&str], item_line: usize, name_line: usize) -> bool {
+pub(super) fn allowed(lines: &[&str], item_line: usize, name_line: usize, marker: &str) -> bool {
     let is_comment = |line: &str| line.trim_start().starts_with("//");
     lines
         .iter()
@@ -343,7 +323,7 @@ fn allowed(lines: &[&str], item_line: usize, name_line: usize) -> bool {
         .take(name_line)
         .rev()
         .take_while(|(index, line)| index + 1 >= item_line || is_comment(line))
-        .any(|(_, line)| is_comment(line) && line.contains(ALLOW))
+        .any(|(_, line)| is_comment(line) && line.contains(marker))
 }
 
 #[cfg(test)]

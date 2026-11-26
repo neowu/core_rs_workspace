@@ -176,19 +176,19 @@ fn trace_index(now: Date) -> String {
 
 #[derive(Row, Serialize)]
 struct ActionRow<'a> {
-    pub timestamp: DateTime64,
-    pub id: &'a str,
-    pub app: &'a str,
-    pub host: &'a str,
-    pub result: ActionResult,
-    pub action: &'a str,
-    pub ref_id: Option<&'a str>,
-    pub ref_ids: &'a [String],
-    pub error_code: Option<&'a str>,
-    pub error_message: Option<&'a str>,
-    pub context: SingleContext<'a>,
-    pub multi_context: MultiContext<'a>,
-    pub stats: ActionStats<'a>,
+    timestamp: DateTime64,
+    id: &'a str,
+    app: &'a str,
+    host: &'a str,
+    result: ActionResult,
+    action: &'a str,
+    ref_id: Option<&'a str>,
+    ref_ids: &'a [String],
+    error_code: Option<&'a str>,
+    error_message: Option<&'a str>,
+    context: SingleContext<'a>,
+    multi_context: MultiContext<'a>,
+    stats: ActionStats<'a>,
 }
 
 // Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)
@@ -201,11 +201,11 @@ enum ActionResult {
 
 #[derive(Row, Serialize)]
 struct TraceRow<'a> {
-    pub timestamp: DateTime64,
-    pub id: &'a str,
-    pub app: &'a str,
-    pub error_code: Option<&'a str>,
-    pub content: &'a str,
+    timestamp: DateTime64,
+    id: &'a str,
+    app: &'a str,
+    error_code: Option<&'a str>,
+    content: &'a str,
 }
 
 // a single value goes into context; multiple values go into multi_context, dropping the nulls java

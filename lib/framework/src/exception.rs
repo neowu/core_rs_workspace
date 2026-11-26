@@ -13,7 +13,7 @@ pub struct Exception {
     pub severity: Severity,
     pub code: Option<&'static str>,
     pub message: String,
-    pub location: Option<&'static str>,
+    pub(crate) location: Option<&'static str>,
     source: Option<Box<Exception>>,
 }
 
@@ -67,7 +67,7 @@ impl Exception {
     }
 
     #[inline]
-    pub fn backtrace(&self) -> String {
+    pub(crate) fn backtrace(&self) -> String {
         let mut trace = String::with_capacity(256);
         let mut index = 0;
         let mut current_source = Some(self);

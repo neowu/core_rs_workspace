@@ -114,17 +114,17 @@ impl Elasticsearch {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ClusterStateResponse {
-    pub metadata: Metadata,
+    pub(crate) metadata: Metadata,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Metadata {
-    pub indices: HashMap<String, Index>,
+    pub(crate) indices: HashMap<String, Index>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Index {
-    pub state: IndexState,
+    pub(crate) state: IndexState,
 }
 
 #[derive(Debug, Deserialize)]

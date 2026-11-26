@@ -28,7 +28,8 @@ struct User(String);
 
 async fn trace(_state: Arc<AppState>, request: Request, next: Next) -> Result<Response, Exception> {
     let response = next.run(request).await?;
-    Ok(response.header(TRACE, HeaderValue::from_static("traced")))
+    let value = HeaderValue::from_str(&format!("traced {}", response.status_code().as_u16()))?;
+    Ok(response.header(TRACE, value))
 }
 
 async fn login(state: Arc<AppState>, mut request: Request, next: Next) -> Result<Response, Exception> {
@@ -78,7 +79,7 @@ async fn interceptor() -> Result<(), Exception> {
         request.headers.insert(HeaderName::from_static("token"), HeaderValue::from_static("secret"));
         let response = client.execute(request).await?;
         assert_eq!(response.status, 200);
-        assert_eq!(response.headers[TRACE], "traced");
+        assert_eq!(response.headers[TRACE], "traced 200");
         assert_eq!(response.text()?, "neo");
     }
 

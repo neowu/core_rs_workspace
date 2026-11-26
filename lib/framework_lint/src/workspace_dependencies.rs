@@ -170,6 +170,7 @@ mod tests {
                 name: name.to_owned(),
                 manifest_path: PathBuf::from("/fixture").join(path),
                 target: Value::Null,
+                dependencies: Vec::new(),
             },
             document: Document::parse(source.to_owned()).expect("valid fixture"),
         }

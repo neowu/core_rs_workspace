@@ -6,16 +6,16 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct EventMessage {
-    pub id: String,
-    pub timestamp: DateTime, // server received_time
-    pub app: String,
-    pub client_timestamp: DateTime,
-    pub result: String,
-    pub action: String,
-    pub error_code: Option<String>,
-    pub error_message: Option<String>,
-    pub elapsed: i64,
-    pub context: HashMap<String, String>,
-    pub stats: Option<HashMap<String, f64>>,
-    pub info: Option<HashMap<String, String>>,
+    pub(crate) id: String,
+    pub(crate) timestamp: DateTime, // server received_time
+    pub(crate) app: String,
+    pub(crate) client_timestamp: DateTime,
+    pub(crate) result: String,
+    pub(crate) action: String,
+    pub(crate) error_code: Option<String>,
+    pub(crate) error_message: Option<String>,
+    pub(crate) elapsed: i64,
+    pub(crate) context: HashMap<String, String>,
+    pub(crate) stats: Option<HashMap<String, f64>>,
+    pub(crate) info: Option<HashMap<String, String>>,
 }

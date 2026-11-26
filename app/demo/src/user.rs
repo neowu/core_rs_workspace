@@ -12,18 +12,18 @@ pub mod web;
 
 #[derive(Entity, Debug)]
 #[table(name = "user")]
-pub struct User {
+struct User {
     #[primary_key]
     #[column(name = "id")]
-    pub id: Uuid,
+    id: Uuid,
     #[column(name = "name")]
-    pub name: String,
+    name: String,
     #[column(name = "rating")]
-    pub rating: Option<i32>,
+    rating: Option<i32>,
     #[column(name = "tags")]
-    pub tags: Json<Vec<String>>,
+    tags: Json<Vec<String>>,
     #[column(name = "created_date")]
-    pub created_date: Timestamp,
+    created_date: Timestamp,
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

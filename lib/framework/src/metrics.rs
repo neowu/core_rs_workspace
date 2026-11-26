@@ -11,10 +11,10 @@ pub use counter::Counter;
 pub use counter::CounterGuard;
 
 pub struct Metrics {
-    pub id: String,
-    pub timestamp: DateTime,
-    pub severity: Severity,
-    pub error: Option<Error>,
+    pub(crate) id: String,
+    pub(crate) timestamp: DateTime,
+    pub(crate) severity: Severity,
+    pub(crate) error: Option<Error>,
     // keys are borrowed so the move into MetricsMessage allocates nothing, add_stat/add_info keep them static
     pub(crate) stats: Vec<(Cow<'static, str>, u64)>,
     pub(crate) info: Vec<(Cow<'static, str>, String)>,
@@ -30,7 +30,7 @@ impl Metrics {
         self.stats.push((Cow::Borrowed(key), value));
     }
 
-    pub fn add_info(&mut self, key: &'static str, value: String) {
+    fn add_info(&mut self, key: &'static str, value: String) {
         self.info.push((Cow::Borrowed(key), value));
     }
 

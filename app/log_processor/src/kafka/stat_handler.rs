@@ -90,15 +90,15 @@ fn index(now: Date) -> String {
 
 #[derive(Row, Serialize)]
 struct StatRow<'a> {
-    pub timestamp: DateTime64,
-    pub id: &'a str,
-    pub app: &'a str,
-    pub host: &'a str,
-    pub result: StatResult,
-    pub error_code: Option<&'a str>,
-    pub error_message: Option<&'a str>,
-    pub stats: Stats<'a>,
-    pub info: OptionMap<'a, String>,
+    timestamp: DateTime64,
+    id: &'a str,
+    app: &'a str,
+    host: &'a str,
+    result: StatResult,
+    error_code: Option<&'a str>,
+    error_message: Option<&'a str>,
+    stats: Stats<'a>,
+    info: OptionMap<'a, String>,
 }
 
 // Enum8('OK' = 1, 'WARN' = 2, 'ERROR' = 3)

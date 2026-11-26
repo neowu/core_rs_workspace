@@ -86,8 +86,8 @@ pub(crate) struct PollStats {
     pub(crate) count: u64,
     // nanos spent inside inner poll, i.e. holding the worker thread; waiting is not counted
     pub(crate) elapsed: u64,
-    pub(crate) alloc_count: u64,
-    pub(crate) alloc_bytes: u64,
+    alloc_count: u64,
+    alloc_bytes: u64,
 }
 
 impl PollStats {

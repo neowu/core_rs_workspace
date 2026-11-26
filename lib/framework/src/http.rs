@@ -115,7 +115,7 @@ impl HttpClientConfig {
 
 #[derive(Clone)]
 pub struct HttpRequest {
-    pub method: Method,
+    pub(crate) method: Method,
     uri: Uri,
     https: bool,
     host: String,

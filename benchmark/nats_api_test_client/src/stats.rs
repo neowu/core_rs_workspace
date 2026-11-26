@@ -5,28 +5,28 @@ use serde_json::json;
 
 /// Per worker recording, merged once at the end so the measured loop never touches shared state.
 #[derive(Default)]
-pub struct Recorder {
-    pub latencies: Vec<u64>,
-    pub failed: u64,
-    pub errors: u64,
+pub(crate) struct Recorder {
+    latencies: Vec<u64>,
+    pub(crate) failed: u64,
+    pub(crate) errors: u64,
 }
 
 impl Recorder {
-    pub fn record(&mut self, elapsed: u64) {
+    pub(crate) fn record(&mut self, elapsed: u64) {
         self.latencies.push(elapsed);
     }
 }
 
-pub struct Summary {
-    pub requests: u64,
-    pub failed: u64,
-    pub errors: u64,
-    pub elapsed: Duration,
+pub(crate) struct Summary {
+    pub(crate) requests: u64,
+    pub(crate) failed: u64,
+    pub(crate) errors: u64,
+    pub(crate) elapsed: Duration,
     latencies: Vec<u64>,
 }
 
 impl Summary {
-    pub fn merge(recorders: Vec<Recorder>, elapsed: Duration) -> Summary {
+    pub(crate) fn merge(recorders: Vec<Recorder>, elapsed: Duration) -> Summary {
         let mut latencies = Vec::with_capacity(recorders.iter().map(|recorder| recorder.latencies.len()).sum());
         let mut failed = 0;
         let mut errors = 0;
@@ -39,12 +39,12 @@ impl Summary {
         Summary { requests: latencies.len() as u64, failed, errors, elapsed, latencies }
     }
 
-    pub fn throughput(&self) -> f64 {
+    fn throughput(&self) -> f64 {
         let seconds = self.elapsed.as_secs_f64();
         if seconds > 0.0 { self.requests as f64 / seconds } else { 0.0 }
     }
 
-    pub fn mean(&self) -> f64 {
+    fn mean(&self) -> f64 {
         if self.latencies.is_empty() {
             return 0.0;
         }
@@ -52,7 +52,7 @@ impl Summary {
     }
 
     /// Nearest rank on the sorted samples, exact rather than an estimate since every sample is kept.
-    pub fn percentile(&self, percentile: f64) -> u64 {
+    fn percentile(&self, percentile: f64) -> u64 {
         if self.latencies.is_empty() {
             return 0;
         }
@@ -62,7 +62,7 @@ impl Summary {
 }
 
 /// The measurement as it goes into the result file the client writes under `--output`.
-pub fn result(summary: &Summary) -> Value {
+pub(crate) fn result(summary: &Summary) -> Value {
     json!({
         "requests": summary.requests,
         "failed": summary.failed,
@@ -78,7 +78,7 @@ pub fn result(summary: &Summary) -> Value {
     })
 }
 
-pub fn round(value: f64, digits: i32) -> f64 {
+pub(crate) fn round(value: f64, digits: i32) -> f64 {
     let scale = 10_f64.powi(digits);
     (value * scale).round() / scale
 }

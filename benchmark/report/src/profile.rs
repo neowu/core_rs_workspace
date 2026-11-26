@@ -18,7 +18,7 @@ struct Entry {
     name: String,
 }
 
-pub fn methods(self_path: &str, total_path: &str, top: usize) -> Value {
+pub(crate) fn methods(self_path: &str, total_path: &str, top: usize) -> Value {
     let self_report = read(self_path);
     let total_report = read(total_path);
     // perf's own header, e.g. `# Samples: 16K of event 'task-clock:ppp'`

@@ -36,6 +36,14 @@ pub(super) struct Package {
     pub(super) manifest_path: PathBuf,
     #[serde(rename = "targets", deserialize_with = "first_target")]
     pub(super) target: Value,
+    #[serde(default)]
+    pub(super) dependencies: Vec<Dependency>,
+}
+
+#[derive(Clone, Deserialize)]
+pub(super) struct Dependency {
+    /// The package name, also for a renamed dependency.
+    pub(super) name: String,
 }
 
 fn first_target<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Value, D::Error> {
@@ -49,6 +57,45 @@ impl Manifest {
         let document = Document::parse(source).map_err(|error| format!("{}: {error}", manifest_path.display()))?;
         let path = manifest_path.strip_prefix(root).unwrap_or(&manifest_path).to_path_buf();
         Ok(Self { path, absolute_path: manifest_path, package, document })
+    }
+
+    /// Points at `name` in a member's source file; `path` is relative to the workspace root, and `position` is
+    /// the 1-based line and 0-based character column of the name.
+    pub(super) fn diagnostic_at(
+        &self,
+        path: PathBuf,
+        source: &str,
+        name: &str,
+        (line, column): (usize, usize),
+        rule: &'static str,
+        message: String,
+    ) -> Diagnostic {
+        let text = source.lines().nth(line - 1).unwrap_or_default();
+        let line_offset: usize = source.split_inclusive('\n').take(line - 1).map(str::len).sum();
+        let byte_start = line_offset + text.char_indices().nth(column).map_or(text.len(), |(index, _)| index);
+        let column_start = column + 1;
+        let column_end = column_start + name.chars().count();
+        Diagnostic {
+            path,
+            manifest_path: self.absolute_path.clone(),
+            package_id: self.package.id.clone(),
+            target: self.package.target.clone(),
+            span: Span {
+                byte_start,
+                byte_end: byte_start + name.len(),
+                line_start: line,
+                line_end: line,
+                column_start,
+                column_end,
+                lines: vec![SpanLine {
+                    text: text.to_owned(),
+                    highlight_start: column_start,
+                    highlight_end: column_end,
+                }],
+            },
+            rule,
+            message,
+        }
     }
 
     pub(super) fn diagnostic(&self, item: &Item, rule: &'static str, message: String) -> Diagnostic {

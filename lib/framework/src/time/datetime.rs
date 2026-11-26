@@ -95,7 +95,7 @@ impl DateTime {
     }
 
     /// Appends the rfc3339 form, without the temporary `String` `to_rfc3339` allocates.
-    pub fn write_rfc3339(&self, out: &mut String) {
+    pub(crate) fn write_rfc3339(&self, out: &mut String) {
         const CAPACITY: usize = 48; // rfc3339 with nanos and offset needs 35
 
         let mut buf = [0_u8; CAPACITY];

@@ -18,7 +18,7 @@ use crate::web::request::Request;
 use crate::web::response::Response;
 use crate::web::router::Router;
 
-pub struct JobState<S> {
+struct JobState<S> {
     state: S,
     timezone: Offset,
     schedules: HashMap<&'static str, Arc<Schedule<S>>>,

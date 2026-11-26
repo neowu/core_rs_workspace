@@ -30,7 +30,7 @@ pub struct AppState {
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
-    pub nats_appender_url: String,
+    nats_appender_url: String,
     pub db_url: String,
     pub db_user: String,
     pub db_password: EnvString,

@@ -21,7 +21,7 @@ pub(crate) fn routes(state: &'static AppState) -> Router {
     UserService::route(Arc::new(service)).into()
 }
 
-pub(crate) struct UserServiceImpl {
+struct UserServiceImpl {
     state: &'static AppState,
 }
 

@@ -48,6 +48,7 @@ async fn decimal() -> Result<(), Exception> {
         .await?
         .unwrap();
     assert_eq!(entity, entities[0]);
+    assert_eq!(entity.decimal.to_f64(), entities[0].decimal.to_f64());
 
     // toString() renders what the server sees, so a wrong scale fails here
     // even though the symmetric serde round trip above would still pass

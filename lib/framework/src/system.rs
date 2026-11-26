@@ -34,8 +34,8 @@ pub struct Running {
 }
 
 pub(crate) struct Context {
-    pub app: &'static str,
-    pub host: String,
+    pub(crate) app: &'static str,
+    pub(crate) host: String,
 }
 
 pub(crate) static CONTEXT: OnceLock<Context> = OnceLock::new();

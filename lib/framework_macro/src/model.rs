@@ -64,7 +64,7 @@ impl AttributeModel {
         nested.iter().any(|meta| matches!(meta, Meta::Path(path) if path.is_ident(meta_name)))
     }
 
-    pub(crate) fn optional_meta_value(&self, meta_name: &str) -> Result<Option<Lit>> {
+    fn optional_meta_value(&self, meta_name: &str) -> Result<Option<Lit>> {
         let nested = self.attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
         for meta in nested {
             if let Meta::NameValue(name_value) = meta

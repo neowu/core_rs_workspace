@@ -1,5 +1,6 @@
 use std::future::pending;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use framework::api::ErrorResponse;
@@ -17,6 +18,7 @@ use framework::web::Event;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
+use framework::web::sse::SseChannel;
 use framework_macro::integration_test;
 use futures::TryStreamExt as _;
 use http_test::TestServer;
@@ -30,6 +32,7 @@ use tokio::time::timeout;
 
 struct AppState {
     signal: UnboundedSender<&'static str>,
+    subscribers: Mutex<Vec<SseChannel>>,
 }
 
 // signals when the sse handler returns or is dropped
@@ -93,6 +96,30 @@ async fn silent(state: Arc<AppState>, _request: Request) -> Result<Response, Exc
     }))
 }
 
+// keeps a channel clone to broadcast, the stream stays open until the client leaves
+async fn subscribe(state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
+    Ok(Response::sse(move |channel| async move {
+        state.subscribers.lock().expect("lock poisoned").push(channel.clone());
+        channel.send(&Event::new("subscribed".to_owned())).await;
+        let watcher = channel.clone();
+        let signal = state.signal.clone();
+        tokio::spawn(async move {
+            watcher.closed().await;
+            let _sent = signal.send("unsubscribed");
+        });
+        channel.closed().await;
+        Ok(())
+    }))
+}
+
+// broadcasts without waiting on slow clients, drops closed subscribers
+async fn publish(state: Arc<AppState>, mut request: Request) -> Result<Response, Exception> {
+    let event = Event::new(request.text().await?);
+    let mut subscribers = state.subscribers.lock().expect("lock poisoned");
+    subscribers.retain(|channel| channel.try_send(&event));
+    Ok(Response::text(subscribers.len().to_string()))
+}
+
 async fn next_signal(signals: &mut UnboundedReceiver<&'static str>) -> &'static str {
     timeout(Duration::from_secs(2), signals.recv()).await.expect("no signal").expect("sender dropped")
 }
@@ -112,13 +139,15 @@ async fn assert_retry(mut source: EventSource, expected: &[&str]) -> Result<(), 
 #[integration_test]
 async fn sse() -> Result<(), Exception> {
     let (signal, mut signals) = mpsc::unbounded_channel();
-    let router = Router::state(Arc::new(AppState { signal }))
+    let router = Router::state(Arc::new(AppState { signal, subscribers: Mutex::default() }))
         .route(Method::GET, "/events", events)
         .route(Method::GET, "/forbidden", forbidden)
         .route(Method::GET, "/fail", fail)
         .route(Method::GET, "/ticks", ticks)
         .route(Method::GET, "/hold", hold)
-        .route(Method::GET, "/silent", silent);
+        .route(Method::GET, "/silent", silent)
+        .route(Method::GET, "/subscribe", subscribe)
+        .route(Method::POST, "/publish", publish);
     let mut server = TestServer::start(router).await;
 
     for h2c in [false, true] {
@@ -170,6 +199,21 @@ async fn sse() -> Result<(), Exception> {
             (Some("1".to_owned()), Some("list".to_owned()), "[\"x\"]".to_owned())
         ]
     );
+
+    let client = &http_client(false);
+    let publish = async |message: &str| {
+        let mut request = HttpRequest::new(Method::POST, server.url("/publish"))?;
+        request.body(message.to_owned(), "text/plain");
+        Ok::<_, Exception>(client.execute(request).await?.text()?.to_owned())
+    };
+    let mut source = client.sse(HttpRequest::new(Method::GET, server.url("/subscribe"))?).await?;
+    assert_eq!(source.try_next().await?.expect("expect sse event").data, "subscribed");
+    assert_eq!(publish("news").await?, "1");
+    assert_eq!(source.try_next().await?.expect("expect sse event").data, "news");
+    // closed() completes once the client disconnects, then try_send fails and the subscriber is dropped
+    drop(source);
+    assert_eq!(next_signal(&mut signals).await, "unsubscribed");
+    assert_eq!(publish("gone").await?, "0");
 
     let hold_sources = [
         http_client(false).sse(HttpRequest::new(Method::GET, server.url("/hold"))?).await?,

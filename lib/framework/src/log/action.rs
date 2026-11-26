@@ -20,17 +20,17 @@ const MAX_ERROR_MESSAGE_LEN: usize = 200;
 const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
 pub(crate) struct Action {
-    pub start_time: Instant,
-    pub id: Id,
-    pub kind: &'static str,
-    pub timestamp: DateTime,
-    pub ref_ids: Option<Vec<String>>,
-    pub severity: Severity,
-    pub error: Option<Error>,
-    pub context: Vec<(Cow<'static, str>, ContextValues)>,
-    pub stats: Vec<(Cow<'static, str>, u64)>,
-    pub logs: String, // All log lines in one buffer, separated by '\n'
-    pub trace: bool,
+    pub(crate) start_time: Instant,
+    pub(crate) id: Id,
+    pub(crate) kind: &'static str,
+    pub(crate) timestamp: DateTime,
+    pub(crate) ref_ids: Option<Vec<String>>,
+    pub(crate) severity: Severity,
+    pub(crate) error: Option<Error>,
+    pub(crate) context: Vec<(Cow<'static, str>, ContextValues)>,
+    pub(crate) stats: Vec<(Cow<'static, str>, u64)>,
+    pub(crate) logs: String, // All log lines in one buffer, separated by '\n'
+    pub(crate) trace: bool,
 }
 
 pub(crate) struct Error {

@@ -65,6 +65,21 @@ fn expiration() {
 }
 
 #[test]
+fn retention() {
+    const RETENTION: SignedDuration = SignedDuration::from_days(7);
+
+    let now = DateTime::parse("2023-11-14T22:13:20.5Z").unwrap();
+    let cutoff = now.add_duration(SignedDuration::from_secs(-RETENTION.as_secs())).unwrap();
+    assert_eq!(cutoff.to_rfc3339(), "2023-11-07T22:13:20.5Z");
+
+    let created = DateTime::parse("2023-11-07T22:13:20Z").unwrap();
+    let age = now - created;
+    assert!(age > RETENTION, "expired");
+    assert_eq!(age.as_days(), 7);
+    assert_eq!(age.as_millis(), 7 * 86_400_000 + 500);
+}
+
+#[test]
 fn parts() {
     let date = DateTime::parse("2023-11-14T22:13:20.123456789Z").unwrap();
     assert_eq!(date.date().to_ymd(), (2023, 11, 14));

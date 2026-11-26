@@ -38,7 +38,7 @@ result files in the directory beside this one. A profile adds no run row, the pr
 compare a profiling run only with other profiling runs.</p>
 </footer></main></body></html>";
 
-pub fn render(dir: &Path, results: &[Value]) -> PathBuf {
+pub(crate) fn render(dir: &Path, results: &[Value]) -> PathBuf {
     // the directory is named <date>_<benchmark>, e.g. 2026-09-23_http, which is the whole title
     let file = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let date = file.get(..10).unwrap_or(&file);
