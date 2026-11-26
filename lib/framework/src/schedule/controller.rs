@@ -6,8 +6,8 @@ use http::StatusCode;
 use serde::Deserialize;
 
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::exception::error_code;
-use crate::log::Severity;
 use crate::schedule::JobContext;
 use crate::schedule::Schedule;
 use crate::schedule::Scheduler;

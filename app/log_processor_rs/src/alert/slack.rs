@@ -1,12 +1,12 @@
 use framework::exception;
 use framework::exception::Exception;
+use framework::exception::Severity;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
 use framework::http::Method;
 use framework::http::header;
 use framework::json;
-use framework::log::Severity;
 use framework::span;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,7 +81,7 @@ impl SlackClient {
 
 #[cfg(test)]
 mod tests {
-    use framework::log::Severity;
+    use framework::exception::Severity;
 
     use super::SlackClient;
 

@@ -1,16 +1,17 @@
 use std::panic;
-use std::sync::OnceLock;
 
 use futures::future::join_all;
 use tokio::signal;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 pub use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::appender::Appender;
+use crate::appender::CONTEXT;
+use crate::appender::Context;
 use crate::appender::Message;
+use crate::appender::SENDER;
 use crate::metrics::Metrics;
 use crate::metrics::MetricsCollector;
 use crate::network::hostname;
@@ -32,14 +33,6 @@ pub struct Init {
 pub struct Running {
     daemon_handles: Vec<JoinHandle<()>>,
 }
-
-pub(crate) struct Context {
-    pub(crate) app: &'static str,
-    pub(crate) host: String,
-}
-
-pub(crate) static CONTEXT: OnceLock<Context> = OnceLock::new();
-pub(crate) static SENDER: OnceLock<UnboundedSender<Message>> = OnceLock::new();
 
 /// Resolves the host name from the runtime env.
 ///

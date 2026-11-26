@@ -4,10 +4,38 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::log::Severity;
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::write_str;
 
 pub mod error_code;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Severity {
+    #[serde(rename = "INFO")]
+    Info = 1,
+    #[serde(rename = "WARN")]
+    Warn = 2,
+    #[serde(rename = "ERROR")]
+    Error = 3,
+}
+
+impl Severity {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Severity::Info => "INFO",
+            Severity::Warn => "WARN",
+            Severity::Error => "ERROR",
+        }
+    }
+}
+
+impl Display for Severity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 pub struct Exception {
     pub severity: Severity,
@@ -191,5 +219,12 @@ mod tests {
 1: ERROR [MID] middle
 2: ERROR root cause at src/root.rs:1"
         );
+    }
+
+    #[test]
+    fn compare_severity() {
+        assert_eq!(Severity::Info, Severity::Info);
+        assert!(Severity::Info < Severity::Warn);
+        assert!(Severity::Warn < Severity::Error);
     }
 }

@@ -1,7 +1,8 @@
 # Metrics design
 
 Code: [`lib/framework/src/metrics/collector.rs`](../lib/framework/src/metrics/collector.rs),
-[`metrics/counter.rs`](../lib/framework/src/metrics/counter.rs) · siblings:
+[`metrics/counter.rs`](../lib/framework/src/metrics/counter.rs),
+[`cgroup.rs`](../lib/framework/src/cgroup.rs) · siblings:
 [`action_log.md`](action_log.md)
 
 `MetricsCollector` emits one metrics record every 5s to the appender, only when an app registered

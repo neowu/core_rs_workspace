@@ -11,8 +11,8 @@ use percent_encoding::percent_decode_str;
 use tokio::task::spawn_blocking;
 
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::exception::error_code;
-use crate::log::Severity;
 use crate::web::request::Request;
 use crate::web::response::Response;
 

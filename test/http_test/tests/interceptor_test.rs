@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use framework::exception;
 use framework::exception::Exception;
+use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::http::HeaderName;
 use framework::http::HeaderValue;
 use framework::http::HttpRequest;
 use framework::http::Method;
-use framework::log::Severity;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Next;

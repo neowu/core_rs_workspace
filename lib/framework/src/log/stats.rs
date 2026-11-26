@@ -11,9 +11,9 @@ use std::cell::Cell;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use crate::log::Severity;
+use crate::cgroup::container_mem_max;
+use crate::exception::Severity;
 use crate::log::action::Action;
-use crate::metrics::collector::container_mem_max;
 
 thread_local! {
     // `(allocations, bytes allocated)`, const init so reading it never allocates

@@ -129,7 +129,7 @@ SETTINGS ttl_only_drop_parts = 1
 - **`content` and `info` use `CODEC(ZSTD(3))`** — both are large and highly repetitive.
 
 `severity` is `Enum8('INFO' = 1, 'WARN' = 2, 'ERROR' = 3)`. The local `nats::Severity` mirrors
-`framework::log::Severity`'s discriminants exactly: the JSON message carries the name, RowBinary carries
+`framework::exception::Severity`'s discriminants exactly: the JSON message carries the name, RowBinary carries
 the `i8`, and the two must not drift.
 
 ## 7. Alerting

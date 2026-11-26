@@ -1,11 +1,9 @@
-use std::fmt::Debug;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt as _;
 use http::HeaderName;
 
 use crate::exception::Exception;
-use crate::json;
 
 pub mod api;
 pub mod diagnostic;
@@ -16,32 +14,13 @@ pub mod router;
 pub mod server;
 pub mod sse;
 
+pub use crate::http::Event;
+
 const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
 const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 const REF_ID: HeaderName = HeaderName::from_static("ref-id");
 const CLIENT: HeaderName = HeaderName::from_static("client");
-
-/// One server-sent event, written by `SseChannel` and read by `EventSource`.
-#[derive(Debug)]
-pub struct Event {
-    pub id: Option<String>,
-    pub event_type: Option<String>,
-    pub data: String,
-}
-
-impl Event {
-    pub const fn new(data: String) -> Event {
-        Event { id: None, event_type: None, data }
-    }
-
-    pub fn json<T>(data: &T) -> Result<Event, Exception>
-    where
-        T: serde::Serialize + Debug,
-    {
-        Ok(Event::new(json::to_json(data)?))
-    }
-}
 
 // only catches panics while polling, handlers are async fn / async closures, invoking one only creates the future
 async fn catch_panic<T>(future: impl Future<Output = Result<T, Exception>>) -> Result<T, Exception> {

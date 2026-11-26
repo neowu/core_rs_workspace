@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
-use crate::log::Severity;
+use crate::appender::CONTEXT;
+use crate::appender::MetricsMessage;
+use crate::exception::Severity;
 use crate::time::DateTime;
 
 pub(crate) mod collector;
@@ -38,6 +40,29 @@ impl Metrics {
         if self.error.as_ref().is_none() || self.severity < severity {
             self.severity = severity;
             self.error = Some(Error { code: Some(error_code), message: error_message });
+        }
+    }
+}
+
+impl From<Metrics> for MetricsMessage {
+    fn from(metrics: Metrics) -> MetricsMessage {
+        let (error_code, error_message) = match metrics.error {
+            Some(error) => (error.code.map(str::to_owned), Some(error.message)),
+            None => (None, None),
+        };
+
+        let context = CONTEXT.get().expect("context must be initialized");
+
+        MetricsMessage {
+            id: metrics.id,
+            timestamp: metrics.timestamp,
+            app: Cow::Borrowed(context.app),
+            host: Cow::Borrowed(&context.host),
+            severity: metrics.severity,
+            error_code,
+            error_message,
+            stats: metrics.stats,
+            info: metrics.info,
         }
     }
 }

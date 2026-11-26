@@ -48,6 +48,7 @@ use crate::warn;
 mod dns;
 pub use dns::FallbackDnsResolver;
 mod sse;
+pub use sse::Event;
 pub use sse::EventSource;
 mod tls;
 

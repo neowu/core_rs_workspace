@@ -9,6 +9,7 @@ use tracing as _;
 pub mod api;
 pub mod appender;
 pub mod asset;
+mod cgroup;
 #[macro_use]
 pub mod exception;
 pub mod config;

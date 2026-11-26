@@ -233,7 +233,7 @@ mod tests {
     use http_body_util::BodyExt as _;
 
     use super::*;
-    use crate::log::Severity;
+    use crate::exception::Severity;
 
     #[tokio::test]
     async fn json() {

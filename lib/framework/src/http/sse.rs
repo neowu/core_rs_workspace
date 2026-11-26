@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::mem;
 use std::pin::Pin;
 use std::task::Context;
@@ -11,9 +12,30 @@ use bytes::Bytes;
 use futures::Stream;
 
 use crate::exception::Exception;
+use crate::json;
 use crate::log;
 use crate::stats;
-use crate::web::Event;
+
+/// One server-sent event, written by `SseChannel` and read by `EventSource`.
+#[derive(Debug)]
+pub struct Event {
+    pub id: Option<String>,
+    pub event_type: Option<String>,
+    pub data: String,
+}
+
+impl Event {
+    pub const fn new(data: String) -> Event {
+        Event { id: None, event_type: None, data }
+    }
+
+    pub fn json<T>(data: &T) -> Result<Event, Exception>
+    where
+        T: serde::Serialize + Debug,
+    {
+        Ok(Event::new(json::to_json(data)?))
+    }
+}
 
 /// Parses `text/event-stream` per the WHATWG spec, an event is dispatched on a blank line.
 pub struct EventSource {

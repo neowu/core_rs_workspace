@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use framework::exception;
 use framework::exception::Exception;
+use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::http::HeaderValue;
 use framework::http::Method;
@@ -10,7 +11,6 @@ use framework::http::StatusCode;
 use framework::http::header;
 use framework::json;
 use framework::log;
-use framework::log::Severity;
 use framework::string::StringExt as _;
 use framework::time::DateTime;
 use framework::validate::Validator;

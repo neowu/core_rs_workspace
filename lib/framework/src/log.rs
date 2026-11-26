@@ -1,23 +1,21 @@
 use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
 use pin_project_lite::pin_project;
-use serde::Deserialize;
-use serde::Serialize;
 use smallvec::SmallVec;
 
+use crate::appender::ContextValues;
 use crate::appender::Message;
+use crate::appender::SENDER;
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::log::action::Action;
 use crate::log::inflight::ActionCell;
 use crate::log::inflight::with_current;
 use crate::log::stats::PollStart;
 use crate::log::stats::PollStats;
-use crate::system::SENDER;
 use crate::time::DateTime;
 
 pub(crate) mod action;
@@ -29,35 +27,6 @@ mod stats;
 
 pub use span::__span;
 pub use span::Span;
-
-/// Context values serialize as an array, with the common single value stored inline.
-pub type ContextValues = SmallVec<[String; 1]>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum Severity {
-    #[serde(rename = "INFO")]
-    Info = 1,
-    #[serde(rename = "WARN")]
-    Warn = 2,
-    #[serde(rename = "ERROR")]
-    Error = 3,
-}
-
-impl Severity {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Severity::Info => "INFO",
-            Severity::Warn => "WARN",
-            Severity::Error => "ERROR",
-        }
-    }
-}
-
-impl Display for Severity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
 
 // used for logging without action context
 #[macro_export]
@@ -181,7 +150,7 @@ macro_rules! warn {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
             format_args!($($arg)*),
-            Some($crate::log::Severity::Warn),
+            Some($crate::exception::Severity::Warn),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
         );
@@ -193,7 +162,7 @@ macro_rules! error {
     (error_code = $error_code:expr, $($arg:tt)*) => {
         $crate::log::__log(
             format_args!($($arg)*),
-            Some($crate::log::Severity::Error),
+            Some($crate::exception::Severity::Error),
             Some($error_code),
             concat!(module_path!(), ":", line!()),
         );
@@ -317,7 +286,6 @@ mod tests {
     use super::ScalarContextValue as _;
     use super::VecContextValue as _;
     use crate::exception::Exception;
-    use crate::log::Severity;
     use crate::log::action;
     use crate::log::current_action_id;
 
@@ -392,12 +360,5 @@ mod tests {
             assert_eq!(serde_json::to_string(&values).unwrap(), json);
             assert_eq!(serde_json::from_str::<ContextValues>(json).unwrap(), values);
         }
-    }
-
-    #[test]
-    fn compare_severity() {
-        assert_eq!(Severity::Info, Severity::Info);
-        assert!(Severity::Info < Severity::Warn);
-        assert!(Severity::Warn < Severity::Error);
     }
 }

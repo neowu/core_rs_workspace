@@ -5,8 +5,8 @@ use framework::appender::Appender;
 use framework::appender::ConsoleAppender;
 use framework::appender::MetricsMessage;
 use framework::console;
+use framework::exception::Severity;
 use framework::json::to_json;
-use framework::log::Severity;
 
 pub const ACTION_SUBJECT: &str = "log.action";
 pub const METRICS_SUBJECT: &str = "log.metrics";

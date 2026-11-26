@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use framework::appender::ActionMessage;
+use framework::appender::ContextValues;
 use framework::exception::Exception;
-use framework::log::ContextValues;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
 use framework_clickhouse::types::DateTime64;
@@ -140,8 +140,8 @@ fn to_action_row(payload: &ActionMessage) -> ActionRow<'_> {
 #[cfg(test)]
 mod tests {
     use framework::appender::ActionMessage;
+    use framework::exception::Severity;
     use framework::json;
-    use framework::log::Severity;
     use framework::time::DateTime;
 
     use super::to_action_row;

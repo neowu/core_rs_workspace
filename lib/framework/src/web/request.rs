@@ -16,9 +16,9 @@ use percent_encoding::percent_decode_str;
 use serde::de::DeserializeOwned;
 
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::exception::error_code;
 use crate::json;
-use crate::log::Severity;
 use crate::web::X_FORWARDED_FOR;
 use crate::web::X_FORWARDED_PROTO;
 

@@ -6,9 +6,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 use framework::appender::ActionMessage;
+use framework::appender::ContextValues;
 use framework::appender::MetricsMessage;
-use framework::log::ContextValues;
-use framework::log::Severity;
+use framework::exception::Severity;
 use framework::spawn_action;
 use framework::write_str;
 
@@ -197,8 +197,8 @@ mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
-    use framework::log::ContextValues;
-    use framework::log::Severity;
+    use framework::appender::ContextValues;
+    use framework::exception::Severity;
 
     use super::AlertService;
     use super::AlertStat;

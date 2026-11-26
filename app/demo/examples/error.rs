@@ -1,7 +1,7 @@
 #![allow(unused_crate_dependencies)]
 use framework::console;
 use framework::exception::Exception;
-use framework::log::Severity;
+use framework::exception::Severity;
 use framework::validation_error;
 
 pub fn main() {

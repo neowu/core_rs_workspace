@@ -5,9 +5,11 @@ use std::str::from_utf8;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::appender::ActionMessage;
+use crate::appender::CONTEXT;
 use crate::exception::Exception;
+use crate::exception::Severity;
 use crate::log::ContextValues;
-use crate::log::Severity;
 use crate::log::id_generator::Id;
 use crate::log::mask::mask_logs;
 use crate::string::StringExt as _;
@@ -66,7 +68,7 @@ impl Action {
         }
     }
 
-    pub(crate) const fn flush_trace(&self) -> bool {
+    const fn flush_trace(&self) -> bool {
         self.error.is_some() || self.trace
     }
 
@@ -244,6 +246,35 @@ fn write_digits(out: &mut [u8], mut value: u32) {
     }
 }
 
+impl From<Action> for ActionMessage {
+    fn from(action: Action) -> ActionMessage {
+        let context = CONTEXT.get().expect("context must be initialized");
+
+        // the buffer already carries the lines joined by '\n', so this is a move
+        let logs = action.flush_trace().then_some(action.logs);
+
+        let (error_code, error_message) = match action.error {
+            Some(error) => (error.code.map(str::to_owned), Some(error.message)),
+            None => (None, None),
+        };
+
+        ActionMessage {
+            id: action.id.as_str().to_owned(),
+            timestamp: action.timestamp,
+            app: Cow::Borrowed(context.app),
+            host: Cow::Borrowed(&context.host),
+            kind: Cow::Borrowed(action.kind),
+            severity: action.severity,
+            ref_ids: action.ref_ids,
+            error_code,
+            error_message,
+            context: action.context,
+            stats: action.stats,
+            logs,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
@@ -253,7 +284,11 @@ mod tests {
 
     use super::Action;
     use super::MAX_LOG_BYTES;
-    use crate::log::Severity;
+    use crate::appender::ActionMessage;
+    use crate::appender::CONTEXT;
+    use crate::appender::Context;
+    use crate::exception::Severity;
+    use crate::log::ScalarContextValue as _;
     use crate::log::id_generator::next_id;
     use crate::time::DateTime;
 
@@ -410,5 +445,38 @@ mod tests {
             super::write_elapsed(&mut out, elapsed);
             assert_eq!(out, format!("{minutes:02}:{seconds:02}.{nanos:09} "));
         }
+    }
+
+    #[test]
+    fn action_message_preserves_storage_and_wire_format() {
+        let context = CONTEXT.get_or_init(|| Context { app: "test", host: "host".to_owned() });
+        let id = next_id(0);
+        let mut action = Action::new(id, "http", None, DateTime::now());
+        action.context.push((Cow::Borrowed("method"), "GET".__into_context_value()));
+        action.add_stat("count", 2);
+        let context_buffer = action.context.as_ptr();
+        let stats_buffer = action.stats.as_ptr();
+
+        let message = ActionMessage::from(action);
+        assert_eq!(message.context.as_ptr(), context_buffer);
+        assert_eq!(message.stats.as_ptr(), stats_buffer);
+        assert!(matches!(message.app, Cow::Borrowed(_)));
+        assert!(matches!(message.host, Cow::Borrowed(_)));
+        assert!(matches!(message.kind, Cow::Borrowed(_)));
+        assert!(message.context.iter().all(|(key, values)| matches!(key, Cow::Borrowed(_)) && !values.spilled()));
+        assert!(message.stats.iter().all(|(key, _)| matches!(key, Cow::Borrowed(_))));
+
+        let encoded = serde_json::to_value(&message).unwrap();
+        assert_eq!(
+            encoded,
+            serde_json::json!({
+                "id": id.as_str(), "timestamp": message.timestamp, "app": context.app,
+                "host": context.host, "kind": "http", "severity": "INFO",
+                "context": [["method", ["GET"]]], "stats": [["elapsed", 0], ["count", 2]]
+            })
+        );
+        let decoded: ActionMessage = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(matches!(decoded.app, Cow::Owned(_)));
+        assert_eq!(serde_json::to_value(decoded).unwrap(), encoded);
     }
 }

@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use framework::exception;
 use framework::exception::Exception;
+use framework::exception::Severity;
 use framework::exception::error_code;
 use framework::log;
-use framework::log::Severity;
 use framework::system::CancellationToken;
 use framework_macro::Validate;
 use framework_macro::integration_test;

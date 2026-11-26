@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::log::Severity;
+use crate::exception::Severity;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {

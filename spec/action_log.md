@@ -37,6 +37,14 @@ buffer, and the whole thing leaves the request path over a channel.
 | `stats`                                   | `stats!(key = value)`, `span!`, `ActionFuture` | ordered key → `u64`, numbers that add up; `alloc_count`/`alloc_bytes`/`poll_elapsed`/`poll_count` always |
 | `logs`                                    | `log!`, `warn!`, `error!`, `span!`             | the trace buffer, emitted only when it is worth keeping                                                  |
 
+## Module order
+
+`exception` → `time`, `number` → `appender` → `log` → `metrics` → `system`, each module only uses
+the ones before it. `appender` is the wire layer: the message types, the channel (`SENDER`) and the
+app/host stamped on every message (`CONTEXT`); it knows nothing about `Action` or `Metrics`, which
+convert themselves into messages. `Severity` lives in `exception`.
+`system` only wires them together.
+
 ## Lifecycle
 
 1. `log::action(kind, ref_ids, task)` builds an `Action` held by the returned future, which makes
