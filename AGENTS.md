@@ -4,6 +4,7 @@ Rust framework for server-side applications.
 
 Library crates: `lib/`
 Application crates: `app/`
+Tooling crates: `tool/` (`tool/lint` runs `cargo lint`; `tool/probe` is its nightly rustc driver, outside the workspace)
 e2e test: `test/`, spec: `@spec/test/spec.md`
 
 # code style

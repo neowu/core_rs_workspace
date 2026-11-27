@@ -51,7 +51,7 @@ struct ClickhouseConfig {
     password: EnvString,
 }
 
-pub struct AppState {
+pub(crate) struct AppState {
     elasticsearch: Elasticsearch,
     clickhouse: Option<ClickHouse>,
 }

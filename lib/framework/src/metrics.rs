@@ -13,18 +13,18 @@ pub use counter::Counter;
 pub use counter::CounterGuard;
 
 pub struct Metrics {
-    pub(crate) id: String,
-    pub(crate) timestamp: DateTime,
-    pub(crate) severity: Severity,
-    pub(crate) error: Option<Error>,
+    id: String,
+    timestamp: DateTime,
+    severity: Severity,
+    error: Option<Error>,
     // keys are borrowed so the move into MetricsMessage allocates nothing, add_stat/add_info keep them static
-    pub(crate) stats: Vec<(Cow<'static, str>, u64)>,
-    pub(crate) info: Vec<(Cow<'static, str>, String)>,
+    stats: Vec<(Cow<'static, str>, u64)>,
+    info: Vec<(Cow<'static, str>, String)>,
 }
 
-pub struct Error {
-    pub code: Option<&'static str>,
-    pub message: String,
+struct Error {
+    code: Option<&'static str>,
+    message: String,
 }
 
 impl Metrics {

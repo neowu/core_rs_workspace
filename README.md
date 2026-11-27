@@ -25,7 +25,7 @@ On Linux, install `cmake`, `libcurl4-openssl-dev`
 
 ## Lint
 
-`framework_lint` runs workspace checks (dependency layout, file length) followed by `cargo clippy --workspace --all-targets -- -D warnings`. Rules are described in [spec/lint.md](spec/lint.md).
+`lint` (`tool/lint`) runs workspace checks (dependency layout, file length, visibility, module cycles) followed by `cargo clippy --workspace --all-targets -- -D warnings`. Rules are described in [spec/lint.md](spec/lint.md). The visibility and module cycle checks read what the compiler resolved, through a rustc driver (`tool/probe`) that needs the nightly pinned in `tool/probe/rust-toolchain.toml`; `cargo lint` prints the `rustup` command when it is missing.
 
 To use it in another workspace, add a thin `xtask` member that calls the library.
 
@@ -45,7 +45,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-framework_lint = { git = "https://github.com/neowu/core_rs_workspace.git" }
+lint = { git = "https://github.com/neowu/core_rs_workspace.git" }
 ```
 
 `xtask/src/main.rs`, where customization is passed in code through `LintConfig`:
@@ -54,10 +54,10 @@ framework_lint = { git = "https://github.com/neowu/core_rs_workspace.git" }
 use std::error::Error;
 use std::process::ExitCode;
 
-use framework_lint::LintConfig;
+use lint::LintConfig;
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
-    framework_lint::run(&LintConfig { max_file_lines: 500 })
+    lint::run(&LintConfig::default())
 }
 ```
 

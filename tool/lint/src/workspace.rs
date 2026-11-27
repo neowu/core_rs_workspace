@@ -16,6 +16,7 @@ use super::diagnostic::SpanLine;
 
 pub(super) struct Workspace {
     pub(super) root: PathBuf,
+    pub(super) target_directory: PathBuf,
     pub(super) manifest: Manifest,
     pub(super) members: Vec<Manifest>,
 }
@@ -36,14 +37,6 @@ pub(super) struct Package {
     pub(super) manifest_path: PathBuf,
     #[serde(rename = "targets", deserialize_with = "first_target")]
     pub(super) target: Value,
-    #[serde(default)]
-    pub(super) dependencies: Vec<Dependency>,
-}
-
-#[derive(Clone, Deserialize)]
-pub(super) struct Dependency {
-    /// The package name, also for a renamed dependency.
-    pub(super) name: String,
 }
 
 fn first_target<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Value, D::Error> {
@@ -145,6 +138,7 @@ fn position(source: &str, offset: usize) -> (usize, usize) {
 #[derive(Deserialize)]
 struct Metadata {
     workspace_root: PathBuf,
+    target_directory: PathBuf,
     workspace_members: HashSet<String>,
     packages: Vec<Package>,
 }
@@ -175,5 +169,5 @@ pub(super) fn load() -> Result<Workspace, Box<dyn Error>> {
         }
     }
     members.sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(Workspace { root, manifest, members })
+    Ok(Workspace { root, target_directory: metadata.target_directory, manifest, members })
 }

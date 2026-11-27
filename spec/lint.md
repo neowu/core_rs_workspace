@@ -9,12 +9,11 @@ The repository Cargo configuration also treats build warnings as errors.
 
 ## Packaging
 
-The checks live in the `framework_lint` library so other workspaces can run them the
+The checks live in the `lint` library (`tool/lint`) so other workspaces can run them the
 same way this one does. Each workspace keeps a thin `xtask` binary member that calls
-`framework_lint::run(&LintConfig { .. })`, plus the Cargo alias
+`lint::run(&LintConfig { .. })`, plus the Cargo alias
 `lint = "run --quiet -p xtask -- lint"`. Customization is passed in code through
-`LintConfig` (`max_file_lines`, default 500; `unused_pub_exempt_packages`, default
-none), not a config file. Other
+`LintConfig` (`max_file_lines`, default 500), not a config file. Other
 workspaces depend on it via git, like the other framework crates.
 
 The workspace is located at runtime: the library reads `CARGO_MANIFEST_DIR` and
@@ -59,7 +58,7 @@ local path dependencies alike.
 
 Path dependencies on workspace members are exempt from the `unused_workspace_dependency`
 and `unshared_workspace_dependency` rules, so the root can list every workspace crate
-(such as `framework_lint`, used only by `xtask`) and members always inherit them.
+(such as `lint`, used only by `xtask`) and members always inherit them.
 
 A package overridden in any root `[patch.<source>]` table counts the patch as a root use,
 so it is exempt from `unshared_workspace_dependency` and may stay in the root with a
@@ -86,101 +85,107 @@ file (`#[cfg(test)] mod x;`) is not recognized as test code, which is why unit t
 stay inline. Files that do not parse are skipped and left to the compiler. The
 diagnostic points at the first line past the limit.
 
+## Probe
+
+`unused_pub`, `excess_visibility` and `module_cycle` read what the compiler resolved, not
+names, so two items of the same name are never confused. They run in two phases:
+
+1. **Facts.** `tool/probe` is a rustc driver, built with the nightly pinned in its
+   `rust-toolchain.toml`, which that toolchain's `cargo check --workspace --all-targets`
+   runs in place of rustc for workspace members. For each compilation it writes one JSON
+   file: the non-private items and named struct fields the crate defines, and every use
+   of a workspace item, with the module it is in. The probe holds no rule.
+2. **Rules.** `lint`, on stable, reads the files and reports.
+
+The probe is not a workspace member and nothing depends on it, so stable builds, Clippy
+and rust-analyzer never compile it. `lint` finds its source beside its own, also as a git
+dependency, and builds it on first use. The toolchain is not installed automatically; the
+error names the `rustup` command, which CI runs as a step. Warnings are capped while
+probing, since the workspace is linted on its own toolchain.
+
+Everything is kept under `target/probe/<hash of the probe source>/`: the probe binary,
+a check cache of its own so stable artifacts are untouched, and the facts. Cargo skips
+crates that have not changed and their facts stay on disk, so a run after a small change
+is fast. Only facts of artifacts cargo reports for the run are read; stale files are
+ignored.
+
+How the facts are read:
+
+- An item is identified by the file, line and column of its name, which is the same from
+  every crate that sees it. A crate is identified by its root file, so a library and its
+  unit tests are one crate, and its integration tests, examples and binaries are others.
+- Items are taken from compilations without `cfg(test)`, so test-only items are not
+  checked; uses are taken from all compilations.
+- A use is a resolved path, method call, field access, or field named in a struct literal
+  or pattern, also inside macro expansions. `Type { ..base }` uses every field. A
+  constructor or variant is a use of its type, and a use of a trait's item is a use of the
+  trait.
+- A use of an item inside its own definition, inside an impl of it, or in what a derive
+  wrote for it, is the item using itself. `use` declarations are imports. Neither makes
+  an item used, but both count for where it must be visible.
+
+Checked: functions, inherent methods and associated consts, structs, enums, unions,
+traits, type aliases, consts, statics and named struct fields under a member's `src`,
+including items a `macro_rules!` invocation names by argument, reported at the invocation.
+
+Not checked: tuple fields, enum variants, trait items and trait impls, modules, `use`
+declarations, `#[cfg(test)]` items, proc macro entry points, and items whose name a macro
+writes.
+
+Limits: only the configuration compiled is seen, so an item used only under another
+target or feature looks unused, and a path in a `macro_rules!` body is seen only where
+the macro is invoked in the workspace. Both are handled with the exceptions below.
+
+Exceptions are comments, since stable Rust rejects lint names of unknown tools in
+`#[expect]`: `// lint: expect(<rule>)` (a reason may follow) in the comment block directly
+above an item or field, above its attributes, or between them and its name. Like
+`#[expect]`, a marker must excuse something: one on an item the rule would not report is
+itself reported, as `unfulfilled_lint_expectations`, so exceptions do not outlive their
+reason. There is no exception wider than an item.
+
 ## Unused pub items
 
 | Rule | Requirement |
 | --- | --- |
-| `unused_pub` | A `pub` function, inherent method or associated const, struct, enum, union, trait, type alias, const, or static under a member's `src` is mentioned somewhere else in the workspace. |
+| `unused_pub` | A `pub` item of a library is used somewhere in the workspace by something other than itself and `use` declarations. |
 
 rustc's `dead_code` covers everything not exported from a crate (`pub(crate)`, private
 items, and `pub` items in binaries), and `unreachable_pub` forces unexported items to be
 `pub(crate)`. This rule covers the rest: items a library exports that no one uses.
 The workspace is treated as the universe, so a library's public API must be exercised by
-at least one other crate, test, benchmark, or unit test.
+at least one other crate, test, benchmark, or unit test. A type that only has impls, or
+that is only re-exported, is unused. Fields are not checked.
 
-Matching is by name on raw tokens, not resolved references, which keeps the check fast
-and dependency free, and biased against false positives: any mention of the name in any
-`.rs` file of any member counts as a use, including inside macro invocations, `quote!`
-bodies, and string literals (e.g. `#[serde(deserialize_with = "path")]`). Doc comments,
-other definitions of the same name (the name after `fn`, `struct`, `const`, ...), and
-the self type of an `impl` block (`impl Type`, `impl Trait for Type`) do not count, so a
-type that only has impls is still unused. The cost is false negatives: an unused item
-sharing its name with any used item is not reported, and neither is one mentioned only
-by a `use`/`pub use` or by its own impl body (`Type {}` rather than `Self {}`).
-
-Items named by `macro_rules!` arguments are checked without expansion. A macro whose
-body holds `pub <keyword> $name` (e.g. `pub struct $name;`) defines an item per
-identifier bound to `$name`, so each invocation's arguments are matched against the
-macro's patterns and the bound identifiers become candidates, reported at the invocation.
-That occurrence is the definition, not a mention. Macros are identified by name only,
-across the workspace; matching approximates rustc (fragments parsed with `syn`, greedy
-repetitions), and an invocation no arm matches is skipped.
-
-Not checked: `pub(crate)` and private items, fields and enum variants, trait methods and
-trait impls, `#[cfg(test)]` items, proc macro entry points, modules, and items generated
-any other way: with a name fixed in a macro body, through a macro that calls another
-macro, or by proc macros and derives.
-
-Exceptions, for API meant for callers outside the workspace:
-
-- per item, a `// lint: allow(unused_pub)` comment (a reason may follow) in the
-  comment block directly above the item, or between its doc comments, attributes, and
-  name. For an item named by a macro argument, the comment goes directly above that
-  name in the argument list. A comment is used because stable Rust rejects attributes and lint names of
-  unknown tools.
-- per package, `LintConfig::unused_pub_exempt_packages`, for libraries consumed only by
-  other workspaces. Exempt packages still count as users of other packages.
+Exception: `// lint: expect(unused_pub)`, for API meant for callers outside the workspace.
+It is not needed, and reported, once something in the workspace uses the item.
 
 ## Excess visibility
 
 | Rule | Requirement |
 | --- | --- |
-| `excess_visibility` | A function, inherent method or associated const, struct, enum, union, trait, type alias, const, static, or named struct field under a member's `src` is no more visible than its mentions need: `pub` only if another crate mentions it, `pub(crate)` only if a module outside the defining module and its children does. |
+| `excess_visibility` | An item or field is no more visible than its uses need: `pub` only if another crate uses it, `pub(crate)` only if a module outside the defining module and its children does. |
 
 The goal is the smallest open surface: whatever stays `pub` or `pub(crate)` is what other
 code really depends on. `unused_pub` asks whether an exported item is used at all; this
 rule asks from where, and covers binaries, `pub(crate)` and fields as well. rustc has no
 equivalent: `unreachable_pub` only catches `pub` that the crate does not export.
 
-It shares `unused_pub`'s name matching on raw tokens, and its bias against false positives,
-with these differences:
-
-- A mention is placed by its file: another package, `tests/`, benches, examples, another
-  binary of the package, or a `macro_rules!` body (which expands in the caller) needs `pub`;
-  another module of the crate needs `pub(crate)`. `pub(super)` and `pub(in path)` are treated
-  as `pub(crate)`. Items in inline modules are placed precisely, mentions only by file.
-- A mention in another package counts only if that package depends on the item's package,
-  directly or through other members, with any dependency kind; otherwise it names a
-  different item. Mentions in proc macro crates and `macro_rules!` bodies always count,
-  since they are written into the crates that invoke them.
-- The self type of an `impl` is a mention, since an impl elsewhere needs the type.
-- Methods and associated consts count only mentions after `.` or `::`; fields only after
-  `.` without a call, or where a struct literal or pattern names a field. Field names in
-  definitions and words in string literals do not count for fields. `Type { ..base }`
-  counts as naming every field of `Type`.
-- A field or method is no more visible than its type needs to be, and nothing in a binary
-  needs more than `pub(crate)`; wider mentions are of other items with the same name.
-- A trait is also needed wherever one of its method names is called, since a glob import
-  brings it in without naming it.
+- The defining module is the one the item is private to: for a method, the module of its
+  impl. `pub(super)` and `pub(in path)` are treated as `pub(crate)`.
 - A name in an interface (signature, field type, bound, alias, enum variant, trait
   definition) must stay as visible as that interface needs to be, matching rustc's
   `private_interfaces`. This is solved to a fixed point, so one run reports a whole chain.
-  Associated types of trait impls are taken as public.
-
-An item with no mention at all is left to `unused_pub` and rustc's `dead_code`, except
-fields, which neither sees. Narrowing an item whose only mentions were same-named items
-makes `dead_code` report it; it is then unused in the workspace, to be removed or marked.
-
-Not checked: tuple fields, enum variants, trait items and trait impls, modules, `use`
-declarations, `#[cfg(test)]` items, proc macro entry points, and macro-generated items.
+  An associated type in a trait impl is as visible as the impl's self type.
+- An item nothing uses is left to `unused_pub` and rustc's `dead_code`, and so is one only
+  tests use, since narrowing it makes it dead code. Fields are reported either way, since
+  neither rule sees them.
 
 Exceptions:
 
-- `// lint: allow(excess_visibility)` (a reason may follow), placed as for `unused_pub`,
-  on an item or a field.
-- `pub` items in `LintConfig::unused_pub_exempt_packages`, and `pub` items marked
-  `// lint: allow(unused_pub)` together with their fields, are API for other workspaces and
-  keep `pub`. Narrower visibilities in them are still checked.
+- `// lint: expect(excess_visibility)` on an item or a field, for one that is used in the
+  workspace but meant to be more visible than those uses need.
+- `pub` items marked `// lint: expect(unused_pub)`, together with their `pub` fields, are
+  API for other workspaces and keep `pub`.
 
 ## Module cycles
 
@@ -194,22 +199,14 @@ circles. Crates need no check, since Cargo keeps them in order. A module and the
 inside it are read together: uses between a module and its own descendants do not count,
 and a use of anything inside a sibling is a use of that sibling.
 
-A use is a path written from `crate`, `self` or `super`, in a `use` declaration or inline,
-read from raw tokens so macro invocations are covered. It is not resolved by the compiler:
-
-- The path belongs to the longest module it starts with. When the next name is brought into
-  that module by a `use` (a re-export such as `pub use date::Date`), the path is followed
-  to the module that owns the item. Glob imports are not followed, so a use through one
-  counts as a use of the module that holds the glob.
-- Paths from a name in scope (`child::Item`, or a module imported earlier) are only read in
-  `use` declarations, where they give re-exports.
-- `#[cfg(test)]` items are skipped; tests may use anything. `$crate` paths in macros
-  belong to the invoking crate and are skipped. `#[path]` attributes are not read.
+Every use of an item is a use of the module that owns it, through any re-export or glob
+import, and method calls and field accesses count as well as paths. Uses in compilations
+with `cfg(test)` are skipped; tests may use anything.
 
 One diagnostic is reported per set of modules that reach each other. It names the members
 and shows the shortest circle through the use with the fewest mentions, which is the
 cheapest to cut and where the diagnostic points; other circles in the set appear once that
 one is cut.
 
-Exception: `// lint: allow(module_cycle)` (a reason may follow) in the comment block
-directly above a path leaves that use out of the graph.
+Exception: `// lint: expect(module_cycle)` directly above a use leaves it out of the graph.
+It covers the uses on that line, and is not needed unless one of them is part of a circle.

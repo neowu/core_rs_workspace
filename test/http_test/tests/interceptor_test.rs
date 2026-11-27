@@ -8,6 +8,7 @@ use framework::http::HeaderName;
 use framework::http::HeaderValue;
 use framework::http::HttpRequest;
 use framework::http::Method;
+use framework::http::header;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Next;
@@ -28,7 +29,9 @@ struct User(String);
 
 async fn trace(_state: Arc<AppState>, request: Request, next: Next) -> Result<Response, Exception> {
     let response = next.run(request).await?;
-    let value = HeaderValue::from_str(&format!("traced {}", response.status_code().as_u16()))?;
+    let content_type = response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok());
+    let value = format!("traced {} {}", response.status_code().as_u16(), content_type.unwrap_or_default());
+    let value = HeaderValue::from_str(&value)?;
     Ok(response.header(TRACE, value))
 }
 
@@ -79,7 +82,7 @@ async fn interceptor() -> Result<(), Exception> {
         request.headers.insert(HeaderName::from_static("token"), HeaderValue::from_static("secret"));
         let response = client.execute(request).await?;
         assert_eq!(response.status, 200);
-        assert_eq!(response.headers[TRACE], "traced 200");
+        assert_eq!(response.headers[TRACE], "traced 200 text/plain; charset=utf-8");
         assert_eq!(response.text()?, "neo");
     }
 

@@ -13,10 +13,8 @@ use serde_json::Value;
 use serde_json::json;
 
 mod diagnostic;
-mod excess_visibility;
 mod file_length;
-mod module_cycle;
-mod unused_pub;
+mod probe;
 mod workspace;
 mod workspace_dependencies;
 
@@ -24,16 +22,13 @@ const USAGE: &str = "Usage: cargo lint [--custom-only] [--message-format=human|j
 
 pub struct LintConfig {
     /// Maximum lines per Rust source file, not counting top-level `#[cfg(test)]` items.
-    // lint: allow(excess_visibility), set by other workspaces
+    // lint: expect(excess_visibility), set by other workspaces
     pub max_file_lines: usize,
-    /// Packages exempt from `unused_pub`, for libraries whose `pub` items are used outside the workspace.
-    // lint: allow(excess_visibility), set by other workspaces
-    pub unused_pub_exempt_packages: Vec<String>,
 }
 
 impl Default for LintConfig {
     fn default() -> Self {
-        Self { max_file_lines: 500, unused_pub_exempt_packages: Vec::new() }
+        Self { max_file_lines: 500 }
     }
 }
 
@@ -70,9 +65,7 @@ fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, 
     let workspace = workspace::load()?;
     let mut diagnostics = workspace_dependencies::check(&workspace);
     diagnostics.extend(file_length::check(&workspace, config.max_file_lines)?);
-    diagnostics.extend(unused_pub::check(&workspace, &config.unused_pub_exempt_packages)?);
-    diagnostics.extend(excess_visibility::check(&workspace, &config.unused_pub_exempt_packages)?);
-    diagnostics.extend(module_cycle::check(&workspace)?);
+    diagnostics.extend(probe::check(&workspace)?);
     let custom_ok = diagnostics.is_empty();
     let clippy_ok = if json {
         let mut stdout = io::stdout().lock();

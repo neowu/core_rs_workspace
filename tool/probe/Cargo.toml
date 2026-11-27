@@ -1,0 +1,11 @@
+[package]
+name = "probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+# built on its own with the nightly toolchain in rust-toolchain.toml, never as a member of a stable workspace
+[workspace]

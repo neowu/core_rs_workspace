@@ -20,7 +20,7 @@ struct AppConfig {
     kafka_uri: String,
 }
 
-pub struct AppState {
+pub(crate) struct AppState {
     topics: Topics,
     producer: Producer,
 }

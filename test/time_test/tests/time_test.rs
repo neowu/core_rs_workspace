@@ -90,3 +90,14 @@ fn parts() {
     assert_eq!(start_of_day.to_rfc3339(), "2023-11-14T00:00:00Z");
     assert_eq!((date - start_of_day).as_hours(), 22);
 }
+
+// a wall clock time has no date or offset, subseconds are optional
+#[test]
+fn time_of_day() {
+    let closing = Time::parse("17:30:00").unwrap();
+    assert_eq!(closing, Time::new(17, 30, 0));
+    assert!(OPENING < closing);
+    assert_eq!(closing.to_rfc3339(), "17:30:00");
+    assert_eq!(Time::parse("17:30:00.5").unwrap().to_rfc3339(), "17:30:00.5");
+    Time::parse("25:00:00").unwrap_err();
+}

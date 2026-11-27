@@ -646,18 +646,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "framework_lint"
-version = "0.12.0"
-dependencies = [
- "proc-macro2",
- "semver",
- "serde",
- "serde_json",
- "syn 3.0.10",
- "toml_edit",
-]
-
-[[package]]
 name = "framework_macro"
 version = "0.12.0"
 dependencies = [
@@ -1244,6 +1232,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61ff90caf6077a803a240f62fdbe88645a890bbca49ef8174c3cb0404362171d"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "lint"
+version = "0.12.0"
+dependencies = [
+ "proc-macro2",
+ "semver",
+ "serde",
+ "serde_json",
+ "syn 3.0.10",
+ "toml_edit",
 ]
 
 [[package]]
@@ -2943,7 +2943,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 name = "xtask"
 version = "0.12.0"
 dependencies = [
- "framework_lint",
+ "lint",
 ]
 
 [[package]]

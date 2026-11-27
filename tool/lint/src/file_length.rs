@@ -55,7 +55,7 @@ pub(super) fn check(workspace: &Workspace, max_lines: usize) -> Result<Vec<Diagn
     Ok(diagnostics)
 }
 
-pub(super) fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
+fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -85,7 +85,7 @@ fn lines(span: Span) -> RangeInclusive<usize> {
     span.start().line..=span.end().line
 }
 
-pub(super) fn is_test(item: &Item) -> bool {
+fn is_test(item: &Item) -> bool {
     let attrs = match item {
         Item::Const(item) => &item.attrs,
         Item::Enum(item) => &item.attrs,
@@ -107,7 +107,7 @@ pub(super) fn is_test(item: &Item) -> bool {
     cfg_test(attrs)
 }
 
-pub(super) fn cfg_test(attrs: &[Attribute]) -> bool {
+fn cfg_test(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident("cfg") && attr.parse_args::<Ident>().is_ok_and(|arg| arg == "test"))
 }
 

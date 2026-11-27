@@ -20,8 +20,8 @@ pub struct GetRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetResponse {
     pub id: i64,
-    pub name: String,
-    pub values: Vec<i64>,
+    name: String,
+    values: Vec<i64>,
 }
 
 /// Body of the post endpoints, `values` is sized by the client to vary the body size.

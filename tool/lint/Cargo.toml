@@ -1,5 +1,5 @@
 [package]
-name = "framework_lint"
+name = "lint"
 version.workspace = true
 edition = "2024"
 
@@ -11,7 +11,7 @@ proc-macro2 = { workspace = true, features = ["span-locations"] }
 semver = "1"
 serde.workspace = true
 serde_json.workspace = true
-syn = { workspace = true, features = ["full", "visit"] }
+syn = { workspace = true, features = ["full"] }
 toml_edit = { version = "0.25", default-features = false, features = ["parse"] }
 
 [lints]

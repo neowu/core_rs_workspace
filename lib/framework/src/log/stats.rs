@@ -83,9 +83,9 @@ impl PollStart {
 
 /// What one action cost, accumulated across its polls by `ActionFuture` and written into its stats on finish.
 pub(crate) struct PollStats {
-    pub(crate) count: u64,
+    count: u64,
     // nanos spent inside inner poll, i.e. holding the worker thread; waiting is not counted
-    pub(crate) elapsed: u64,
+    elapsed: u64,
     alloc_count: u64,
     alloc_bytes: u64,
 }

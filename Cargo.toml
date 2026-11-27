@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["app/*", "benchmark/*", "lib/*", "test/*", "xtask"]
-default-members = ["app/*", "lib/*", "xtask"]
+members = ["app/*", "benchmark/*", "lib/*", "test/*", "tool/lint", "xtask"]
+default-members = ["app/*", "lib/*", "tool/lint", "xtask"]
 
 [workspace.package]
 version = "0.12.0"
@@ -10,7 +10,7 @@ version = "0.12.0"
 framework = { path = "lib/framework" }
 framework_clickhouse = { path = "lib/framework_clickhouse" }
 framework_kafka = { path = "lib/framework_kafka" }
-framework_lint = { path = "lib/framework_lint" }
+lint = { path = "tool/lint" }
 framework_macro = { path = "lib/framework_macro" }
 framework_nats = { path = "lib/framework_nats" }
 framework_postgres = { path = "lib/framework_postgres" }

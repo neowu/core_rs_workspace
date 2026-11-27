@@ -20,6 +20,8 @@ jobs:
         uses: myci-actions/add-deb-repo@11
         with:
           install: libcurl4-openssl-dev
+      - name: install probe toolchain
+        run: rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' tool/probe/rust-toolchain.toml)" --profile minimal --component rustc-dev --component llvm-tools
       - name: check
         run: cargo lint
       - name: test

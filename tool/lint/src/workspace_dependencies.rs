@@ -170,7 +170,6 @@ mod tests {
                 name: name.to_owned(),
                 manifest_path: PathBuf::from("/fixture").join(path),
                 target: Value::Null,
-                dependencies: Vec::new(),
             },
             document: Document::parse(source.to_owned()).expect("valid fixture"),
         }
@@ -179,6 +178,7 @@ mod tests {
     fn run(root: &str, members: &[&str]) -> Vec<Diagnostic> {
         let workspace = Workspace {
             root: PathBuf::from("/fixture"),
+            target_directory: PathBuf::from("/fixture/target"),
             manifest: manifest("xtask", "Cargo.toml", root),
             members: members
                 .iter()

@@ -25,19 +25,19 @@ pub(crate) struct Action {
     pub(crate) start_time: Instant,
     pub(crate) id: Id,
     pub(crate) kind: &'static str,
-    pub(crate) timestamp: DateTime,
-    pub(crate) ref_ids: Option<Vec<String>>,
-    pub(crate) severity: Severity,
-    pub(crate) error: Option<Error>,
-    pub(crate) context: Vec<(Cow<'static, str>, ContextValues)>,
+    timestamp: DateTime,
+    ref_ids: Option<Vec<String>>,
+    severity: Severity,
+    error: Option<Error>,
+    context: Vec<(Cow<'static, str>, ContextValues)>,
     pub(crate) stats: Vec<(Cow<'static, str>, u64)>,
     pub(crate) logs: String, // All log lines in one buffer, separated by '\n'
     pub(crate) trace: bool,
 }
 
-pub(crate) struct Error {
-    pub code: Option<&'static str>,
-    pub message: String,
+struct Error {
+    code: Option<&'static str>,
+    message: String,
 }
 
 impl Action {

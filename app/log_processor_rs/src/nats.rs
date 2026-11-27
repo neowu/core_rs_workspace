@@ -7,7 +7,7 @@ pub(crate) mod metrics_handler;
 // Enum8('INFO' = 1, 'WARN' = 2, 'ERROR' = 3), mirrors framework::exception::Severity discriminants,
 // the message carries the name ("INFO"), clickhouse RowBinary carries the i8
 #[derive(Enum8)]
-pub(crate) enum Severity {
+enum Severity {
     Info = 1,
     Warn = 2,
     Error = 3,

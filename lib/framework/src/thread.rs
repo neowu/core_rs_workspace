@@ -50,10 +50,10 @@ mod unix {
 
     pub(super) struct Thread {
         // tid on linux, pthread_t on macos
-        pub(super) id: u64,
-        pub(super) name: String,
+        id: u64,
+        name: String,
         // os specific, appended to the header
-        pub(super) info: String,
+        info: String,
     }
 
     struct Capture {

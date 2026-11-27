@@ -26,6 +26,7 @@ struct TestMessage2 {
 async fn single_message() -> Result<(), Exception> {
     let topic_1 = topic::<TestMessage>("kafka_test_1");
     let topic_2 = topic::<TestMessage2>("kafka_test_2");
+    assert!(topic_1.name.starts_with("kafka_test_1_"), "topic is unique per run");
 
     // topics are auto created on first send, consumer reads them from earliest
     let producer = producer();

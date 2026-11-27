@@ -12,6 +12,7 @@ use framework::http::Method;
 use framework::http::StatusCode;
 use framework::http::header;
 use framework::json;
+use framework::network::hostname;
 use framework::web::request::Request;
 use framework::web::response::Response;
 use framework::web::router::Router;
@@ -47,7 +48,15 @@ async fn whoami(_state: Arc<AppState>, request: Request) -> Result<Response, Exc
     let mut response = Response::text(format!("{}|{session}|{agent}|{query}", request.client_ip()));
     let peer_addr = HeaderValue::from_str(&request.peer_addr().to_string())?;
     response.headers_mut().insert(HeaderName::from_static("x-peer-addr"), peer_addr);
+    response.headers_mut().insert(HeaderName::from_static("x-host"), HeaderValue::from_str(&hostname())?);
     Ok(response)
+}
+
+// the request line and the raw body, for handlers that parse the body themselves
+async fn inspect(_state: Arc<AppState>, mut request: Request) -> Result<Response, Exception> {
+    let line = format!("{} {} {}", request.method(), request.path(), request.uri());
+    let body = request.body().await?;
+    Ok(Response::html(format!("<p>{line} {}</p>", body.len())))
 }
 
 async fn fail(_state: Arc<AppState>, _request: Request) -> Result<Response, Exception> {
@@ -75,6 +84,7 @@ async fn request_response() -> Result<(), Exception> {
                 .route(Method::POST, "/greet", greet_json)
                 .route(Method::POST, "/echo", echo)
                 .route(Method::GET, "/whoami", whoami)
+                .route(Method::POST, "/inspect", inspect)
                 .route(Method::GET, "/fail", fail)
                 .route(Method::GET, "/panic", panic)
                 .route(Method::GET, "/no-content", no_content),
@@ -120,7 +130,14 @@ async fn request_response() -> Result<(), Exception> {
     let response = client.execute(request).await?;
     // client ip comes from x-forwarded-for, peer addr is the tcp connection
     assert_eq!(response.headers["x-peer-addr"], "127.0.0.1");
+    assert_eq!(response.headers["x-host"], hostname());
     assert_eq!(response.text()?, "108.0.0.1|abc def|test-agent|a=1&b");
+
+    let mut request = HttpRequest::new(Method::POST, server.url("/inspect?a=1"))?;
+    request.body("abc".to_owned(), "application/octet-stream");
+    let response = client.execute(request).await?;
+    assert_eq!(response.headers[header::CONTENT_TYPE], "text/html; charset=utf-8");
+    assert_eq!(response.text()?, "<p>POST /inspect /inspect?a=1 3</p>");
 
     let mut request = HttpRequest::new(Method::GET, server.url("/whoami"))?;
     let forwarded_for = HeaderName::from_static("x-forwarded-for");
@@ -169,6 +186,7 @@ async fn request_response() -> Result<(), Exception> {
     assert_eq!(response.status, 500);
     let error: ErrorResponse = json::from_json(response.text()?)?;
     assert_eq!(error.code.as_deref(), Some("TEST_FAILURE"));
+    assert_eq!(error.severity.as_str(), "WARN");
     assert_eq!(error.message, "expected failure");
 
     let response = execute(client, Method::GET, server.url("/panic")).await?;

@@ -152,10 +152,36 @@ Notes:
 - **SCIP is the route to the structural lints** (`tangle`, `field-leak`), which need the
   full reference graph and not a yes or no on visibility.
 
+## Probe (added 2026-11-27)
+
+The compiler route replaced the token rules; behavior is in `spec/lint.md`. Sections above
+describe the token rules as first built and are kept for the reasoning.
+
+- `tool/probe`: a rustc driver on a pinned nightly, outside the workspace. It writes facts
+  (definitions and resolved uses) per compilation and holds no rule. Hand-written rather
+  than Dylint: nothing here is a rustc lint, and it keeps `cargo lint` free of installed
+  tools.
+- `tool/lint` (was `lib/framework_lint`): `unused_pub`, `excess_visibility` and
+  `module_cycle` over the facts, in `cargo lint` by default. The token versions are removed.
+
+First run on this workspace: 52 `excess_visibility` and 2 `unused_pub` findings that the
+token rules missed, no module cycle. Applying the suggestions compiled with warnings
+denied. A cold run takes about 10 s, a cached one under 1 s.
+
+Exceptions are `// lint: expect(<rule>)` comments, reported when they excuse nothing; the
+per-package exemption is removed. An attribute form needs `register_tool`, which is
+unstable.
+
+Cost accepted: `cargo lint` needs the pinned nightly with `rustc-dev`, locally and in CI,
+and the probe must be fixed when the pin moves.
+
+Not done:
+
+- The probe records where an item is used, not how. Read, write and borrow kinds (from
+  MIR) are the next facts to add for the Tier 2 report.
+- Tuple fields, enum variants and trait items are still not checked.
+
 ## Recommendation
 
-1. Keep the two token rules as the CI gate.
-2. Add `cargo xtask tighten` when the remaining false negatives matter; it also produces
-   the Tier 2 report.
-3. Consider SCIP only if the structural lints are wanted. Consider a rustc lint only if a
-   pinned nightly in the lint step is acceptable.
+1. Build the Tier 2 report on the probe's facts, adding use kinds.
+2. Consider SCIP only if the probe proves too costly to keep up with nightly.

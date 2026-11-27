@@ -19,8 +19,8 @@ impl Recorder {
 
 pub(crate) struct Summary {
     pub(crate) requests: u64,
-    pub(crate) failed: u64,
-    pub(crate) errors: u64,
+    failed: u64,
+    errors: u64,
     pub(crate) elapsed: Duration,
     latencies: Vec<u64>,
 }

@@ -42,10 +42,10 @@ pub struct GetUserByNameRequest {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GetUserResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub rating: Option<i32>,
-    pub tags: Vec<String>,
+    id: Uuid,
+    name: String,
+    rating: Option<i32>,
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

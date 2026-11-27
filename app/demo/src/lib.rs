@@ -23,7 +23,7 @@ mod job;
 pub mod user;
 mod web;
 
-pub struct AppState {
+pub(crate) struct AppState {
     db: Database,
 }
 

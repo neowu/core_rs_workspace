@@ -54,7 +54,7 @@ struct SlackConfig {
     warn_channel: String,
 }
 
-pub struct AppState {
+pub(crate) struct AppState {
     clickhouse: ClickHouse,
     alert_service: Option<AlertService>,
 }
