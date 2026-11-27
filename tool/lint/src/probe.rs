@@ -105,12 +105,6 @@ impl<'a> Sources<'a> {
         Self { workspace, texts }
     }
 
-    #[cfg(test)]
-    fn with(workspace: &'a Workspace, texts: &[(&str, &str)]) -> Self {
-        let texts = texts.iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect();
-        Self { workspace, texts }
-    }
-
     fn text(&self, file: &str) -> &str {
         self.texts.get(file).map_or("", String::as_str)
     }
@@ -239,39 +233,7 @@ fn within(module: &str, of: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use serde_json::Value;
-    use serde_json::json;
-    use toml_edit::Document;
-
-    use super::Unit;
     use super::within;
-    use crate::workspace::Manifest;
-    use crate::workspace::Workspace;
-
-    /// A workspace at `/fixture` with one member, the package `m` in the directory `m`.
-    pub(super) fn workspace() -> Workspace {
-        let manifest = |name: &str, path: &str| Manifest {
-            path: PathBuf::from(path),
-            absolute_path: PathBuf::from("/fixture").join(path),
-            package: serde_json::from_value(json!({
-                "id": name, "name": name, "manifest_path": format!("/fixture/{path}"), "targets": [{ "kind": ["lib"] }],
-            }))
-            .expect("package"),
-            document: Document::parse(String::new()).expect("manifest"),
-        };
-        Workspace {
-            root: PathBuf::from("/fixture"),
-            target_directory: PathBuf::from("/fixture/target"),
-            manifest: manifest("xtask", "Cargo.toml"),
-            members: vec![manifest("m", "m/Cargo.toml")],
-        }
-    }
-
-    pub(super) fn unit(root: &str, test: bool, defs: &[Value], uses: &[Value]) -> Unit {
-        serde_json::from_value(json!({ "root": root, "test": test, "defs": defs, "uses": uses })).expect("unit")
-    }
 
     #[test]
     fn places_modules() {

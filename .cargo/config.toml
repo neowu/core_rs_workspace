@@ -1,7 +1,7 @@
 [alias]
 lint = "run --quiet -p xtask -- lint"
 # e2e tests that need no external service
-e2e-local = "test -p http_test -p number_test -p time_test -p validator_test"
+e2e-local = "test -p http_test -p lint_test -p number_test -p time_test -p validator_test"
 
 [build]
 warnings = "deny"

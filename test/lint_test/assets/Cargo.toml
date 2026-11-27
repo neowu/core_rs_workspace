@@ -1,0 +1,4 @@
+# a workspace of its own for `cargo lint` to check, run by tests/lint_test.rs
+[workspace]
+resolver = "3"
+members = ["app", "cycle", "visibility", "xtask"]

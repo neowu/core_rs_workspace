@@ -10,10 +10,10 @@ version = "0.12.0"
 framework = { path = "lib/framework" }
 framework_clickhouse = { path = "lib/framework_clickhouse" }
 framework_kafka = { path = "lib/framework_kafka" }
-lint = { path = "tool/lint" }
 framework_macro = { path = "lib/framework_macro" }
 framework_nats = { path = "lib/framework_nats" }
 framework_postgres = { path = "lib/framework_postgres" }
+lint = { path = "tool/lint" }
 
 bytes = "1"
 futures = "0"

@@ -1247,6 +1247,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lint_test"
+version = "1.0.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

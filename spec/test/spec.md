@@ -4,7 +4,8 @@ Integration crates live under `test/`, one crate per service:
 [http](http.md) · [nats](nats.md) · [kafka](kafka.md) · [postgres](postgres.md) · [clickhouse](clickhouse.md).
 Framework features that need a downstream crate but no service also get a crate: `validator_test` exercises
 the code `#[derive(Validate)]` generates, `time_test` and `number_test` show `framework::time` and `framework::number`
-usage and keep that public API used for the `unused_pub` lint. They use plain `#[test]` and the rules below
+usage and keep that public API used for the `unused_pub` lint, and `lint_test` runs `cargo lint` on the
+workspace in its `assets/` (see [lint](../lint.md)). They use plain `#[test]` and the rules below
 do not apply.
 
 `cargo e2e-local` runs the crates that need no external service (`http_test` and the plain `#[test]` crates),

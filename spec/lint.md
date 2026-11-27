@@ -26,6 +26,9 @@ Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing mak
 the command fail. `cargo lint --custom-only` runs only the repository checks.
 CI uses the same command as local development.
 Unit tests live in the same file as the code they test, in a `#[cfg(test)] mod tests`.
+The probe rules are tested end to end instead, by `test/lint_test`: it runs `cargo lint --custom-only`
+on a small workspace of real sources in its `assets/` and compares the diagnostics, so facts are never
+written by hand.
 
 `--message-format=json` emits the same JSON line stream as
 `cargo clippy --message-format=json` on stdout, so IDEs and tools that read Clippy
