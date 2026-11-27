@@ -145,7 +145,7 @@ impl HttpServer {
                 },
                 () = &mut shutdown => break,
             };
-            let _nodelay = stream.set_nodelay(true);
+            let _ = stream.set_nodelay(true);
 
             let shared = Arc::clone(&shared);
             let service = service_fn(move |request| {
@@ -155,7 +155,7 @@ impl HttpServer {
             let connection = graceful.watch(builder.serve_connection(io, service).into_owned());
             tokio::spawn(async move {
                 // client resets and timeouts are expected, not logged
-                let _closed = connection.await;
+                let _ = connection.await;
             });
         }
 

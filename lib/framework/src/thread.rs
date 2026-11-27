@@ -342,7 +342,7 @@ mod unix {
 
         #[inline(never)]
         fn blocked_in_test(release: &Receiver<()>) {
-            let _released = release.recv();
+            let _ = release.recv();
         }
 
         // the thread's header and the stack of its group
