@@ -167,8 +167,8 @@ fn collect(workspace: &Workspace) -> Result<Vec<Unit>, Box<dyn Error>> {
         .map_err(|error| format!("rustup: {error}"))?;
     if !built.success() {
         return Err(format!(
-            "cannot build the probe; it needs `rustup toolchain install {channel} --profile minimal --component \
-             rustc-dev --component llvm-tools`"
+            "cannot build the probe; it needs the latest {channel}: `rustup toolchain install {channel} --profile \
+             minimal --component rustc-dev --component llvm-tools`, or `rustup update {channel}`"
         )
         .into());
     }

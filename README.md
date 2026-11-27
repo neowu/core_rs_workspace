@@ -25,7 +25,7 @@ On Linux, install `cmake`, `libcurl4-openssl-dev`
 
 ## Lint
 
-`lint` (`tool/lint`) runs workspace checks (dependency layout, file length, visibility, module cycles) followed by `cargo clippy --workspace --all-targets -- -D warnings`. Rules are described in [spec/lint.md](spec/lint.md). The visibility and module cycle checks read what the compiler resolved, through a rustc driver (`tool/probe`) that needs the nightly pinned in `tool/probe/rust-toolchain.toml`; `cargo lint` prints the `rustup` command when it is missing.
+`lint` (`tool/lint`) runs workspace checks (dependency layout, file length, visibility, module cycles) followed by `cargo clippy --workspace --all-targets -- -D warnings`. Rules are described in [spec/lint.md](spec/lint.md). The visibility and module cycle checks read what the compiler resolved, through a rustc driver (`tool/probe`) that needs the latest nightly with `rustc-dev` (not pinned; a break is fixed in the probe); `cargo lint` prints the `rustup` command when it is missing.
 
 To use it in another workspace, add a thin `xtask` member that calls the library.
 

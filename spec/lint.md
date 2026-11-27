@@ -90,8 +90,8 @@ diagnostic points at the first line past the limit.
 `unused_pub`, `excess_visibility` and `module_cycle` read what the compiler resolved, not
 names, so two items of the same name are never confused. They run in two phases:
 
-1. **Facts.** `tool/probe` is a rustc driver, built with the nightly pinned in its
-   `rust-toolchain.toml`, which that toolchain's `cargo check --workspace --all-targets`
+1. **Facts.** `tool/probe` is a rustc driver, built with the latest nightly (its
+   `rust-toolchain.toml` names the unpinned `nightly` channel), which that toolchain's `cargo check --workspace --all-targets`
    runs in place of rustc for workspace members. For each compilation it writes one JSON
    file: the non-private items and named struct fields the crate defines, and every use
    of a workspace item, with the module it is in. The probe holds no rule.
@@ -100,7 +100,9 @@ names, so two items of the same name are never confused. They run in two phases:
 The probe is not a workspace member and nothing depends on it, so stable builds, Clippy
 and rust-analyzer never compile it. `lint` finds its source beside its own, also as a git
 dependency, and builds it on first use. The toolchain is not installed automatically; the
-error names the `rustup` command, which CI runs as a step. Warnings are capped while
+error names the `rustup` command, which CI runs as a step. The nightly is not pinned: the
+latest one is assumed everywhere, and when it breaks the probe, the probe is fixed, since
+only linting is affected. Workspaces using `lint` from git update it when that happens. Warnings are capped while
 probing, since the workspace is linted on its own toolchain.
 
 Everything is kept under `target/probe/<hash of the probe source>/`: the probe binary,
