@@ -139,7 +139,8 @@ async fn assert_retry(mut source: EventSource, expected: &[&str]) -> Result<(), 
 #[integration_test]
 async fn sse() -> Result<(), Exception> {
     let (signal, mut signals) = mpsc::unbounded_channel();
-    let router = Router::state(Arc::new(AppState { signal, subscribers: Mutex::default() }))
+    let state = Arc::new(AppState { signal, subscribers: Mutex::default() });
+    let router = Router::state(Arc::clone(&state))
         .route(Method::GET, "/events", events)
         .route(Method::GET, "/forbidden", forbidden)
         .route(Method::GET, "/fail", fail)
@@ -210,9 +211,12 @@ async fn sse() -> Result<(), Exception> {
     assert_eq!(source.try_next().await?.expect("expect sse event").data, "subscribed");
     assert_eq!(publish("news").await?, "1");
     assert_eq!(source.try_next().await?.expect("expect sse event").data, "news");
+    let subscriber = state.subscribers.lock().expect("lock poisoned")[0].clone();
+    assert!(!subscriber.is_closed());
     // closed() completes once the client disconnects, then try_send fails and the subscriber is dropped
     drop(source);
     assert_eq!(next_signal(&mut signals).await, "unsubscribed");
+    assert!(subscriber.is_closed());
     assert_eq!(publish("gone").await?, "0");
 
     let hold_sources = [

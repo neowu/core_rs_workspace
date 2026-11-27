@@ -5,4 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-visibility = { path = "../visibility" }
+visibility.workspace = true
+
+[dev-dependencies]
+support = { path = "../support" }

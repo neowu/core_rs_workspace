@@ -441,7 +441,7 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "demo"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_macro",
@@ -589,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "framework"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backtrace",
  "bytes",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "framework_clickhouse"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "clickhouse",
  "framework",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "framework_kafka"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "futures",
@@ -647,7 +647,7 @@ dependencies = [
 
 [[package]]
 name = "framework_macro"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "framework_nats"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-nats",
  "framework",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "framework_postgres"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bytes",
  "framework",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "http_test_client"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "http_test_server",
@@ -928,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "http_test_server"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_macro",
@@ -1236,7 +1236,7 @@ dependencies = [
 
 [[package]]
 name = "lint"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "proc-macro2",
  "semver",
@@ -1276,7 +1276,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "log_collector"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_kafka",
@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1300,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "log_processor_rs"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_clickhouse",
@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "nats_api_test_client"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_nats",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "nats_api_test_server"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "framework",
  "framework_macro",
@@ -1865,7 +1865,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "report"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "rustc-demangle",
  "serde_json",
@@ -2948,7 +2948,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "lint",
 ]

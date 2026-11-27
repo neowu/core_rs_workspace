@@ -158,10 +158,10 @@ impl<'a> Sources<'a> {
 }
 
 /// Runs the rules that need what the compiler resolved rather than names.
-pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
+pub(super) fn check(workspace: &Workspace, api_tests: &[&str]) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
     let units = collect(workspace)?;
     let sources = Sources::load(workspace, &units);
-    let mut diagnostics = visibility::check(&units, &sources);
+    let mut diagnostics = visibility::check(&units, &sources, api_tests);
     diagnostics.extend(field::check(&units, &sources));
     diagnostics.extend(cycle::check(&units, &sources));
     diagnostics.extend(wildcard::check(&units, &sources));

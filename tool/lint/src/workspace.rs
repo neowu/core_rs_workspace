@@ -37,6 +37,16 @@ pub(super) struct Package {
     pub(super) manifest_path: PathBuf,
     #[serde(rename = "targets", deserialize_with = "first_target")]
     pub(super) target: Value,
+    #[serde(default)]
+    pub(super) dependencies: Vec<Dependency>,
+}
+
+#[derive(Clone, Deserialize)]
+pub(super) struct Dependency {
+    /// `dev` or `build`, none for a normal dependency.
+    pub(super) kind: Option<String>,
+    /// The directory of a path dependency.
+    pub(super) path: Option<PathBuf>,
 }
 
 fn first_target<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Value, D::Error> {

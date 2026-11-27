@@ -13,7 +13,7 @@ The checks live in the `lint` library (`tool/lint`) so other workspaces can run 
 same way this one does. Each workspace keeps a thin `xtask` binary member that calls
 `lint::run(&LintConfig { .. })`, plus the Cargo alias
 `lint = "run --quiet -p xtask -- lint"`. Customization is passed in code through
-`LintConfig` (`max_file_lines`, default 500), not a config file. Other
+`LintConfig` (`max_file_lines`, default 500; `api_tests`, default none), not a config file. Other
 workspaces depend on it via git, like the other framework crates.
 
 The workspace is located at runtime: the library reads `CARGO_MANIFEST_DIR` and
@@ -175,9 +175,19 @@ rule checks, such as a private item, is reported as `unfulfilled_lint_expectatio
 rustc's `dead_code` covers everything not exported from a crate (`pub(crate)`, private
 items, and `pub` items in binaries), and `unreachable_pub` forces unexported items to be
 `pub(crate)`. This rule covers the rest: items a library exports that no one uses.
-The workspace is treated as the universe, so a library's public API must be exercised by
-at least one other crate, test, benchmark, or unit test. A type that only has impls, or
-that is only re-exported, is unused. Fields and modules are not checked.
+The workspace is treated as the universe, so a library's public API must be used by code
+that is not a test: an item only tests use is dead, and is reported as only used by tests.
+That is the default because it is right for an application workspace. A type that only has
+impls, or that is only re-exported, is unused. Fields and modules are not checked.
+
+Tests count as callers in two cases:
+
+- `LintConfig::api_tests` names member directories, relative to the workspace root, whose
+  tests stand for the callers of a public API. A framework workspace names its e2e tests
+  there, so its API is held by them instead of a marker on every item; a unit test still
+  holds nothing. A directory no member is under is an error.
+- A library that other members have only as a dev-dependency is there for tests, so tests
+  are the callers of its items.
 
 A variant of a `pub` enum must be named, and a method or constant of a `pub` trait called
 or read, somewhere outside what a derive wrote; implementing a trait method is not using

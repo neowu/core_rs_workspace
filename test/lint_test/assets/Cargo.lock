@@ -6,12 +6,20 @@ version = 4
 name = "app"
 version = "0.0.0"
 dependencies = [
+ "support",
  "visibility",
 ]
 
 [[package]]
 name = "cycle"
 version = "0.0.0"
+
+[[package]]
+name = "e2e"
+version = "0.0.0"
+dependencies = [
+ "visibility",
+]
 
 [[package]]
 name = "equivalent"
@@ -125,6 +133,10 @@ dependencies = [
  "serde_core",
  "zmij",
 ]
+
+[[package]]
+name = "support"
+version = "0.0.0"
 
 [[package]]
 name = "syn"

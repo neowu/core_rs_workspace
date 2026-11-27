@@ -22,13 +22,15 @@ const USAGE: &str = "Usage: cargo lint [--custom-only] [--message-format=human|j
 
 pub struct LintConfig {
     /// Maximum lines per Rust source file, not counting top-level `#[cfg(test)]` items.
-    // lint: expect(excess_visibility), set by other workspaces
     pub max_file_lines: usize,
+    /// Member directories, relative to the workspace root, whose tests stand for the callers of a public API:
+    /// what only they use counts as used. Without it, an item only tests use is reported as unused.
+    pub api_tests: Vec<&'static str>,
 }
 
 impl Default for LintConfig {
     fn default() -> Self {
-        Self { max_file_lines: 500 }
+        Self { max_file_lines: 500, api_tests: Vec::new() }
     }
 }
 
@@ -63,9 +65,14 @@ fn cargo() -> Command {
 
 fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, Box<dyn Error>> {
     let workspace = workspace::load()?;
+    for directory in &config.api_tests {
+        if !workspace.members.iter().any(|member| member.path.starts_with(directory)) {
+            return Err(format!("api_tests: no workspace member is under `{directory}`").into());
+        }
+    }
     let mut diagnostics = workspace_dependencies::check(&workspace);
     diagnostics.extend(file_length::check(&workspace, config.max_file_lines)?);
-    diagnostics.extend(probe::check(&workspace)?);
+    diagnostics.extend(probe::check(&workspace, &config.api_tests)?);
     let errors = diagnostics.iter().filter(|diagnostic| !diagnostic.advisory()).count();
     let custom_ok = errors == 0;
     let clippy_ok = if json {

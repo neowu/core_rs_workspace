@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -11,6 +12,7 @@ use super::Unit;
 use super::within;
 use crate::diagnostic::Diagnostic;
 use crate::workspace::Manifest;
+use crate::workspace::Workspace;
 
 const EXPECT_UNUSED: &str = "lint: expect(unused_pub)";
 const EXPECT_EXCESS: &str = "lint: expect(excess_visibility)";
@@ -38,8 +40,12 @@ struct Item<'a> {
     exported: bool,
     /// The widest place it is used from.
     used: Level,
-    /// Used by something other than itself and `use` declarations.
+    /// Its crate is one others depend on only for their tests, so tests are its callers.
+    support: bool,
+    /// Used by something other than itself and `use` declarations, and other than a test that stands for no caller.
     real: bool,
+    /// Used by such a test.
+    tested: bool,
     /// Used so outside tests; an item only tests use is dead code once it is narrowed.
     live: bool,
 }
@@ -62,7 +68,8 @@ impl Item<'_> {
 
 /// `unused_pub` and `excess_visibility` for the items, modules and fields under each member's `src`, from where the
 /// compiler found them used.
-pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
+pub(super) fn check(units: &[Unit], sources: &Sources<'_>, api_tests: &[&str]) -> Vec<Diagnostic> {
+    let support = test_support(sources.workspace);
     let mut items: Vec<Item<'_>> = Vec::new();
     let mut index: HashMap<&str, usize> = HashMap::new();
     for unit in units.iter().filter(|unit| !unit.test) {
@@ -93,7 +100,9 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                     && !matches!(def.kind.as_str(), "field" | "module")
                     && !entry_point,
                 used: Level::Private,
+                support: support.contains(member.path.as_path()),
                 real: false,
+                tested: false,
                 live: false,
             });
         }
@@ -113,6 +122,9 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     // a name in an interface must be as visible as the interface, or rustc's `private_interfaces` fires
     let mut interfaces: Vec<(&str, usize)> = Vec::new();
     for unit in units {
+        let member = sources.member(&unit.root);
+        let api_test =
+            member.is_some_and(|member| api_tests.iter().any(|directory| member.path.starts_with(directory)));
         // a catch-all arm does not name the enum
         for used in unit.uses.iter().filter(|used| used.kind != "wildcard") {
             let Some(&id) = index.get(used.to.as_str()) else { continue };
@@ -125,8 +137,11 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 Level::Crate
             };
             item.used = item.used.max(level);
-            item.real |= !used.import && !used.own;
-            item.live |= !used.import && !used.own && !unit.test;
+            let direct = !used.import && !used.own;
+            let counted = !unit.test || api_test || item.support;
+            item.real |= direct && counted;
+            item.tested |= direct && !counted;
+            item.live |= direct && !unit.test;
             if let Some(interface) = &used.interface {
                 interfaces.push((interface, id));
             }
@@ -191,7 +206,8 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 Some(owner) if item.part() => format!("{kind} `{name}` of pub {} `{}`", owner.def.kind, owner.def.name),
                 _ => format!("pub {kind} `{name}`"),
             };
-            unused.push(report("unused_pub", format!("{what} is not used in the workspace; {fix}")));
+            let found = if item.tested { "is only used by tests" } else { "is not used in the workspace" };
+            unused.push(report("unused_pub", format!("{what} {found}; {fix}")));
         } else if is_excess && !item.keep {
             let visibility = written(sources.text(file), item.def);
             let fix = match needed {
@@ -209,6 +225,24 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     unused.extend(excess);
     unused.extend(unfulfilled);
     unused
+}
+
+/// The members others depend on only for their tests, by manifest path.
+fn test_support(workspace: &Workspace) -> HashSet<&Path> {
+    let mut only_dev: HashMap<&Path, bool> = HashMap::new();
+    for member in &workspace.members {
+        let own = member.absolute_path.parent();
+        for dependency in &member.package.dependencies {
+            // a crate may depend on itself for its tests, to turn on features
+            if let Some(path) = dependency.path.as_deref().filter(|path| Some(*path) != own) {
+                *only_dev.entry(path).or_insert(true) &= dependency.kind.as_deref() == Some("dev");
+            }
+        }
+    }
+    let members = workspace.members.iter();
+    let depended =
+        members.filter(|member| member.absolute_path.parent().is_some_and(|dir| only_dev.get(dir) == Some(&true)));
+    depended.map(|member| member.path.as_path()).collect()
 }
 
 /// The visibility as written, which the probe gives only as `pub` or restricted.

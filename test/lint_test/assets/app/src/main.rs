@@ -84,3 +84,11 @@ fn optional(kind: Option<Kind>) -> u32 {
         _ => 0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fixture() {
+        support::fixture();
+    }
+}
