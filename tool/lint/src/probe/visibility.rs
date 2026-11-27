@@ -44,7 +44,23 @@ struct Item<'a> {
     live: bool,
 }
 
-/// `unused_pub` and `excess_visibility` for the items and fields under each member's `src`, from where the
+impl Item<'_> {
+    /// A variant or an item of a trait, which is as visible as its enum or trait and can only be unused.
+    fn part(&self) -> bool {
+        matches!(self.def.kind.as_str(), "variant" | "trait method" | "trait constant")
+    }
+
+    /// Checked wherever it is used from, since rustc's `dead_code` does not see it.
+    fn unseen(&self) -> bool {
+        matches!(self.def.kind.as_str(), "field" | "module")
+    }
+
+    const fn unused(&self) -> bool {
+        self.exported && !self.real
+    }
+}
+
+/// `unused_pub` and `excess_visibility` for the items, modules and fields under each member's `src`, from where the
 /// compiler found them used.
 pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     let mut items: Vec<Item<'_>> = Vec::new();
@@ -72,7 +88,10 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 expect_unused: marked(EXPECT_UNUSED),
                 expect_excess: marked(EXPECT_EXCESS),
                 keep: entry_point,
-                exported: declared == Level::Public && library && def.kind != "field" && !entry_point,
+                exported: declared == Level::Public
+                    && library
+                    && !matches!(def.kind.as_str(), "field" | "module")
+                    && !entry_point,
                 used: Level::Private,
                 real: false,
                 live: false,
@@ -80,11 +99,15 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
         }
     }
     for id in 0..items.len() {
-        // API for other workspaces keeps its fields open too
+        // API for other workspaces keeps its fields open too, and all of its variants and trait items
         let api = |item: &Item<'_>| item.declared == Level::Public && item.expect_unused;
         let owner = items[id].def.owner.as_deref().and_then(|owner| index.get(owner));
         let open = items[id].declared == Level::Public && owner.is_some_and(|owner| api(&items[*owner]));
-        items[id].keep |= items[id].expect_excess || api(&items[id]) || open;
+        let part = items[id].part();
+        items[id].keep |= items[id].expect_excess || api(&items[id]) || open || part;
+        // what is unused with its enum or trait is reported there
+        let owned = owner.is_none_or(|owner| !items[*owner].expect_unused && items[*owner].exported);
+        items[id].exported &= !part || owned;
     }
 
     // a name in an interface must be as visible as the interface, or rustc's `private_interfaces` fires
@@ -151,9 +174,10 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
             item.member.diagnostic_at(PathBuf::from(file), sources.text(file), name, (*line, *column), rule, message)
         };
         let not_needed = |marker| format!("`// {marker}` on {kind} `{name}` is not needed; remove the comment");
-        let is_unused = item.exported && !item.real;
-        // an item nothing uses is left to rustc's `dead_code`, which does not see fields
-        let is_excess = !is_unused && needed < item.declared && (item.live || kind == "field");
+        let owner = item.def.owner.as_deref().and_then(|owner| index.get(owner)).map(|owner| &items[*owner]);
+        let is_unused = item.unused() && !(item.part() && owner.is_some_and(Item::unused));
+        // an item nothing uses is left to rustc's `dead_code`
+        let is_excess = !is_unused && !item.part() && needed < item.declared && (item.live || item.unseen());
         if item.expect_unused && !is_unused {
             unfulfilled.push(report(UNFULFILLED, not_needed(EXPECT_UNUSED)));
         }
@@ -162,7 +186,11 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
         }
         if is_unused && !item.expect_unused {
             let fix = format!("remove it, or mark it with `// {EXPECT_UNUSED}`");
-            unused.push(report("unused_pub", format!("pub {kind} `{name}` is not used in the workspace; {fix}")));
+            let what = match owner {
+                Some(owner) if item.part() => format!("{kind} `{name}` of pub {} `{}`", owner.def.kind, owner.def.name),
+                _ => format!("pub {kind} `{name}`"),
+            };
+            unused.push(report("unused_pub", format!("{what} is not used in the workspace; {fix}")));
         } else if is_excess && !item.keep {
             let visibility = written(sources.text(file), item.def);
             let fix = match needed {
@@ -186,9 +214,15 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
 fn written(text: &str, def: &Def) -> String {
     let line = text.lines().nth(def.line - 1).unwrap_or_default();
     let before: String = line.chars().take(def.column).collect();
+    let after: String = line.chars().skip(def.column).collect();
     let fallback = if def.visibility == "pub" { "pub" } else { "pub(crate)" };
-    let Some(start) = before.rfind("pub") else { return fallback.to_owned() };
-    let rest = &before[start..];
+    // a tuple field has no name; it is identified by where it starts, which is its visibility
+    let rest = if after.starts_with("pub") {
+        after.as_str()
+    } else {
+        let Some(start) = before.rfind("pub") else { return fallback.to_owned() };
+        &before[start..]
+    };
     match rest.find(')') {
         Some(end) if rest.starts_with("pub(") => rest[..=end].to_owned(),
         _ => "pub".to_owned(),

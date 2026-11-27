@@ -25,8 +25,13 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     for unit in units.iter().filter(|unit| !unit.test) {
         for used in &unit.uses {
             let (Some(to_module), Some(name)) = (&used.to_module, &used.name) else { continue };
-            // a crate can be compiled more than once
-            if !seen.insert((&unit.root, &used.to, &used.file, used.line, &used.module)) {
+            // a module on the way to an item may only re-export it; the item is what is used
+            if used.kind == "through" {
+                continue;
+            }
+            // a crate can be compiled more than once, and one name can stand for several items, as a variant
+            // does for its enum
+            if !seen.insert((&unit.root, &used.file, used.line, used.column, &used.module)) {
                 continue;
             }
             let is_marked = sources.marked(&used.file, used.line, used.line, EXPECT);

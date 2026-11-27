@@ -21,6 +21,7 @@ const MAX_LOG_MESSAGE_LEN: usize = 10_000;
 const MAX_ERROR_MESSAGE_LEN: usize = 200;
 const MAX_CONTEXT_VALUE_LEN: usize = 1_000;
 
+// lint: enforce(field_write)
 pub(crate) struct Action {
     pub(crate) start_time: Instant,
     pub(crate) id: Id,
@@ -70,6 +71,18 @@ impl Action {
 
     const fn flush_trace(&self) -> bool {
         self.error.is_some() || self.trace
+    }
+
+    /// Rolls the logs back to `offset`, which a span took when it started.
+    pub(crate) fn truncate_logs(&mut self, offset: usize) {
+        // generally span is always perfect nested
+        // in case a crossed span can hold a stale offset, truncating off a char boundary would panic
+        if offset <= self.logs.len() && self.logs.is_char_boundary(offset) {
+            self.logs.truncate(offset);
+            if self.logs.ends_with('>') {
+                self.logs.push_str(" ...(truncated)\n");
+            }
+        }
     }
 
     pub(crate) fn add_context(&mut self, key: &'static str, mut values: ContextValues) {

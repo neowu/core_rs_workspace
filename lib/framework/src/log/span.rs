@@ -40,17 +40,8 @@ impl Span {
     /// Rolls the trace back to the start of the span, so a long loop cannot fill the action buffer.
     pub fn clear(&self) {
         let _result = with_current(|action| {
-            let mut action = action.borrow_mut();
-            if let Some(offset) = self.log_offset
-                && offset <= action.logs.len()
-                // generally span is always perfect nested
-                // in case a crossed span can hold a stale offset, truncating off a char boundary would panic
-                && action.logs.is_char_boundary(offset)
-            {
-                action.logs.truncate(offset);
-                if action.logs.ends_with('>') {
-                    action.logs.push_str(" ...(truncated)\n");
-                }
+            if let Some(offset) = self.log_offset {
+                action.borrow_mut().truncate_logs(offset);
             }
         });
     }

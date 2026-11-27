@@ -90,14 +90,16 @@ diagnostic points at the first line past the limit.
 
 ## Probe
 
-`unused_pub`, `excess_visibility` and `module_cycle` read what the compiler resolved, not
+`unused_pub`, `excess_visibility`, `field_write` and `module_cycle` read what the compiler resolved, not
 names, so two items of the same name are never confused. They run in two phases:
 
 1. **Facts.** `tool/probe` is a rustc driver, built with the latest nightly (its
    `rust-toolchain.toml` names the unpinned `nightly` channel), which that toolchain's `cargo check --workspace --all-targets`
    runs in place of rustc for workspace members. For each compilation it writes one JSON
-   file: the non-private items and named struct fields the crate defines, and every use
-   of a workspace item, with the module it is in. The probe holds no rule.
+   file: the non-private items, modules, struct fields, enum variants and trait items the
+   crate defines, and every use of a workspace item, with the module and the function or
+   type it is in, and how it is used: called, constructed, matched in a pattern, written,
+   mutably borrowed, or only named. The probe holds no rule.
 2. **Rules.** `lint`, on stable, reads the files and reports.
 
 The probe is not a workspace member and nothing depends on it, so stable builds, Clippy
@@ -122,18 +124,23 @@ How the facts are read:
 - Items are taken from compilations without `cfg(test)`, so test-only items are not
   checked; uses are taken from all compilations.
 - A use is a resolved path, method call, field access, or field named in a struct literal
-  or pattern, also inside macro expansions. `Type { ..base }` uses every field. A
-  constructor or variant is a use of its type, and a use of a trait's item is a use of the
-  trait.
+  or pattern, also inside macro expansions. `Type { ..base }` uses every field, and so
+  does calling or matching the constructor of a tuple struct. A constructor or variant is a
+  use of its type, and a use of a trait's item is a use of the trait.
+- A module is used by every path that goes through it. Such a use counts for where the
+  module must be visible, not as a use of the module by `module_cycle`, since the module
+  may only re-export the item.
 - A use of an item inside its own definition, inside an impl of it, or in what a derive
-  wrote for it, is the item using itself. `use` declarations are imports. Neither makes
+  wrote for it, is the item using itself. A field is its type's own. `use` declarations are imports. Neither makes
   an item used, but both count for where it must be visible.
 
 Checked: functions, inherent methods and associated consts, structs, enums, unions,
-traits, type aliases, consts, statics and named struct fields under a member's `src`,
-including items a `macro_rules!` invocation names by argument, reported at the invocation.
+traits, type aliases, consts, statics, modules, and named and tuple struct fields under a
+member's `src`, including items a `macro_rules!` invocation names by argument, reported at
+the invocation. Enum variants and the methods and constants of traits have no visibility of
+their own and are checked only for being used.
 
-Not checked: tuple fields, enum variants, trait items and trait impls, modules, `use`
+Not checked: fields of enum variants, associated types of traits, trait impls, `use`
 declarations, `#[cfg(test)]` items, proc macro entry points, and items whose name a macro
 writes.
 
@@ -148,6 +155,12 @@ above an item or field, above its attributes, or between them and its name. Like
 itself reported, as `unfulfilled_lint_expectations`, so exceptions do not outlive their
 reason. There is no exception wider than an item.
 
+Every comment of the form `// lint: <verb>(<rule>)` is checked, so none is left behind
+when a rule or the code under it goes. The markers are `expect(unused_pub)`,
+`expect(excess_visibility)`, `expect(module_cycle)` and `enforce(field_write)`; any other
+verb or rule is reported as `unknown_lints`. One that is not directly above something its
+rule checks, such as a private item, is reported as `unfulfilled_lint_expectations`.
+
 ## Unused pub items
 
 | Rule | Requirement |
@@ -159,16 +172,22 @@ items, and `pub` items in binaries), and `unreachable_pub` forces unexported ite
 `pub(crate)`. This rule covers the rest: items a library exports that no one uses.
 The workspace is treated as the universe, so a library's public API must be exercised by
 at least one other crate, test, benchmark, or unit test. A type that only has impls, or
-that is only re-exported, is unused. Fields are not checked.
+that is only re-exported, is unused. Fields and modules are not checked.
+
+A variant of a `pub` enum must be named, and a method or constant of a `pub` trait called
+or read, somewhere outside what a derive wrote; implementing a trait method is not using
+it. rustc's `dead_code` covers both for enums and traits a crate does not export. They are
+reported once, on the enum or trait, when that is unused itself.
 
 Exception: `// lint: expect(unused_pub)`, for API meant for callers outside the workspace.
-It is not needed, and reported, once something in the workspace uses the item.
+It is not needed, and reported, once something in the workspace uses the item. On an enum
+or trait it covers its variants and items.
 
 ## Excess visibility
 
 | Rule | Requirement |
 | --- | --- |
-| `excess_visibility` | An item or field is no more visible than its uses need: `pub` only if another crate uses it, `pub(crate)` only if a module outside the defining module and its children does. |
+| `excess_visibility` | An item, module or field is no more visible than its uses need: `pub` only if another crate uses it, `pub(crate)` only if a module outside the defining module and its children does. |
 
 The goal is the smallest open surface: whatever stays `pub` or `pub(crate)` is what other
 code really depends on. `unused_pub` asks whether an exported item is used at all; this
@@ -182,8 +201,10 @@ equivalent: `unreachable_pub` only catches `pub` that the crate does not export.
   `private_interfaces`. This is solved to a fixed point, so one run reports a whole chain.
   An associated type in a trait impl is as visible as the impl's self type.
 - An item nothing uses is left to `unused_pub` and rustc's `dead_code`, and so is one only
-  tests use, since narrowing it makes it dead code. Fields are reported either way, since
-  neither rule sees them.
+  tests use, since narrowing it makes it dead code. Fields and modules are reported either
+  way, since neither rule sees them.
+- A module needs to be as visible as the paths written through it. One that its parent
+  only re-exports from is private, which makes the parent the single way in.
 
 Exceptions:
 
@@ -191,6 +212,31 @@ Exceptions:
   workspace but meant to be more visible than those uses need.
 - `pub` items marked `// lint: expect(unused_pub)`, together with their `pub` fields, are
   API for other workspaces and keep `pub`.
+
+## Field writes
+
+| Rule | Requirement |
+| --- | --- |
+| `field_write` | A function outside the module of a struct marked `// lint: enforce(field_write)` changes it in at most one place. |
+
+Most structs are data: they are filled in and passed on, and their fields are open on
+purpose. The rule is therefore off unless a struct asks for it, with the marker in the
+comment block above it, for a struct that keeps state its fields must agree on.
+
+For such a struct, one change from outside is what a setter would do, and a setter adds
+nothing, so it is allowed. A function that changes two fields, or one field twice, holds
+logic about the struct's state; it is reported at its first change, to be moved into a
+method of the struct.
+
+- A change is an assignment or a mutable borrow of a field or of a place inside it,
+  including the borrow a `&mut self` method call takes. What is behind a reference the
+  field holds is not the field.
+- Changes are counted per function and struct, by the line they are on. Code in an impl of
+  the struct, in any module, and code in the module the fields are private to is not
+  counted. Tests may change anything.
+
+Limits: a field changed through a `ref mut` or `&mut` pattern binding, or through interior
+mutability, is not seen.
 
 ## Module cycles
 

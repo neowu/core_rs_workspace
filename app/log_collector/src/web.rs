@@ -92,7 +92,13 @@ async fn process_events(state: &AppState, app: &str, events: Vec<Event>, request
             continue;
         }
 
-        let mut message = EventMessage {
+        let mut context = event.context;
+        if let Some(user_agent) = request.user_agent() {
+            context.insert("user_agent".to_owned(), user_agent.to_owned());
+        }
+        context.insert("client_ip".to_owned(), request.client_ip().to_string());
+
+        let message = EventMessage {
             id: log::id_generator::next_id(now.unix_timestamp_millis()).as_str().to_owned(),
             timestamp: now,
             app: app.to_owned(),
@@ -102,17 +108,10 @@ async fn process_events(state: &AppState, app: &str, events: Vec<Event>, request
             error_code: event.error_code,
             error_message: event.error_message,
             elapsed: event.elapsed_time,
-            context: event.context,
+            context,
             stats: event.stats,
             info: event.info,
         };
-
-        if let Some(user_agent) = request.user_agent() {
-            message.context.insert("user_agent".to_owned(), user_agent.to_owned());
-        }
-
-        message.context.insert("client_ip".to_owned(), request.client_ip().to_string());
-
         state.producer.send(&state.topics.event, None, &message).await?;
     }
 

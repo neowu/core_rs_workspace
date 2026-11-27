@@ -24,6 +24,8 @@ use super::workspace::Manifest;
 use super::workspace::Workspace;
 
 mod cycle;
+mod field;
+mod marker;
 mod visibility;
 
 /// The rule of a marker that excuses nothing, as rustc names an `#[expect]` that is not met.
@@ -43,7 +45,7 @@ struct Unit {
     uses: Vec<Use>,
 }
 
-/// A non-private item or named struct field. Files are relative to the workspace root, lines 1-based and columns
+/// A non-private item, module, struct field, enum variant, or method or constant of a trait. Files are relative to the workspace root, lines 1-based and columns
 /// 0-based, pointing at the name.
 #[derive(Deserialize)]
 struct Def {
@@ -60,7 +62,7 @@ struct Def {
     visibility: String,
     /// The module the item is private to, as a path from the crate root.
     module: String,
-    /// For a field, the key of its struct.
+    /// For a field, variant or trait item, the key of its struct, enum or trait.
     owner: Option<String>,
 }
 
@@ -74,6 +76,11 @@ struct Use {
     column: usize,
     /// In a `use` declaration.
     import: bool,
+    /// `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through` for a module on the way
+    /// to an item, else `use`.
+    kind: String,
+    /// Where the name of the innermost function, method, type, trait, constant or static the use is in is written.
+    from: Option<String>,
     /// The item using itself: inside its own definition, an impl of it, or what a derive wrote for it.
     own: bool,
     /// Outside any body, the item or field whose interface the use is part of: its key, or a fixed `pub` or
@@ -118,22 +125,30 @@ impl<'a> Sources<'a> {
 
     /// Looks for the marker in the comments directly above a line, also above the attributes between them.
     fn marked(&self, file: &str, from_line: usize, to_line: usize, marker: &str) -> bool {
+        self.marker_line(file, from_line, to_line, marker).is_some()
+    }
+
+    /// The 1-based line of the marker that `marked` finds.
+    fn marker_line(&self, file: &str, from_line: usize, to_line: usize, marker: &str) -> Option<usize> {
         let lines: Vec<&str> = self.text(file).lines().take(to_line).collect();
         let is_comment = |line: &str| line.trim_start().starts_with("//");
         let is_attribute = |line: &str| line.trim_start().starts_with("#[");
         let above = lines.iter().enumerate().rev();
         above
             .take_while(|(index, line)| index + 1 >= from_line || is_comment(line) || is_attribute(line))
-            .any(|(_, line)| is_comment(line) && line.contains(marker))
+            .find(|(_, line)| is_comment(line) && line.contains(marker))
+            .map(|(index, _)| index + 1)
     }
 }
 
-/// Runs `unused_pub`, `excess_visibility` and `module_cycle` on what the compiler resolved rather than on names.
+/// Runs `unused_pub`, `excess_visibility`, `field_write` and `module_cycle` on what the compiler resolved rather than on names.
 pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
     let units = collect(workspace)?;
     let sources = Sources::load(workspace, &units);
     let mut diagnostics = visibility::check(&units, &sources);
+    diagnostics.extend(field::check(&units, &sources));
     diagnostics.extend(cycle::check(&units, &sources));
+    diagnostics.extend(marker::check(&units, &sources));
     Ok(diagnostics)
 }
 
@@ -224,6 +239,12 @@ fn toolchain_cargo(channel: &str) -> Command {
         command.env_remove(name);
     }
     command
+}
+
+/// Whether the file is under the `src` of a member, where the rules apply.
+fn in_src(sources: &Sources<'_>, file: &str) -> bool {
+    let src = sources.member(file).and_then(|member| member.path.parent()).map(|dir| dir.join("src"));
+    src.is_some_and(|src| Path::new(file).starts_with(src))
 }
 
 /// Whether `module` is `of` or inside it, both as paths from the crate root.

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
-pub mod web;
+pub(crate) mod web;
 
 #[derive(Entity, Debug)]
 #[table(name = "user")]

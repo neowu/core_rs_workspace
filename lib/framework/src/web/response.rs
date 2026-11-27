@@ -107,10 +107,6 @@ impl Response {
         &self.headers
     }
 
-    pub const fn headers_mut(&mut self) -> &mut HeaderMap {
-        &mut self.headers
-    }
-
     pub(crate) fn file(file: fs::File, length: u64) -> Response {
         // limit to the stat length, a growing file must not exceed content-length
         let stream = ReaderStream::with_capacity(File::from_std(file).take(length), 64 * 1024);

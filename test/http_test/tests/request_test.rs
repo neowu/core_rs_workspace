@@ -45,10 +45,10 @@ async fn whoami(_state: Arc<AppState>, request: Request) -> Result<Response, Exc
     let session = request.cookie("session").unwrap_or_default();
     let agent = request.user_agent().unwrap_or_default();
     let query = request.query_string().unwrap_or_default();
-    let mut response = Response::text(format!("{}|{session}|{agent}|{query}", request.client_ip()));
     let peer_addr = HeaderValue::from_str(&request.peer_addr().to_string())?;
-    response.headers_mut().insert(HeaderName::from_static("x-peer-addr"), peer_addr);
-    response.headers_mut().insert(HeaderName::from_static("x-host"), HeaderValue::from_str(&hostname())?);
+    let response = Response::text(format!("{}|{session}|{agent}|{query}", request.client_ip()))
+        .header(HeaderName::from_static("x-peer-addr"), peer_addr)
+        .header(HeaderName::from_static("x-host"), HeaderValue::from_str(&hostname())?);
     Ok(response)
 }
 

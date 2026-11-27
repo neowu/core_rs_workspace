@@ -10,7 +10,7 @@ pub(crate) mod event_handler;
 pub(crate) mod stat_handler;
 
 // a clickhouse Map column is not nullable, so a map java core-ng left out serializes as empty
-struct OptionMap<'a, V>(pub(crate) Option<&'a HashMap<String, V>>);
+struct OptionMap<'a, V>(Option<&'a HashMap<String, V>>);
 
 impl<V: Serialize> Serialize for OptionMap<'_, V> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

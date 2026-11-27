@@ -18,7 +18,7 @@ use crate::time::Offset;
 use crate::time::SignedDuration;
 use crate::time::Time;
 
-pub mod controller;
+mod controller;
 mod trigger;
 
 pub struct JobContext {

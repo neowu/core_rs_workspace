@@ -22,6 +22,7 @@ use rustc_driver::Callbacks;
 use rustc_driver::Compilation;
 use rustc_hir as hir;
 use rustc_hir::HirId;
+use rustc_hir::def::CtorOf;
 use rustc_hir::def::DefKind;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::CRATE_DEF_ID;
@@ -33,8 +34,12 @@ use rustc_hir::intravisit::Visitor;
 use rustc_interface::interface::Compiler;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty;
+use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypeckResults;
+use rustc_middle::ty::adjustment::Adjust;
+use rustc_middle::ty::adjustment::AutoBorrow;
+use rustc_middle::ty::adjustment::AutoBorrowMutability;
 use rustc_span::ExpnKind;
 use rustc_span::FileName;
 use rustc_span::MacroKind;
@@ -81,6 +86,7 @@ fn write_facts(tcx: TyCtxt<'_>, out: &Path, root: PathBuf) {
         keys: HashMap::new(),
         types: Vec::new(),
         typeck: None,
+        place: None,
         context: Context::default(),
         defs: Vec::new(),
         uses: BTreeMap::new(),
@@ -120,8 +126,11 @@ struct Context {
     self_type: Option<String>,
     /// What the code outside bodies is the interface of: the key of an item or field, or a fixed `pub` or `crate`.
     interface: Option<String>,
-    /// Enclosing items and the self type of enclosing impls; a use of one of them is the item using itself.
+    /// Enclosing items and the self type of enclosing impls; a use of one of them or of its fields is the item
+    /// using itself.
     own: Vec<String>,
+    /// The innermost enclosing function, method, type, trait, constant or static.
+    from: Option<String>,
 }
 
 /// A use, without the column, so a path whose segments resolve to the same item counts once.
@@ -134,6 +143,10 @@ struct Place {
     member: bool,
     import: bool,
     own: bool,
+    /// How the item is used: `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through`
+    /// for a module on the way to an item, else `use`.
+    kind: &'static str,
+    from: Option<String>,
     interface: Option<String>,
 }
 
@@ -146,7 +159,7 @@ struct Detail {
 impl Place {
     fn json(&self, detail: &Detail) -> String {
         let mut json = format!(
-            "{{\"to\":{},\"module\":{},\"file\":{},\"line\":{},\"column\":{},\"member\":{},\"import\":{},\"own\":{}",
+            "{{\"to\":{},\"module\":{},\"file\":{},\"line\":{},\"column\":{},\"member\":{},\"import\":{},\"own\":{},\"kind\":{}",
             quote(&self.to),
             quote(&self.module),
             quote(&self.file),
@@ -154,8 +167,12 @@ impl Place {
             detail.column,
             self.member,
             self.import,
-            self.own
+            self.own,
+            quote(self.kind)
         );
+        if let Some(from) = &self.from {
+            write!(json, ",\"from\":{}", quote(from)).expect("write to string");
+        }
         if let Some(interface) = &self.interface {
             write!(json, ",\"interface\":{}", quote(interface)).expect("write to string");
         }
@@ -194,6 +211,8 @@ struct Collector<'tcx> {
     /// The types of the crate by where their names are written, to find the type a derive is on.
     types: Vec<((String, usize, usize), DefId)>,
     typeck: Option<&'tcx TypeckResults<'tcx>>,
+    /// How the expression about to be visited is changed as a place: `write` or `borrow`.
+    place: Option<&'static str>,
     context: Context,
     defs: Vec<String>,
     uses: BTreeMap<Place, Detail>,
@@ -282,26 +301,72 @@ impl<'tcx> Collector<'tcx> {
         (Some(key.clone()), Some(key))
     }
 
-    fn record(&mut self, def_id: DefId, span: Span, hir_id: HirId, member: bool) {
+    /// How a path is used, from the expression or pattern it is the whole of.
+    fn path_kind(&self, id: HirId) -> &'static str {
+        match self.tcx.hir_node(id) {
+            hir::Node::Pat(_) | hir::Node::PatExpr(_) => "pattern",
+            hir::Node::Expr(expr) => match expr.kind {
+                hir::ExprKind::Struct(..) => "construct",
+                hir::ExprKind::Path(_) => match self.tcx.parent_hir_node(id) {
+                    hir::Node::Expr(hir::Expr { kind: hir::ExprKind::Call(callee, _), .. }) if callee.hir_id == id => {
+                        "call"
+                    }
+                    _ => "use",
+                },
+                _ => "use",
+            },
+            _ => "use",
+        }
+    }
+
+    /// Records a use of what `def_id` stands for: a constructor is a use of its type and of every field it takes,
+    /// a variant also of its enum, and an item of a trait also of the trait.
+    fn record(&mut self, def_id: DefId, span: Span, hir_id: HirId, member: bool, kind: &'static str) {
         let tcx = self.tcx;
-        let mut def_id = def_id;
-        // a constructor or a variant is a use of its type
-        while matches!(tcx.def_kind(def_id), DefKind::Ctor(..) | DefKind::Variant) {
+        let (mut def_id, mut kind) = (def_id, kind);
+        if let DefKind::Ctor(of, _) = tcx.def_kind(def_id) {
+            def_id = tcx.parent(def_id);
+            if kind != "pattern" {
+                kind = "construct";
+            }
+            // importing the name is not calling it
+            if of == CtorOf::Struct && !self.context.in_use {
+                self.fields(def_id, span, hir_id, kind);
+            }
+        }
+        if tcx.def_kind(def_id) == DefKind::Variant {
+            self.add(def_id, span, hir_id, member, kind);
             def_id = tcx.parent(def_id);
         }
-        let kind = tcx.def_kind(def_id);
-        match kind {
-            DefKind::AssocFn | DefKind::AssocConst | DefKind::AssocTy => {
-                // a trait must be visible wherever its items are used
-                let parent = tcx.parent(def_id);
-                if tcx.def_kind(parent) == DefKind::Trait {
-                    self.record(parent, span, hir_id, true);
-                }
+        if matches!(tcx.def_kind(def_id), DefKind::AssocFn | DefKind::AssocConst | DefKind::AssocTy) {
+            // a trait must be visible wherever its items are used
+            let parent = tcx.parent(def_id);
+            if tcx.def_kind(parent) == DefKind::Trait {
+                self.add(parent, span, hir_id, true, "use");
             }
+        }
+        self.add(def_id, span, hir_id, member, kind);
+    }
+
+    /// Every field of a struct, as its constructor names them.
+    fn fields(&mut self, adt: DefId, span: Span, hir_id: HirId, kind: &'static str) {
+        for field in &self.tcx.adt_def(adt).non_enum_variant().fields {
+            self.add(field.did, span, hir_id, true, kind);
+        }
+    }
+
+    fn add(&mut self, def_id: DefId, span: Span, hir_id: HirId, member: bool, kind: &'static str) {
+        let tcx = self.tcx;
+        let def_kind = tcx.def_kind(def_id);
+        match def_kind {
             DefKind::Fn
+            | DefKind::AssocFn
+            | DefKind::AssocConst
+            | DefKind::AssocTy
             | DefKind::Struct
             | DefKind::Enum
             | DefKind::Union
+            | DefKind::Variant
             | DefKind::Trait
             | DefKind::TyAlias
             | DefKind::Const { .. }
@@ -314,17 +379,22 @@ impl<'tcx> Collector<'tcx> {
         let Some((file, line, column)) = self.position(span.source_callsite()) else { return };
         let module = self.module(tcx.parent_module(hir_id).to_def_id());
         let target = def_id.as_local().map(|local| {
-            let owner = if kind == DefKind::Mod { def_id } else { tcx.parent_module_from_def_id(local).to_def_id() };
+            let owner =
+                if def_kind == DefKind::Mod { def_id } else { tcx.parent_module_from_def_id(local).to_def_id() };
             (tcx.item_name(def_id).to_string(), self.module(owner))
         });
+        // a field is its type's own
+        let owner = if def_kind == DefKind::Field { self.key(tcx.parent(def_id)) } else { None };
         let place = Place {
-            own: self.context.own.contains(&to),
+            own: self.context.own.contains(&to) || owner.is_some_and(|owner| self.context.own.contains(&owner)),
             to,
             module,
             file,
             line,
             member,
             import: self.context.in_use,
+            kind,
+            from: self.context.from.clone(),
             interface: if self.context.in_body { None } else { self.context.interface.clone() },
         };
         self.uses.entry(place).or_insert(Detail { column, target });
@@ -365,7 +435,9 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
     fn visit_nested_body(&mut self, id: hir::BodyId) {
         let typeck = self.typeck.replace(self.tcx.typeck_body(id));
         let in_body = mem::replace(&mut self.context.in_body, true);
+        let place = self.place.take();
         intravisit::walk_body(self, self.tcx.hir_body(id));
+        self.place = place;
         self.context.in_body = in_body;
         self.typeck = typeck;
     }
@@ -401,11 +473,42 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
                 if kind == DefKind::Struct {
                     this.context.in_struct.clone_from(&key);
                 }
+                this.context.from.clone_from(&key);
                 this.context.own.extend(key);
-            } else if kind != DefKind::Mod {
+            } else if kind == DefKind::Mod {
+                this.define(def_id, "module", item.span, None);
+            } else {
                 this.context.interface = None;
             }
             intravisit::walk_item(this, item);
+        });
+    }
+
+    fn visit_variant(&mut self, variant: &'tcx hir::Variant<'tcx>) {
+        let owner = self.key(self.tcx.parent(variant.def_id.to_def_id()));
+        self.define(variant.def_id, "variant", variant.span, owner.as_deref());
+        intravisit::walk_variant(self, variant);
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx hir::TraitItem<'tcx>) {
+        let def_id = item.owner_id.def_id;
+        let label = match self.tcx.def_kind(def_id) {
+            DefKind::AssocFn => Some("trait method"),
+            DefKind::AssocConst => Some("trait constant"),
+            _ => None,
+        };
+        self.nested(|this| {
+            // the signature is part of the trait's interface
+            let key = match label {
+                Some(label) => {
+                    let owner = this.key(this.tcx.parent(def_id.to_def_id()));
+                    this.define(def_id, label, item.span, owner.as_deref()).0
+                }
+                None => this.key(def_id.to_def_id()),
+            };
+            this.context.from.clone_from(&key);
+            this.context.own.extend(key);
+            intravisit::walk_trait_item(this, item);
         });
     }
 
@@ -417,6 +520,7 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
                 // signatures repeat the trait's; an associated type is as visible as the trait and the self type
                 let exposed = this.context.self_type.clone().unwrap_or_else(|| "pub".to_owned());
                 this.context.interface = (kind == DefKind::AssocTy).then_some(exposed);
+                this.context.from = this.key(def_id.to_def_id());
             } else {
                 let label = match kind {
                     DefKind::AssocFn => "method",
@@ -425,6 +529,7 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
                 };
                 let (key, interface) = this.define(def_id, label, item.span, None);
                 this.context.interface = interface;
+                this.context.from.clone_from(&key);
                 this.context.own.extend(key);
             }
             intravisit::walk_impl_item(this, item);
@@ -434,29 +539,37 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
     fn visit_field_def(&mut self, field: &'tcx hir::FieldDef<'tcx>) {
         let interface = self.context.interface.clone();
         if let Some(owner) = self.context.in_struct.clone() {
-            if field.is_positional() {
-                let visibility = self.visibility(field.def_id);
-                self.context.interface = (visibility != "private").then(|| visibility.to_owned());
-            } else {
-                self.context.interface = self.define(field.def_id, "field", field.span, Some(&owner)).1;
-            }
+            self.context.interface = self.define(field.def_id, "field", field.span, Some(&owner)).1;
         }
         intravisit::walk_field_def(self, field);
         self.context.interface = interface;
     }
 
     fn visit_path(&mut self, path: &hir::Path<'tcx>, id: HirId) {
+        let kind = self.path_kind(id);
         let last = path.segments.len().saturating_sub(1);
         for (index, segment) in path.segments.iter().enumerate() {
-            // a module on the way to an item is not what is used
-            if let Res::Def(kind, def_id) = segment.res
-                && (index == last || kind != DefKind::Mod)
-            {
-                self.record(def_id, segment.ident.span, id, false);
+            if let Res::Def(def_kind, def_id) = segment.res {
+                // a module on the way to an item is not what is used, but must be visible from here
+                let kind = match def_kind {
+                    _ if index == last => kind,
+                    DefKind::Mod => "through",
+                    _ => "use",
+                };
+                self.record(def_id, segment.ident.span, id, false, kind);
             }
         }
-        if let Res::Def(_, def_id) = path.res {
-            self.record(def_id, path.span, id, false);
+        match path.res {
+            Res::Def(_, def_id) => self.record(def_id, path.span, id, false, kind),
+            // `Self(..)` names every field, as the constructor does
+            Res::SelfCtor(impl_id) => {
+                if let Some(adt) = self.tcx.type_of(impl_id).instantiate_identity().skip_normalization().ty_adt_def()
+                    && adt.is_struct()
+                {
+                    self.fields(adt.did(), path.span, id, if kind == "pattern" { kind } else { "construct" });
+                }
+            }
+            _ => {}
         }
         intravisit::walk_path(self, path);
     }
@@ -466,45 +579,72 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
             && let Some(typeck) = self.typeck
             && let Res::Def(_, def_id) = typeck.qpath_res(qpath, id)
         {
-            self.record(def_id, segment.ident.span, id, false);
+            self.record(def_id, segment.ident.span, id, false, self.path_kind(id));
         }
         intravisit::walk_qpath(self, qpath, id);
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let Some(typeck) = self.typeck {
-            match expr.kind {
-                hir::ExprKind::MethodCall(segment, ..) => {
-                    if let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id) {
-                        self.record(def_id, segment.ident.span, expr.hir_id, true);
-                    }
+        let inherited = self.place.take();
+        let Some(typeck) = self.typeck else { return intravisit::walk_expr(self, expr) };
+        // a pointer leads out of the place it is in: what changes behind it is not the place
+        let pointer = |ty: Ty<'tcx>| ty.is_ref() || ty.is_raw_ptr();
+        let borrowed = typeck.expr_adjustments(expr).iter().any(|adjustment| {
+            matches!(
+                adjustment.kind,
+                Adjust::Borrow(
+                    AutoBorrow::Ref(AutoBorrowMutability::Mut { .. }) | AutoBorrow::RawPtr(hir::Mutability::Mut)
+                )
+            )
+        });
+        let place = if borrowed && !pointer(typeck.expr_ty(expr)) { Some("borrow") } else { inherited };
+        // changing a place changes what it is part of
+        let through = |base: &hir::Expr<'tcx>| place.filter(|_| !pointer(typeck.expr_ty(base)));
+        match expr.kind {
+            hir::ExprKind::MethodCall(segment, ..) => {
+                if let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id) {
+                    self.record(def_id, segment.ident.span, expr.hir_id, true, "call");
                 }
-                hir::ExprKind::Field(base, ident) => {
-                    if let Some(adt) = typeck.expr_ty_adjusted(base).ty_adt_def()
-                        && !adt.is_enum()
-                        && let Some(index) = typeck.opt_field_index(expr.hir_id)
-                    {
-                        self.record(adt.non_enum_variant().fields[index].did, ident.span, expr.hir_id, true);
-                    }
-                }
-                hir::ExprKind::Struct(qpath, fields, tail) => {
-                    if let Some(adt) = typeck.expr_ty(expr).ty_adt_def() {
-                        let variant = adt.variant_of_res(typeck.qpath_res(qpath, expr.hir_id));
-                        for field in fields {
-                            if let Some(index) = typeck.opt_field_index(field.hir_id) {
-                                self.record(variant.fields[index].did, field.ident.span, expr.hir_id, true);
-                            }
-                        }
-                        // `..base` reads every field that is not written
-                        if matches!(tail, hir::StructTailExpr::Base(_)) {
-                            for field in &variant.fields {
-                                self.record(field.did, expr.span, expr.hir_id, true);
-                            }
-                        }
-                    }
-                }
-                _ => {}
             }
+            hir::ExprKind::Field(base, ident) => {
+                if let Some(adt) = typeck.expr_ty_adjusted(base).ty_adt_def()
+                    && !adt.is_enum()
+                    && let Some(index) = typeck.opt_field_index(expr.hir_id)
+                {
+                    let field = adt.non_enum_variant().fields[index].did;
+                    self.record(field, ident.span, expr.hir_id, true, place.unwrap_or("use"));
+                }
+                self.place = through(base);
+            }
+            hir::ExprKind::Index(base, ..) if !typeck.is_method_call(expr) => self.place = through(base),
+            hir::ExprKind::Unary(hir::UnOp::Deref, base) if !typeck.is_method_call(expr) => {
+                self.place = through(base);
+            }
+            hir::ExprKind::AddrOf(_, hir::Mutability::Mut, _) => self.place = Some("borrow"),
+            hir::ExprKind::Assign(target, value, _) | hir::ExprKind::AssignOp(_, target, value) => {
+                self.visit_expr(value);
+                self.place = Some("write");
+                self.visit_expr(target);
+                return;
+            }
+            hir::ExprKind::Struct(qpath, fields, tail) => {
+                if let Some(adt) = typeck.expr_ty(expr).ty_adt_def() {
+                    let variant = adt.variant_of_res(typeck.qpath_res(qpath, expr.hir_id));
+                    for field in fields {
+                        if let Some(index) = typeck.opt_field_index(field.hir_id) {
+                            let field_id = variant.fields[index].did;
+                            self.record(field_id, field.ident.span, expr.hir_id, true, "construct");
+                        }
+                    }
+                    // `..base` reads every field that is not written
+                    if matches!(tail, hir::StructTailExpr::Base(_)) {
+                        for field in &variant.fields {
+                            self.record(field.did, expr.span, expr.hir_id, true, "use");
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
         intravisit::walk_expr(self, expr);
     }
@@ -517,7 +657,7 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
             let variant = adt.variant_of_res(typeck.qpath_res(&qpath, pat.hir_id));
             for field in fields {
                 if let Some(index) = typeck.opt_field_index(field.hir_id) {
-                    self.record(variant.fields[index].did, field.ident.span, pat.hir_id, true);
+                    self.record(variant.fields[index].did, field.ident.span, pat.hir_id, true, "pattern");
                 }
             }
         }

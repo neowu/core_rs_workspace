@@ -4,7 +4,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use framework::http::HeaderName;
-use framework::http::HeaderValue;
 use framework::http::HttpClient;
 use framework::http::HttpClientConfig;
 use framework::http::HttpRequest;
@@ -100,7 +99,9 @@ impl Target {
         } else {
             request(Method::GET, &format!("{}{path}?id={ID}", args.url))
         };
-        request.headers.extend(HEADERS.into_iter().map(|(name, value)| (name, HeaderValue::from_static(value))));
+        for (name, value) in HEADERS {
+            request.header(name, value).expect("invalid header");
+        }
         Target { scenario, request }
     }
 }

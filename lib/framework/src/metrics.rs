@@ -5,7 +5,7 @@ use crate::appender::MetricsMessage;
 use crate::exception::Severity;
 use crate::time::DateTime;
 
-pub(crate) mod collector;
+mod collector;
 mod counter;
 
 pub(crate) use collector::MetricsCollector;

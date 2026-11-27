@@ -45,12 +45,23 @@ fn reports_what_the_compiler_resolved() {
             "excess_visibility visibility/src/a.rs:15:12 `pub` struct `Shown` is not used outside its crate; change it to `pub(crate)`",
             "excess_visibility visibility/src/a.rs:2:8 `pub` function `one` is not used outside its module; remove `pub`",
             "excess_visibility visibility/src/a.rs:8:15 `pub(super)` function `three` is not used outside its module; remove `pub(super)`",
+            "excess_visibility visibility/src/parts.rs:2:9 `pub` module `inner` is not used outside its module; remove `pub`",
+            "excess_visibility visibility/src/parts/inner.rs:12:26 `pub` field `1` is not used outside its module; remove `pub`",
+            "field_write app/src/main.rs:44:13 `add` changes `count`, `total` of `Counter` in 2 places (also line 45); move that into a method of `Counter`",
+            "field_write app/src/main.rs:50:13 `append` changes `name` of `Counter` in 2 places (also line 51); move that into a method of `Counter`",
             "module_cycle cycle/src/pair/b.rs:2:15 modules `a`, `b` in `crate::pair` use each other in a circle: `b` uses `a` (`item`, 1 mention(s), cycle/src/pair/b.rs:2), `a` uses `b` (`item`, 2 mention(s), cycle/src/pair/a.rs:2); cut one of the uses",
             "module_cycle cycle/src/triangle/a.rs:2:15 modules `a`, `b`, `c` in `crate::triangle` use each other in a circle: `a` uses `b` (`item`, 1 mention(s), cycle/src/triangle/a.rs:2), `b` uses `a` (`item`, 2 mention(s), cycle/src/triangle/b.rs:4); cut one of the uses",
             "unfulfilled_lint_expectations cycle/src/unneeded/a.rs:3:15 `// lint: expect(module_cycle)` is not needed, the use is not part of a circle; remove the comment",
             "unfulfilled_lint_expectations visibility/src/a.rs:29:8 `// lint: expect(unused_pub)` on function `eight` is not needed; remove the comment",
             "unfulfilled_lint_expectations visibility/src/a.rs:32:8 `// lint: expect(excess_visibility)` on function `nine` is not needed; remove the comment",
+            "unfulfilled_lint_expectations visibility/src/parts/inner.rs:8:5 `// lint: expect(unused_pub)` on variant `Named` is not needed; remove the comment",
+            "unfulfilled_lint_expectations visibility/src/state.rs:26:4 `// lint: enforce(field_write)` is not directly above a struct other modules can use, so it does nothing; remove it",
+            "unfulfilled_lint_expectations visibility/src/state.rs:33:4 `// lint: expect(excess_visibility)` is not directly above an item or field the rule checks, so it does nothing; remove it",
+            "unknown_lints visibility/src/state.rs:31:4 `// lint: allow(unused_pub)` names no rule; there are `expect(unused_pub)`, `expect(excess_visibility)`, `expect(module_cycle)`, `enforce(field_write)`",
+            "unknown_lints visibility/src/state.rs:32:4 `// lint: expect(unused_code)` names no rule; there are `expect(unused_pub)`, `expect(excess_visibility)`, `expect(module_cycle)`, `enforce(field_write)`",
             "unused_pub visibility/src/a.rs:23:8 pub function `six` is not used in the workspace; remove it",
+            "unused_pub visibility/src/parts/inner.rs:24:8 trait method `skip` of pub trait `Source` is not used in the workspace; remove it",
+            "unused_pub visibility/src/parts/inner.rs:4:5 variant `Unused` of pub enum `Kind` is not used in the workspace; remove it",
         ]
     );
 }

@@ -175,13 +175,32 @@ unstable.
 Cost accepted: `cargo lint` needs the pinned nightly with `rustc-dev`, locally and in CI,
 and the probe must be fixed when the pin moves.
 
+Added later the same day:
+
+- Uses carry `kind` (call, construct, pattern, write, borrow, lend, through) and `from`,
+  the enclosing function or type. Kinds are read from the expression a use is in and the
+  adjustments typeck applied, so MIR was not needed.
+- Modules, tuple fields, enum variants and trait methods and constants are recorded.
+  `excess_visibility` covers modules and tuple fields; `unused_pub` covers variants and
+  trait items.
+- `field_write`, the mechanical part of `field-leak`, was first built for every struct: a
+  field is changed only by its own type or module. Its fix is an improvement only for a
+  type that keeps an invariant; for data, which most structs here are, it produces
+  setters: of 6 fields it found, 3 fixes were setters. In Rust `&mut` already controls who
+  can change a value, and in one workspace a representation can change by refactoring.
+  It was kept in a narrower form: only for structs marked `// lint: enforce(field_write)`,
+  and only for a function that changes the struct in more than one place, which is logic
+  to move and not a setter to add. A comment, since a tool attribute needs `register_tool`.
+- `exhaustive_api` (`#[non_exhaustive]` on API for other workspaces) was dropped: the code
+  is expected to live in one workspace.
+
 Not done:
 
-- The probe records where an item is used, not how. Read, write and borrow kinds (from
-  MIR) are the next facts to add for the Tier 2 report.
-- Tuple fields, enum variants and trait items are still not checked.
+- The Tier 2 report as "move this function and these members go private", which `from`
+  now allows.
+- `scattered_match` on `kind = pattern`; `single_impl_trait`, `pass_through`.
 
 ## Recommendation
 
-1. Build the Tier 2 report on the probe's facts, adding use kinds.
+1. Build the Tier 2 report on the probe's facts, by `from`.
 2. Consider SCIP only if the probe proves too costly to keep up with nightly.
