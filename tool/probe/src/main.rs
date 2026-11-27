@@ -144,7 +144,7 @@ struct Place {
     import: bool,
     own: bool,
     /// How the item is used: `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through`
-    /// for a module on the way to an item, else `use`.
+    /// for a module on the way to an item, `wildcard` for an enum matched by a catch-all arm, else `use`.
     kind: &'static str,
     from: Option<String>,
     interface: Option<String>,
@@ -400,6 +400,25 @@ impl<'tcx> Collector<'tcx> {
         self.uses.entry(place).or_insert(Detail { column, target });
     }
 
+    /// The catch-all arms of a match on an enum, which take every variant added later without the compiler asking.
+    fn wildcards(&mut self, scrutinee: Ty<'tcx>, arms: &[hir::Arm<'tcx>]) {
+        fn catch_all(pat: &hir::Pat<'_>) -> bool {
+            match pat.kind {
+                hir::PatKind::Wild | hir::PatKind::Binding(_, _, _, None) => true,
+                hir::PatKind::Ref(inner, ..) => catch_all(inner),
+                hir::PatKind::Or(pats) => pats.iter().any(catch_all),
+                _ => false,
+            }
+        }
+        let Some(adt) = scrutinee.peel_refs().ty_adt_def().filter(|adt| adt.is_enum()) else { return };
+        for arm in arms {
+            // a macro's arm is not the caller's to change
+            if arm.guard.is_none() && catch_all(arm.pat) && !arm.pat.span.from_expansion() {
+                self.add(adt.did(), arm.pat.span, arm.hir_id, false, "wildcard");
+            }
+        }
+    }
+
     /// The type a derive is written on: the first one named after the derive in its file.
     fn derived(&mut self, span: Span) -> Option<String> {
         let expansion = span.ctxt().outer_expn_data();
@@ -626,6 +645,9 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
                 self.place = Some("write");
                 self.visit_expr(target);
                 return;
+            }
+            hir::ExprKind::Match(scrutinee, arms, hir::MatchSource::Normal) => {
+                self.wildcards(typeck.expr_ty(scrutinee), arms);
             }
             hir::ExprKind::Struct(qpath, fields, tail) => {
                 if let Some(adt) = typeck.expr_ty(expr).ty_adt_def() {

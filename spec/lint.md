@@ -90,7 +90,7 @@ diagnostic points at the first line past the limit.
 
 ## Probe
 
-`unused_pub`, `excess_visibility`, `field_write` and `module_cycle` read what the compiler resolved, not
+`unused_pub`, `excess_visibility`, `field_write`, `wildcard_match` and `module_cycle` read what the compiler resolved, not
 names, so two items of the same name are never confused. They run in two phases:
 
 1. **Facts.** `tool/probe` is a rustc driver, built with the latest nightly (its
@@ -99,7 +99,8 @@ names, so two items of the same name are never confused. They run in two phases:
    file: the non-private items, modules, struct fields, enum variants and trait items the
    crate defines, and every use of a workspace item, with the module and the function or
    type it is in, and how it is used: called, constructed, matched in a pattern, written,
-   mutably borrowed, or only named. The probe holds no rule.
+   mutably borrowed, or only named. A catch-all arm of a match on an enum is recorded as a
+   use of the enum. The probe holds no rule.
 2. **Rules.** `lint`, on stable, reads the files and reports.
 
 The probe is not a workspace member and nothing depends on it, so stable builds, Clippy
@@ -157,7 +158,8 @@ reason. There is no exception wider than an item.
 
 Every comment of the form `// lint: <verb>(<rule>)` is checked, so none is left behind
 when a rule or the code under it goes. The markers are `expect(unused_pub)`,
-`expect(excess_visibility)`, `expect(module_cycle)` and `enforce(field_write)`; any other
+`expect(excess_visibility)`, `expect(module_cycle)`, `expect(wildcard_match)` and
+`enforce(field_write)`; any other
 verb or rule is reported as `unknown_lints`. One that is not directly above something its
 rule checks, such as a private item, is reported as `unfulfilled_lint_expectations`.
 
@@ -237,6 +239,27 @@ method of the struct.
 
 Limits: a field changed through a `ref mut` or `&mut` pattern binding, or through interior
 mutability, is not seen.
+
+## Wildcard matches
+
+| Rule | Requirement |
+| --- | --- |
+| `wildcard_match` | A `match` on an enum defined in the workspace has no catch-all arm. |
+
+In one workspace, adding a variant should make the compiler point at every match that has
+to decide about it. A catch-all arm takes the new variant silently, so the variants are
+named instead. Enums from outside the workspace are not checked: their variants are not
+ours to follow.
+
+- A catch-all arm is `_` or a bare binding without a guard, also behind `&` or as one side
+  of `|`.
+- Only the type matched on is checked, through references: an enum inside a tuple, an
+  `Option` or another pattern is not, and neither are `if let`, `let else` and `matches!`,
+  which say they care about one shape.
+- Arms written by a macro, and tests, are not checked.
+
+Exception: `// lint: expect(wildcard_match)` directly above the arm, for a match that is
+about a few variants of a large enum.
 
 ## Module cycles
 

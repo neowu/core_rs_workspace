@@ -54,10 +54,6 @@ impl Scenario {
         }
     }
 
-    pub(crate) const fn is_post(self) -> bool {
-        matches!(self, Scenario::Post | Scenario::ApiPost | Scenario::DbInsertIgnore)
-    }
-
     pub(crate) const fn is_db(self) -> bool {
         matches!(self, Scenario::DbSelect | Scenario::DbInsertIgnore)
     }

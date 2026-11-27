@@ -21,6 +21,7 @@ fn main() {
 
     let kind = if Zero.read() == 0 { Kind::Used } else { Kind::Named };
     let _used = matches!(kind, Kind::Used);
+    let _named = name(&kind) + other(&kind) + excused(&kind) + optional(Some(kind));
     let _first = Pair::new(1, 2).0;
 
     let mut counter = Counter::new();
@@ -49,4 +50,37 @@ fn add(counter: &mut Counter) {
 fn append(counter: &mut Counter) {
     counter.name.push('a');
     counter.name.push('b');
+}
+
+// a variant added later lands in the catch-all
+fn name(kind: &Kind) -> u32 {
+    match kind {
+        Kind::Used => 1,
+        _ => 0,
+    }
+}
+
+// a binding catches all too
+fn other(kind: &Kind) -> u32 {
+    match kind {
+        Kind::Used | Kind::Named => 1,
+        rest => name(rest),
+    }
+}
+
+fn excused(kind: &Kind) -> u32 {
+    match kind {
+        Kind::Used => 1,
+        // lint: expect(wildcard_match), only one matters here
+        _ => 0,
+    }
+}
+
+// not an enum of the workspace
+fn optional(kind: Option<Kind>) -> u32 {
+    match kind {
+        // lint: expect(wildcard_match)
+        Some(Kind::Used) => 1,
+        _ => 0,
+    }
 }

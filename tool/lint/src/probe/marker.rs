@@ -13,14 +13,16 @@ enum On {
     Item,
     Struct,
     Use,
+    Arm,
 }
 
 /// Every marker there is, by verb and rule.
-const MARKERS: [(&str, &str, On); 4] = [
+const MARKERS: [(&str, &str, On); 5] = [
     ("expect", "unused_pub", On::Item),
     ("expect", "excess_visibility", On::Item),
     ("expect", "module_cycle", On::Use),
     ("enforce", "field_write", On::Struct),
+    ("expect", "wildcard_match", On::Arm),
 ];
 
 /// A marker comment: its 1-based line, 0-based column, and the text from `lint:` to the closing parenthesis.
@@ -58,9 +60,14 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 }
             }
         }
-        let uses = unit.uses.iter().filter(|used| used.to_module.is_some() && used.kind != "through");
-        for used in uses.filter(|used| with_marker.contains(used.file.as_str())) {
-            for (verb, rule, _) in MARKERS.iter().filter(|(.., on)| *on == On::Use) {
+        for used in unit.uses.iter().filter(|used| with_marker.contains(used.file.as_str())) {
+            let on = match used.kind.as_str() {
+                "wildcard" => On::Arm,
+                "through" => continue,
+                _ if used.to_module.is_some() => On::Use,
+                _ => continue,
+            };
+            for (verb, rule, _) in MARKERS.iter().filter(|marker| marker.2 == on) {
                 let text = format!("lint: {verb}({rule})");
                 if let Some(line) = sources.marker_line(&used.file, used.line, used.line, &text)
                     && let Some(marker) = markers.iter().find(|marker| marker.file == used.file && marker.line == line)
@@ -87,6 +94,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                     On::Item => "an item or field the rule checks",
                     On::Struct => "a struct other modules can use",
                     On::Use => "a use of another module",
+                    On::Arm => "a catch-all arm of a match on an enum of the workspace",
                 };
                 (UNFULFILLED, format!("`// {text}` is not directly above {above}, so it does nothing; remove it"))
             }

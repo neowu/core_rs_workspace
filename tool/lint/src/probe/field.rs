@@ -61,7 +61,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
         let lines: Vec<String> = places.iter().skip(1).map(|place| place.1.to_string()).collect();
         let message = format!(
             "`{}` changes {} of `{owner}` in {} places (also line {}); move that into a method of `{owner}`",
-            name_at(sources, from),
+            sources.name_at(from),
             fields.join(", "),
             places.len(),
             lines.join(", "),
@@ -79,14 +79,4 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     }
 
     diagnostics
-}
-
-/// The name written at a key, which is `file:line:column`; a use outside any item has its file instead.
-fn name_at(sources: &Sources<'_>, key: &str) -> String {
-    let mut parts = key.rsplitn(3, ':');
-    let column = parts.next().and_then(|column| column.parse::<usize>().ok());
-    let line = parts.next().and_then(|line| line.parse::<usize>().ok());
-    let (Some(column), Some(line), Some(file)) = (column, line, parts.next()) else { return key.to_owned() };
-    let text = sources.text(file).lines().nth(line.saturating_sub(1)).unwrap_or_default();
-    text.chars().skip(column).take_while(|char| char.is_alphanumeric() || *char == '_').collect()
 }

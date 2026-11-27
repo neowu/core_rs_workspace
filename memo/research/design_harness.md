@@ -177,7 +177,7 @@ and the probe must be fixed when the pin moves.
 
 Added later the same day:
 
-- Uses carry `kind` (call, construct, pattern, write, borrow, lend, through) and `from`,
+- Uses carry `kind` (call, construct, pattern, write, borrow, through) and `from`,
   the enclosing function or type. Kinds are read from the expression a use is in and the
   adjustments typeck applied, so MIR was not needed.
 - Modules, tuple fields, enum variants and trait methods and constants are recorded.
@@ -194,11 +194,23 @@ Added later the same day:
 - `exhaustive_api` (`#[non_exhaustive]` on API for other workspaces) was dropped: the code
   is expected to live in one workspace.
 
+Added 2026-11-27, after discussing `scattered_match` and `exhaustive_api`:
+
+- `scattered_match` was not built. Matching an enum from several modules is how sum types
+  are used, moving the matches into the enum couples it to its users, and the compiler
+  already lists every exhaustive match when a variant is added.
+- `exhaustive_api` stays dropped for a second reason: `#[non_exhaustive]` forces `_` arms
+  on other crates, which removes that compiler check.
+- `wildcard_match` covers the hazard behind both: a catch-all arm on a workspace enum
+  takes new variants silently. Clippy's `wildcard_enum_match_arm` also fires on enums from
+  dependencies, so the probe records catch-all arms and the rule keeps to workspace enums.
+  First run: 2 findings; one was a `_` after an `is_post()` test, which became one match.
+
 Not done:
 
 - The Tier 2 report as "move this function and these members go private", which `from`
   now allows.
-- `scattered_match` on `kind = pattern`; `single_impl_trait`, `pass_through`.
+- `single_impl_trait`, `pass_through`.
 
 ## Recommendation
 

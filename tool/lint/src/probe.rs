@@ -27,6 +27,7 @@ mod cycle;
 mod field;
 mod marker;
 mod visibility;
+mod wildcard;
 
 /// The rule of a marker that excuses nothing, as rustc names an `#[expect]` that is not met.
 const UNFULFILLED: &str = "unfulfilled_lint_expectations";
@@ -77,7 +78,7 @@ struct Use {
     /// In a `use` declaration.
     import: bool,
     /// `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through` for a module on the way
-    /// to an item, else `use`.
+    /// to an item, `wildcard` for an enum matched by a catch-all arm, else `use`.
     kind: String,
     /// Where the name of the innermost function, method, type, trait, constant or static the use is in is written.
     from: Option<String>,
@@ -109,6 +110,13 @@ impl<'a> Sources<'a> {
                 texts.insert(file.clone(), fs::read_to_string(workspace.root.join(file)).unwrap_or_default());
             }
         }
+        // a private enum is named from where it is written
+        let wildcards = units.iter().flat_map(|unit| unit.uses.iter().filter(|used| used.kind == "wildcard"));
+        for file in wildcards.filter_map(|used| position(&used.to)).map(|(file, ..)| file) {
+            if !texts.contains_key(file) {
+                texts.insert(file.to_owned(), fs::read_to_string(workspace.root.join(file)).unwrap_or_default());
+            }
+        }
         Self { workspace, texts }
     }
 
@@ -121,6 +129,13 @@ impl<'a> Sources<'a> {
         let members = self.workspace.members.iter();
         let holding = members.filter(|member| member.path.parent().is_some_and(|dir| Path::new(file).starts_with(dir)));
         holding.max_by_key(|member| member.path.as_os_str().len())
+    }
+
+    /// The name written at a key; a use outside any item has its file instead.
+    fn name_at(&self, key: &str) -> String {
+        let Some((file, line, column)) = position(key) else { return key.to_owned() };
+        let text = self.text(file).lines().nth(line.saturating_sub(1)).unwrap_or_default();
+        text.chars().skip(column).take_while(|char| char.is_alphanumeric() || *char == '_').collect()
     }
 
     /// Looks for the marker in the comments directly above a line, also above the attributes between them.
@@ -141,13 +156,14 @@ impl<'a> Sources<'a> {
     }
 }
 
-/// Runs `unused_pub`, `excess_visibility`, `field_write` and `module_cycle` on what the compiler resolved rather than on names.
+/// Runs the rules that need what the compiler resolved rather than names.
 pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
     let units = collect(workspace)?;
     let sources = Sources::load(workspace, &units);
     let mut diagnostics = visibility::check(&units, &sources);
     diagnostics.extend(field::check(&units, &sources));
     diagnostics.extend(cycle::check(&units, &sources));
+    diagnostics.extend(wildcard::check(&units, &sources));
     diagnostics.extend(marker::check(&units, &sources));
     Ok(diagnostics)
 }
@@ -245,6 +261,14 @@ fn toolchain_cargo(channel: &str) -> Command {
 fn in_src(sources: &Sources<'_>, file: &str) -> bool {
     let src = sources.member(file).and_then(|member| member.path.parent()).map(|dir| dir.join("src"));
     src.is_some_and(|src| Path::new(file).starts_with(src))
+}
+
+/// The file, line and column of a key, which is `file:line:column`.
+fn position(key: &str) -> Option<(&str, usize, usize)> {
+    let mut parts = key.rsplitn(3, ':');
+    let column = parts.next()?.parse().ok()?;
+    let line = parts.next()?.parse().ok()?;
+    Some((parts.next()?, line, column))
 }
 
 /// Whether `module` is `of` or inside it, both as paths from the crate root.

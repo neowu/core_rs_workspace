@@ -25,8 +25,9 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     for unit in units.iter().filter(|unit| !unit.test) {
         for used in &unit.uses {
             let (Some(to_module), Some(name)) = (&used.to_module, &used.name) else { continue };
-            // a module on the way to an item may only re-export it; the item is what is used
-            if used.kind == "through" {
+            // a module on the way to an item may only re-export it; the item is what is used, and a catch-all arm
+            // names nothing
+            if matches!(used.kind.as_str(), "through" | "wildcard") {
                 continue;
             }
             // a crate can be compiled more than once, and one name can stand for several items, as a variant

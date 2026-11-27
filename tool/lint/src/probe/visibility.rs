@@ -113,7 +113,8 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     // a name in an interface must be as visible as the interface, or rustc's `private_interfaces` fires
     let mut interfaces: Vec<(&str, usize)> = Vec::new();
     for unit in units {
-        for used in &unit.uses {
+        // a catch-all arm does not name the enum
+        for used in unit.uses.iter().filter(|used| used.kind != "wildcard") {
             let Some(&id) = index.get(used.to.as_str()) else { continue };
             let item = &mut items[id];
             let level = if unit.root != item.root {
@@ -195,7 +196,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
             let visibility = written(sources.text(file), item.def);
             let fix = match needed {
                 Level::Private => format!("is not used outside its module; remove `{visibility}`"),
-                _ => "is not used outside its crate; change it to `pub(crate)`".to_owned(),
+                Level::Crate | Level::Public => "is not used outside its crate; change it to `pub(crate)`".to_owned(),
             };
             let message = format!("`{visibility}` {kind} `{name}` {fix}, or mark it with `// {EXPECT_EXCESS}`");
             excess.push(report("excess_visibility", message));

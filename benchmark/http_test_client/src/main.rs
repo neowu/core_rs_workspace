@@ -78,23 +78,23 @@ impl Target {
     fn new(args: &Args) -> Target {
         let scenario = args.scenario;
         let path = scenario.path();
-        let mut request = if scenario.is_post() {
-            let body = match scenario {
-                // one id past the seeded rows: the first insert lands, every later one conflicts
-                Scenario::DbInsertIgnore => serde_json::to_string(&DbInsertRequest {
-                    id: args.rows + 1,
-                    name: "benchmark".to_owned(),
-                    amount: 100,
-                }),
-                _ => serde_json::to_string(&PostRequest {
-                    id: ID,
-                    name: "benchmark".to_owned(),
-                    values: vec![1; args.values],
-                }),
-            }
-            .expect("failed to serialize body");
+        let body = match scenario {
+            Scenario::Get | Scenario::ApiGet | Scenario::DbSelect => None,
+            Scenario::Post | Scenario::ApiPost => Some(serde_json::to_string(&PostRequest {
+                id: ID,
+                name: "benchmark".to_owned(),
+                values: vec![1; args.values],
+            })),
+            // one id past the seeded rows: the first insert lands, every later one conflicts
+            Scenario::DbInsertIgnore => Some(serde_json::to_string(&DbInsertRequest {
+                id: args.rows + 1,
+                name: "benchmark".to_owned(),
+                amount: 100,
+            })),
+        };
+        let mut request = if let Some(body) = body {
             let mut request = request(Method::POST, &format!("{}{path}", args.url));
-            request.body(body, "application/json");
+            request.body(body.expect("failed to serialize body"), "application/json");
             request
         } else {
             request(Method::GET, &format!("{}{path}?id={ID}", args.url))
