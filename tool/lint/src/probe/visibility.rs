@@ -212,7 +212,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
 }
 
 /// The visibility as written, which the probe gives only as `pub` or restricted.
-fn written(text: &str, def: &Def) -> String {
+pub(super) fn written(text: &str, def: &Def) -> String {
     let line = text.lines().nth(def.line - 1).unwrap_or_default();
     let before: String = line.chars().take(def.column).collect();
     let after: String = line.chars().skip(def.column).collect();

@@ -1,10 +1,12 @@
 pub mod a;
 mod b;
 pub mod parts;
+mod place;
 pub mod state;
 
 pub fn entry() {
     b::run();
+    place::run();
 }
 
 #[cfg(test)]

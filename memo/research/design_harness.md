@@ -206,6 +206,13 @@ Added 2026-11-27, after discussing `scattered_match` and `exhaustive_api`:
   dependencies, so the probe records catch-all arms and the rule keeps to workspace enums.
   First run: 2 findings; one was a `_` after an `is_post()` test, which became one match.
 
+- `misplaced_item`, for where a function lives: used by one other module and needing
+  nothing private to its own, so moving it only narrows. A function has no state to opt in
+  on, as a struct has for `field_write`, so the rule is advice instead: a warning that
+  does not fail the run, decided once and then moved or marked with a reason, so nobody
+  judges it again on every build. First run: 9 functions have a single outside user and
+  all 9 need private items of their module, so nothing was reported.
+
 Not done:
 
 - The Tier 2 report as "move this function and these members go private", which `from`

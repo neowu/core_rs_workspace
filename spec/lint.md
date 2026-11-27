@@ -24,6 +24,8 @@ must therefore be started through `cargo run`.
 `cargo lint` runs repository checks through the `xtask` workspace member, then
 Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing makes
 the command fail. `cargo lint --custom-only` runs only the repository checks.
+Repository checks are errors, except rules marked as advice, which are printed as
+warnings and do not fail the command.
 CI uses the same command as local development.
 Unit tests live in the same file as the code they test, in a `#[cfg(test)] mod tests`.
 The probe rules are tested end to end instead, by `test/lint_test`: it runs `cargo lint --custom-only`
@@ -90,7 +92,7 @@ diagnostic points at the first line past the limit.
 
 ## Probe
 
-`unused_pub`, `excess_visibility`, `field_write`, `wildcard_match` and `module_cycle` read what the compiler resolved, not
+`unused_pub`, `excess_visibility`, `field_write`, `wildcard_match`, `misplaced_item` and `module_cycle` read what the compiler resolved, not
 names, so two items of the same name are never confused. They run in two phases:
 
 1. **Facts.** `tool/probe` is a rustc driver, built with the latest nightly (its
@@ -158,7 +160,8 @@ reason. There is no exception wider than an item.
 
 Every comment of the form `// lint: <verb>(<rule>)` is checked, so none is left behind
 when a rule or the code under it goes. The markers are `expect(unused_pub)`,
-`expect(excess_visibility)`, `expect(module_cycle)`, `expect(wildcard_match)` and
+`expect(excess_visibility)`, `expect(misplaced_item)`, `expect(module_cycle)`,
+`expect(wildcard_match)` and
 `enforce(field_write)`; any other
 verb or rule is reported as `unknown_lints`. One that is not directly above something its
 rule checks, such as a private item, is reported as `unfulfilled_lint_expectations`.
@@ -260,6 +263,36 @@ ours to follow.
 
 Exception: `// lint: expect(wildcard_match)` directly above the arm, for a match that is
 about a few variants of a large enum.
+
+## Misplaced items
+
+| Rule | Requirement |
+| --- | --- |
+| `misplaced_item` (advice) | A function, constant or static is not used by only one other part of its crate while needing nothing private to its own module. |
+
+Such an item can move to the module that uses it and be private there: one name less for
+the rest of the crate, nothing else widened, and no module cycle created, since its user
+already depended on its module and its module never used it. Whether it also reads better
+there is a judgement (it may be grouped by topic on purpose), so the rule is advice:
+
+- It is reported as a warning in the same output as the errors and does not change the
+  exit status.
+- Each finding is decided once: the item is moved, or marked with
+  `// lint: expect(misplaced_item)` and the reason it stays. The marker is reported when
+  the rule would no longer report the item.
+
+An item is reported when all of these hold:
+
+- Every use of it, outside tests, is in one module of its crate or under it, and that
+  module is neither above its own module (a module split into children) nor inside it
+  (`excess_visibility` then applies).
+- Everything its signature and body use is visible from that module as declared: items of
+  other crates, items in modules around the user, and `pub` or `pub(crate)` items reached
+  through `pub` or `pub(crate)` modules. An item that needs something private belongs
+  where it is.
+
+Not checked: methods and types, which bring their impls along, and items used by another
+crate.
 
 ## Module cycles
 

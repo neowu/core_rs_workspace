@@ -66,7 +66,8 @@ fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, 
     let mut diagnostics = workspace_dependencies::check(&workspace);
     diagnostics.extend(file_length::check(&workspace, config.max_file_lines)?);
     diagnostics.extend(probe::check(&workspace)?);
-    let custom_ok = diagnostics.is_empty();
+    let errors = diagnostics.iter().filter(|diagnostic| !diagnostic.advisory()).count();
+    let custom_ok = errors == 0;
     let clippy_ok = if json {
         let mut stdout = io::stdout().lock();
         for diagnostic in &diagnostics {
@@ -81,8 +82,8 @@ fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, 
             for diagnostic in &diagnostics {
                 writeln!(stderr, "{diagnostic}\n")?;
             }
-            if !custom_ok {
-                writeln!(stderr, "{} custom lint error(s)", diagnostics.len())?;
+            if !diagnostics.is_empty() {
+                writeln!(stderr, "{errors} custom lint error(s), {} warning(s)", diagnostics.len() - errors)?;
             }
         }
         custom_only || clippy_command(&workspace.root).args(["--", "-D", "warnings"]).status()?.success()

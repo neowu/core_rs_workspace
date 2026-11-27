@@ -17,9 +17,10 @@ enum On {
 }
 
 /// Every marker there is, by verb and rule.
-const MARKERS: [(&str, &str, On); 5] = [
+const MARKERS: [(&str, &str, On); 6] = [
     ("expect", "unused_pub", On::Item),
     ("expect", "excess_visibility", On::Item),
+    ("expect", "misplaced_item", On::Item),
     ("expect", "module_cycle", On::Use),
     ("enforce", "field_write", On::Struct),
     ("expect", "wildcard_match", On::Arm),

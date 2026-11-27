@@ -26,6 +26,7 @@ use super::workspace::Workspace;
 mod cycle;
 mod field;
 mod marker;
+mod misplaced;
 mod visibility;
 mod wildcard;
 
@@ -164,6 +165,7 @@ pub(super) fn check(workspace: &Workspace) -> Result<Vec<Diagnostic>, Box<dyn Er
     diagnostics.extend(field::check(&units, &sources));
     diagnostics.extend(cycle::check(&units, &sources));
     diagnostics.extend(wildcard::check(&units, &sources));
+    diagnostics.extend(misplaced::check(&units, &sources));
     diagnostics.extend(marker::check(&units, &sources));
     Ok(diagnostics)
 }

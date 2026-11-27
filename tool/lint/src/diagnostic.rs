@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use serde_json::Value;
 use serde_json::json;
 
+/// Rules whose fix is a judgement: reported as warnings, which do not fail the run.
+const ADVISORY: [&str; 1] = ["misplaced_item"];
+
 pub(super) struct Diagnostic {
     /// Manifest or source file path relative to the workspace root, as rustc reports file names.
     pub(super) path: PathBuf,
@@ -32,6 +35,14 @@ pub(super) struct SpanLine {
 }
 
 impl Diagnostic {
+    pub(super) fn advisory(&self) -> bool {
+        ADVISORY.contains(&self.rule)
+    }
+
+    fn level(&self) -> &'static str {
+        if self.advisory() { "warning" } else { "error" }
+    }
+
     /// Same shape as a `cargo --message-format=json` compiler message, so tools reading clippy output can read it.
     pub(super) fn to_json(&self) -> Value {
         let span = &self.span;
@@ -55,7 +66,7 @@ impl Diagnostic {
                 "$message_type": "diagnostic",
                 "message": self.message,
                 "code": { "code": self.rule, "explanation": null },
-                "level": "error",
+                "level": self.level(),
                 "spans": [{
                     "file_name": self.path,
                     "byte_start": span.byte_start,
@@ -82,7 +93,8 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "error[{}]: {}\n  --> {}:{}:{}",
+            "{}[{}]: {}\n  --> {}:{}:{}",
+            self.level(),
             self.rule,
             self.message,
             self.path.display(),
