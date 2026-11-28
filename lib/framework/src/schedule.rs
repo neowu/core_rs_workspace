@@ -110,7 +110,8 @@ where
                         }
                         () = time::sleep(waiting_time) => {
                             let state = state.clone();
-                            executor.spawn(schedule.name, (schedule.job)(state, context));
+                            // never rejected: the executor is shut down after these loops end
+                            let _ = executor.spawn(schedule.name, (schedule.job)(state, context));
                         }
                     }
                 }

@@ -151,7 +151,8 @@ where
         let executor = TaskExecutor::default();
         let dispatch = |permit: OwnedSemaphorePermit, (subject, handler, raw): Queued<'_, S>| {
             let task = handler(raw, state.clone());
-            executor.spawn(subject, async move {
+            // never rejected: the executor is shut down after dispatching ends
+            let _ = executor.spawn(subject, async move {
                 let _permit = permit; // held until the handler (and its ack) completes
                 task.await;
             });

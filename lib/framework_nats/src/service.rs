@@ -120,7 +120,8 @@ impl Service {
             };
             let task = handler(Arc::clone(&client), message);
             let counter = Arc::clone(&counter);
-            executor.spawn(subject, async move {
+            // never rejected: the executor is shut down after dispatching ends
+            let _ = executor.spawn(subject, async move {
                 let _permit = permit; // held until the handler (and its reply) completes
                 let _counter = counter.increase();
                 task.await;

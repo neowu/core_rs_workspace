@@ -100,6 +100,8 @@ struct Use {
 struct Sources<'a> {
     workspace: &'a Workspace,
     texts: HashMap<String, String>,
+    /// The files with any marker; most have none, and the rules ask at every item and use.
+    with_marker: HashSet<String>,
 }
 
 impl<'a> Sources<'a> {
@@ -120,7 +122,8 @@ impl<'a> Sources<'a> {
                 texts.insert(file.to_owned(), fs::read_to_string(workspace.root.join(file)).unwrap_or_default());
             }
         }
-        Self { workspace, texts }
+        let with_marker = texts.iter().filter(|(_, text)| text.contains("lint: ")).map(|(file, _)| file.clone());
+        Self { workspace, with_marker: with_marker.collect(), texts }
     }
 
     fn text(&self, file: &str) -> &str {
@@ -148,6 +151,9 @@ impl<'a> Sources<'a> {
 
     /// The 1-based line of the marker that `marked` finds.
     fn marker_line(&self, file: &str, from_line: usize, to_line: usize, marker: &str) -> Option<usize> {
+        if !self.with_marker.contains(file) {
+            return None;
+        }
         let lines: Vec<&str> = self.text(file).lines().take(to_line).collect();
         let is_comment = |line: &str| line.trim_start().starts_with("//");
         let is_attribute = |line: &str| line.trim_start().starts_with("#[");

@@ -73,6 +73,10 @@ fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>
 /// The first line past the limit and the total line count, both ignoring top-level `#[cfg(test)]` items.
 /// Files that fail to parse are skipped; the compiler reports those.
 fn overflow(source: &str, max_lines: usize) -> Option<(usize, usize)> {
+    // leaving test items out only lowers the count
+    if source.lines().count() <= max_lines {
+        return None;
+    }
     let file = syn::parse_file(source).ok()?;
     let test_lines: Vec<RangeInclusive<usize>> =
         file.items.iter().filter(|item| is_test(item)).map(|item| lines(item.span())).collect();

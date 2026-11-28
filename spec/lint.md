@@ -301,7 +301,7 @@ stays. The marker is reported when the rule would no longer report the item.
 
 An item is reported when all of these hold:
 
-- Every use of it, outside tests, is in one module of its crate or under it, and that
+- Every use of it, outside the unit tests of its crate, is in one module of its crate or under it, and that
   module is neither above its own module (a module split into children) nor inside it
   (`excess_visibility` then applies).
 - Everything its signature and body use is visible from that module as declared: items of
@@ -310,7 +310,7 @@ An item is reported when all of these hold:
   where it is.
 
 Not checked: methods and types, which bring their impls along, and items used by another
-crate.
+crate, its tests included, which could not reach a private item.
 
 ## Module cycles
 

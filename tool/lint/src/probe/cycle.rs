@@ -31,8 +31,8 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 continue;
             }
             // a crate can be compiled more than once, and one name can stand for several items, as a variant
-            // does for its enum
-            if !seen.insert((&unit.root, &used.file, used.line, used.column, &used.module)) {
+            // does for its enum; a macro can use several modules at one place, and each is a use
+            if !seen.insert((&unit.root, &used.file, used.line, used.column, &used.module, to_module)) {
                 continue;
             }
             let is_marked = sources.marked(&used.file, used.line, used.line, EXPECT);

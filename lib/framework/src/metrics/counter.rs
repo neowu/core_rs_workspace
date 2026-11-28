@@ -8,6 +8,7 @@ pub struct Counter {
     max: AtomicU32,
 }
 
+#[must_use = "the count is decreased when the guard is dropped"]
 pub struct CounterGuard<'a>(&'a Counter);
 
 impl Drop for CounterGuard<'_> {

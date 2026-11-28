@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::log::inflight::with_current;
 
+#[must_use = "the span ends when it is dropped"]
 pub struct Span {
     name: &'static str,
     start_time: Instant,

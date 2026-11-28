@@ -35,14 +35,17 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     let mut users: HashMap<&str, Option<Vec<&str>>> = HashMap::new();
     // by item, what its definition uses
     let mut needs: HashMap<&str, Vec<&Use>> = HashMap::new();
-    for unit in units.iter().filter(|unit| !unit.test) {
+    for unit in units {
         // a catch-all arm names nothing
         for used in unit.uses.iter().filter(|used| used.kind != "wildcard") {
-            if let Some(from) = used.from.as_deref().filter(|from| *from != used.to) {
+            if !unit.test
+                && let Some(from) = used.from.as_deref().filter(|from| *from != used.to)
+            {
                 needs.entry(from).or_default().push(used);
             }
             let Some((_, root)) = defs.get(used.to.as_str()) else { continue };
-            if used.own {
+            // the unit tests of its crate move with the item; a test in another crate cannot reach a private one
+            if used.own || (unit.test && unit.root == *root) {
                 continue;
             }
             let module = path(&used.module);

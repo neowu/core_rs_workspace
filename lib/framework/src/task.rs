@@ -112,6 +112,7 @@ impl TaskExecutor {
     // builds one per spawn, which is what the &'static str bound is here to enforce.
     // returns false if shutdown started, the task is dropped without running. the token is taken before the
     // closed check, so a task admitted here is always one shutdown waits for
+    #[must_use = "false means the executor rejected the task without running it"]
     pub fn spawn<F>(&self, name: &'static str, task: F) -> bool
     where
         F: Future<Output = ()> + Send + 'static,
