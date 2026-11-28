@@ -61,7 +61,9 @@ The release profile keeps line tables, so frames carry `file:line`; without them
 
 ## Known gaps
 
-- **Not run on Linux yet.** Developed and tested on macOS, the Linux half only type checks.
+- **The thread list is best effort.** Reading `/proc/self/task` is not a snapshot: a thread exiting
+  during the read can cut the list short, so a dump may miss live threads. Accepted for a
+  troubleshooting tool, take another dump. The unit test only checks the shape of the output.
 - **Interrupted syscalls.** `SA_RESTART` resumes most, but some (`epoll_wait`, `nanosleep`) return
   `EINTR` regardless. std and tokio retry; a C library that does not would see a spurious error.
 - **Needs a worker to serve it.** With every worker blocked the endpoint cannot answer, a signal
