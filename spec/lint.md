@@ -93,6 +93,22 @@ file (`#[cfg(test)] mod x;`) is not recognized as test code, which is why unit t
 stay inline. Files that do not parse are skipped and left to the compiler. The
 diagnostic points at the first line past the limit.
 
+## Test modules
+
+| Rule | Requirement |
+| --- | --- |
+| `tests_outside_test_module` | A test function under a member's `src` is inside a `#[cfg(test)]` module. |
+
+Replaces the Clippy lint of the same name, which cannot tell `src` from `tests/`: files under
+`tests/` only build for test, so a `#[cfg(test)]` module adds nothing there, and they are not
+checked. Neither are benches and examples.
+
+A test function is one with an attribute whose last path segment is `test` (`#[test]`,
+`#[tokio::test]`) or `integration_test`. Files are read as written, like `file_too_long`: a test a
+macro writes is not seen, and a test module in a separate file (`#[cfg(test)] mod x;`) is not
+recognized, so its tests are reported. There is no exception; a test can always move into a
+`#[cfg(test)] mod tests`.
+
 ## Probe
 
 `unused_pub`, `excess_visibility`, `field_write`, `wildcard_match`, `misplaced_item` and `module_cycle` read what the compiler resolved, not

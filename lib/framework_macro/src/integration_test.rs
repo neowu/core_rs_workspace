@@ -34,8 +34,6 @@ pub(crate) fn build(tokens: TokenStream) -> Result<TokenStream> {
 
     Ok(quote! {
         #[::tokio::test(flavor = "multi_thread")]
-        // integration test crates under `tests/` only build for test, a `#[cfg(test)]` module adds nothing;
-        #[allow(clippy::tests_outside_test_module)]
         #(#attrs)*
         #vis async fn #ident() {
             #function

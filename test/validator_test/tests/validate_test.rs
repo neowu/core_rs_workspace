@@ -1,5 +1,3 @@
-#![allow(clippy::tests_outside_test_module)]
-
 use framework::exception::Exception;
 use framework::validate::Validator;
 use framework_macro::Validate;

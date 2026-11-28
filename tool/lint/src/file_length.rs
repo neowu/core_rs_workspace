@@ -1,83 +1,29 @@
-use std::error::Error;
-use std::fs;
 use std::ops::RangeInclusive;
-use std::path::Path;
-use std::path::PathBuf;
 
 use proc_macro2::Span;
-use syn::Attribute;
-use syn::Ident;
+use syn::File;
 use syn::Item;
 use syn::spanned::Spanned as _;
 
-use super::diagnostic::Diagnostic;
-use super::diagnostic::SpanLine;
-use super::workspace::Workspace;
+use super::diagnostic::Finding;
+use super::test_module::cfg_test;
 
-/// Checks `.rs` files under each member's `src`, so build scripts, integration tests, benches and examples are exempt.
-pub(super) fn check(workspace: &Workspace, max_lines: usize) -> Result<Vec<Diagnostic>, Box<dyn Error>> {
-    let mut diagnostics = Vec::new();
-    for member in &workspace.members {
-        let Some(package_dir) = member.absolute_path.parent() else { continue };
-        let mut files = Vec::new();
-        rust_files(&package_dir.join("src"), &mut files)?;
-        for file in files {
-            let source = fs::read_to_string(&file)?;
-            let Some((line, count)) = overflow(&source, max_lines) else { continue };
-            let byte_start: usize = source.split_inclusive('\n').take(line - 1).map(str::len).sum();
-            let text = source.lines().nth(line - 1).unwrap_or_default();
-            diagnostics.push(Diagnostic {
-                path: file.strip_prefix(&workspace.root).unwrap_or(&file).to_path_buf(),
-                manifest_path: member.absolute_path.clone(),
-                package_id: member.package.id.clone(),
-                target: member.package.target.clone(),
-                span: super::diagnostic::Span {
-                    byte_start,
-                    byte_end: byte_start + text.len(),
-                    line_start: line,
-                    line_end: line,
-                    column_start: 1,
-                    column_end: text.chars().count() + 1,
-                    lines: vec![SpanLine {
-                        text: text.to_owned(),
-                        highlight_start: 1,
-                        highlight_end: text.chars().count() + 1,
-                    }],
-                },
-                rule: "file_too_long",
-                message: format!(
-                    "file has {count} lines excluding `#[cfg(test)]` items, more than the limit of {max_lines}"
-                ),
-            });
-        }
-    }
-    diagnostics.sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(diagnostics)
-}
-
-fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    for entry in fs::read_dir(dir)? {
-        let path = entry?.path();
-        if path.is_dir() {
-            rust_files(&path, files)?;
-        } else if path.extension().is_some_and(|extension| extension == "rs") {
-            files.push(path);
-        }
-    }
-    Ok(())
+pub(super) fn check(source: &str, file: &File, max_lines: usize) -> Option<Finding> {
+    let (line, count) = overflow(source, file, max_lines)?;
+    Some(Finding {
+        rule: "file_too_long",
+        message: format!("file has {count} lines excluding `#[cfg(test)]` items, more than the limit of {max_lines}"),
+        line,
+        columns: None,
+    })
 }
 
 /// The first line past the limit and the total line count, both ignoring top-level `#[cfg(test)]` items.
-/// Files that fail to parse are skipped; the compiler reports those.
-fn overflow(source: &str, max_lines: usize) -> Option<(usize, usize)> {
+fn overflow(source: &str, file: &File, max_lines: usize) -> Option<(usize, usize)> {
     // leaving test items out only lowers the count
     if source.lines().count() <= max_lines {
         return None;
     }
-    let file = syn::parse_file(source).ok()?;
     let test_lines: Vec<RangeInclusive<usize>> =
         file.items.iter().filter(|item| is_test(item)).map(|item| lines(item.span())).collect();
     let code_lines: Vec<usize> =
@@ -111,15 +57,13 @@ fn is_test(item: &Item) -> bool {
     cfg_test(attrs)
 }
 
-fn cfg_test(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("cfg") && attr.parse_args::<Ident>().is_ok_and(|arg| arg == "test"))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::overflow;
-
     const MAX_LINES: usize = 20;
+
+    fn overflow(source: &str, max_lines: usize) -> Option<(usize, usize)> {
+        super::overflow(source, &syn::parse_file(source).unwrap(), max_lines)
+    }
 
     fn code(lines: usize) -> String {
         "const C: u8 = 0;\n".repeat(lines)

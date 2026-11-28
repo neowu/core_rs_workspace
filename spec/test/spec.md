@@ -14,9 +14,9 @@ CI runs it too; the package list is in `.cargo/config.toml`, add new service-fre
 - Every test uses `#[integration_test]`: it initializes `System`, runs the body in a log action
   named after the fn, and fails with the exception backtrace. Keep one integration test per file,
   since the action sender is process wide and each test owns its runtime.
-- Test crates inherit workspace lints. `#[integration_test]` allows `tests_outside_test_module`
-  (files under `tests/` only build for test) and `shadow_unrelated` (steps rebind `response` etc.
-  so a later assert can't reach a stale value); plain `#[test]` files allow the former at file level.
+- Test crates inherit workspace lints. `#[integration_test]` allows `shadow_unrelated` (steps rebind
+  `response` etc. so a later assert can't reach a stale value). Tests under `tests/` need no
+  `#[cfg(test)]` module: `tests_outside_test_module` only checks `src` (see [lint](../lint.md)).
 - Deps used only by `tests/` go in `[dev-dependencies]`, `cargo::unused_dependencies` flags them otherwise.
 - Tests run on the multi thread tokio runtime, as apps do, so framework components are started
   with plain `tokio::spawn`.

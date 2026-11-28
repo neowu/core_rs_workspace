@@ -31,6 +31,15 @@ pub(super) struct SpanLine {
     pub(super) highlight_end: usize,
 }
 
+/// What a rule that reads one source file reports, before it is placed in the workspace.
+pub(super) struct Finding {
+    pub(super) rule: &'static str,
+    pub(super) message: String,
+    pub(super) line: usize,
+    /// Columns of the highlight, from 1 and end exclusive; the whole line if none.
+    pub(super) columns: Option<(usize, usize)>,
+}
+
 impl Diagnostic {
     /// Same shape as a `cargo --message-format=json` compiler message, so tools reading clippy output can read it.
     pub(super) fn to_json(&self) -> Value {

@@ -1,5 +1,3 @@
-#![allow(clippy::tests_outside_test_module)]
-
 use std::env;
 use std::path::Path;
 use std::process::Command;

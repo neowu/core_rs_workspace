@@ -1,5 +1,3 @@
-#![allow(clippy::tests_outside_test_module)]
-
 use framework::number::parse_i32;
 use framework::number::parse_i64;
 use framework::number::parse_u64;

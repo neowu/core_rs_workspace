@@ -1,5 +1,3 @@
-#![allow(clippy::tests_outside_test_module)]
-
 use framework::json;
 use framework::time::Date;
 use framework::time::DateTime;

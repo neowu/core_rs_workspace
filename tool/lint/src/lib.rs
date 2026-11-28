@@ -15,6 +15,8 @@ use serde_json::json;
 mod diagnostic;
 mod file_length;
 mod probe;
+mod source;
+mod test_module;
 mod workspace;
 mod workspace_dependencies;
 
@@ -71,7 +73,7 @@ fn lint(config: &LintConfig, custom_only: bool, json: bool) -> Result<ExitCode, 
         }
     }
     let mut diagnostics = workspace_dependencies::check(&workspace);
-    diagnostics.extend(file_length::check(&workspace, config.max_file_lines)?);
+    diagnostics.extend(source::check(&workspace, config.max_file_lines)?);
     diagnostics.extend(probe::check(&workspace, &config.api_tests)?);
     // every rule is a warning, as the workspace's clippy rules are, and warnings fail the command
     let custom_ok = diagnostics.is_empty();
