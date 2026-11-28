@@ -27,6 +27,7 @@ mod cycle;
 mod field;
 mod marker;
 mod misplaced;
+mod reexport;
 mod visibility;
 mod wildcard;
 
@@ -45,6 +46,7 @@ struct Unit {
     test: bool,
     defs: Vec<Def>,
     uses: Vec<Use>,
+    reexports: Vec<Reexport>,
 }
 
 /// A non-private item, module, struct field, enum variant, or method or constant of a trait. Files are relative to the workspace root, lines 1-based and columns
@@ -96,6 +98,26 @@ struct Use {
     to_module: Option<String>,
 }
 
+/// A `use` that is not private, and one thing it names. The position is of the last name of its path.
+#[derive(Deserialize)]
+struct Reexport {
+    file: String,
+    line: usize,
+    column: usize,
+    /// Where the declaration starts, below its attributes.
+    item_line: usize,
+    /// The module the declaration is in.
+    module: String,
+    name: String,
+    /// For an item of the same crate, the module that owns it.
+    to_module: Option<String>,
+    /// For an item of another crate, the name of that crate.
+    to_crate: Option<String>,
+    /// The other crate is of the workspace.
+    #[serde(default)]
+    workspace: bool,
+}
+
 /// The text of the workspace files that items and uses are in.
 struct Sources<'a> {
     workspace: &'a Workspace,
@@ -109,7 +131,8 @@ impl<'a> Sources<'a> {
         let mut texts = HashMap::new();
         let defs = units.iter().flat_map(|unit| unit.defs.iter().map(|def| &def.file));
         let uses = units.iter().flat_map(|unit| unit.uses.iter().map(|used| &used.file));
-        for file in defs.chain(uses) {
+        let reexports = units.iter().flat_map(|unit| unit.reexports.iter().map(|reexport| &reexport.file));
+        for file in defs.chain(uses).chain(reexports) {
             if !texts.contains_key(file) {
                 // a file that is gone is reported by the compiler
                 texts.insert(file.clone(), fs::read_to_string(workspace.root.join(file)).unwrap_or_default());
@@ -174,6 +197,7 @@ pub(super) fn check(workspace: &Workspace, api_tests: &[&str]) -> Result<Vec<Dia
     diagnostics.extend(cycle::check(&units, &sources));
     diagnostics.extend(wildcard::check(&units, &sources));
     diagnostics.extend(misplaced::check(&units, &sources));
+    diagnostics.extend(reexport::check(&units, &sources));
     diagnostics.extend(marker::check(&units, &sources));
     Ok(diagnostics)
 }

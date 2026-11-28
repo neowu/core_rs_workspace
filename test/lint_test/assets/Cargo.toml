@@ -1,7 +1,7 @@
 # a workspace of its own for `cargo lint` to check, run by tests/lint_test.rs
 [workspace]
 resolver = "3"
-members = ["app", "cycle", "e2e", "support", "visibility", "xtask"]
+members = ["app", "cycle", "e2e", "reexport", "support", "visibility", "xtask"]
 
 [workspace.dependencies]
 visibility = { path = "visibility" }

@@ -18,9 +18,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::sync::WaitForCancellationFutureOwned;
 
 use crate::exception::Exception;
+use crate::http::Event;
 use crate::log;
 use crate::metrics::Counter;
-use crate::web::Event;
 use crate::web::catch_panic;
 
 // below common LB idle timeouts (ALB / nginx 60s)

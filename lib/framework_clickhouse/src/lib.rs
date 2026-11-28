@@ -23,7 +23,6 @@ use framework::http::FallbackDnsResolver;
 use framework::log;
 use framework::span;
 use framework::stats;
-pub use framework_macro::Enum8;
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::Client as HyperClient;
 use hyper_util::client::legacy::connect::HttpConnector;

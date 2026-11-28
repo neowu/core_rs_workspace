@@ -14,16 +14,18 @@ enum On {
     Struct,
     Use,
     Arm,
+    Reexport,
 }
 
 /// Every marker there is, by verb and rule.
-const MARKERS: [(&str, &str, On); 6] = [
+const MARKERS: [(&str, &str, On); 7] = [
     ("expect", "unused_pub", On::Item),
     ("expect", "excess_visibility", On::Item),
     ("expect", "misplaced_item", On::Item),
     ("expect", "module_cycle", On::Use),
     ("enforce", "field_write", On::Struct),
     ("expect", "wildcard_match", On::Arm),
+    ("expect", "foreign_reexport", On::Reexport),
 ];
 
 /// A marker comment: its 1-based line, 0-based column, and the text from `lint:` to the closing parenthesis.
@@ -77,6 +79,17 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 }
             }
         }
+        for reexport in unit.reexports.iter().filter(|reexport| with_marker.contains(reexport.file.as_str())) {
+            for (verb, rule, _) in MARKERS.iter().filter(|marker| marker.2 == On::Reexport) {
+                let text = format!("lint: {verb}({rule})");
+                if let Some(line) = sources.marker_line(&reexport.file, reexport.item_line, reexport.line, &text)
+                    && let Some(marker) =
+                        markers.iter().find(|marker| marker.file == reexport.file && marker.line == line)
+                {
+                    placed.insert((marker.file, marker.line, marker.text));
+                }
+            }
+        }
     }
 
     let mut diagnostics = Vec::new();
@@ -96,6 +109,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                     On::Struct => "a struct other modules can use",
                     On::Use => "a use of another module",
                     On::Arm => "a catch-all arm of a match on an enum of the workspace",
+                    On::Reexport => "a `use` that is not private",
                 };
                 (UNFULFILLED, format!("`// {text}` is not directly above {above}, so it does nothing; remove it"))
             }

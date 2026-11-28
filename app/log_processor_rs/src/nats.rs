@@ -1,5 +1,5 @@
 use framework::exception;
-use framework_clickhouse::Enum8;
+use framework_macro::Enum8;
 
 pub(crate) mod action_handler;
 pub(crate) mod metrics_handler;

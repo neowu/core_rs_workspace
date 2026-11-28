@@ -90,6 +90,7 @@ fn write_facts(tcx: TyCtxt<'_>, out: &Path, root: PathBuf) {
         context: Context::default(),
         defs: Vec::new(),
         uses: BTreeMap::new(),
+        reexports: Vec::new(),
     };
     let Some((crate_root, ..)) = collector.position(tcx.def_span(CRATE_DEF_ID)) else { return };
     for item in tcx.hir_free_items() {
@@ -108,6 +109,8 @@ fn write_facts(tcx: TyCtxt<'_>, out: &Path, root: PathBuf) {
     json.push_str("],\"uses\":[");
     let uses: Vec<String> = collector.uses.iter().map(|(place, detail)| place.json(detail)).collect();
     json.push_str(&uses.join(","));
+    json.push_str("],\"reexports\":[");
+    json.push_str(&collector.reexports.join(","));
     json.push_str("]}\n");
     fs::create_dir_all(out).expect("create facts directory");
     let file = out.join(format!("{name}{}.json", tcx.sess.opts.cg.extra_filename));
@@ -220,6 +223,7 @@ struct Collector<'tcx> {
     context: Context,
     defs: Vec<String>,
     uses: BTreeMap<Place, Detail>,
+    reexports: Vec<String>,
 }
 
 impl<'tcx> Collector<'tcx> {
@@ -407,6 +411,48 @@ impl<'tcx> Collector<'tcx> {
         self.uses.entry(place).or_insert(Detail { column, target });
     }
 
+    /// A `use` that is not private, with each thing it names: the module that owns it for one of this crate, else
+    /// its crate, and whether that is of the workspace. Unlike uses, what is outside the workspace is recorded too.
+    fn reexport(&mut self, item: &hir::Item<'tcx>, tree: &hir::UseTree<'tcx>) {
+        let tcx = self.tcx;
+        let def_id = item.owner_id.def_id;
+        if let hir::UseKind::Nested { items } = tree.kind {
+            for (tree, ..) in items {
+                self.reexport(item, tree);
+            }
+            return;
+        }
+        let path = tree.prefix;
+        let Some(segment) = path.segments.last() else { return };
+        if self.test || self.visibility(def_id) == "private" || segment.ident.span.from_expansion() {
+            return;
+        }
+        let Some((file, line, column)) = self.position(segment.ident.span) else { return };
+        let start = self.position(item.span).filter(|(start, ..)| *start == file);
+        let item_line = start.map_or(line, |(_, line, _)| line);
+        let module = self.module(tcx.parent_module_from_def_id(def_id).to_def_id());
+        for res in path.res.present_items() {
+            let Res::Def(kind, to) = res else { continue };
+            let mut json = format!(
+                "{{\"file\":{},\"line\":{line},\"column\":{column},\"item_line\":{item_line},\"module\":{},\"name\":{}",
+                quote(&file),
+                quote(&module),
+                quote(segment.ident.as_str()),
+            );
+            if let Some(local) = to.as_local() {
+                let owner = if kind == DefKind::Mod { to } else { tcx.parent_module_from_def_id(local).to_def_id() };
+                write!(json, ",\"to_module\":{}", quote(&self.module(owner))).expect("write to string");
+            } else {
+                let workspace = self.position(tcx.def_span(to)).is_some();
+                let name = tcx.crate_name(to.krate);
+                write!(json, ",\"to_crate\":{},\"workspace\":{workspace}", quote(name.as_str()))
+                    .expect("write to string");
+            }
+            json.push('}');
+            self.reexports.push(json);
+        }
+    }
+
     /// The catch-all arms of a match on an enum, which take every variant added later without the compiler asking.
     fn wildcards(&mut self, scrutinee: Ty<'tcx>, arms: &[hir::Arm<'tcx>]) {
         fn catch_all(pat: &hir::Pat<'_>) -> bool {
@@ -483,6 +529,9 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
             DefKind::Static { .. } => Some("static"),
             _ => None,
         };
+        if let hir::ItemKind::Use(tree) = &item.kind {
+            self.reexport(item, tree);
+        }
         self.nested(|this| {
             this.context.in_use = matches!(item.kind, hir::ItemKind::Use(..));
             this.context.reexport = this.context.in_use && this.tcx.visibility(def_id).is_public();

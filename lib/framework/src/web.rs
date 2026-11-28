@@ -14,8 +14,6 @@ pub mod router;
 pub mod server;
 pub mod sse;
 
-pub use crate::http::Event;
-
 const X_FORWARDED_FOR: HeaderName = HeaderName::from_static("x-forwarded-for");
 const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 

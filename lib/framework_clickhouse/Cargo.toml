@@ -8,7 +8,6 @@ doctest = false
 
 [dependencies]
 framework.workspace = true
-framework_macro.workspace = true
 
 clickhouse = { version = "0", features = ["inserter", "rustls-tls"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["aws-lc-rs", "http1", "tls12", "webpki-tokio"] }

@@ -5,11 +5,11 @@ use framework::exception::Exception;
 use framework::time::Date;
 use framework::time::DateTime;
 use framework_clickhouse::ClickHouse;
-use framework_clickhouse::Enum8;
 use framework_clickhouse::clickhouse;
 use framework_clickhouse::clickhouse::Row;
 use framework_clickhouse::types::DateTime64;
 use framework_kafka::consumer::Message;
+use framework_macro::Enum8;
 use serde::Deserialize;
 use serde::Serialize;
 

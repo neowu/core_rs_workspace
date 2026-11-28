@@ -111,7 +111,8 @@ recognized, so its tests are reported. There is no exception; a test can always 
 
 ## Probe
 
-`unused_pub`, `excess_visibility`, `field_write`, `wildcard_match`, `misplaced_item` and `module_cycle` read what the compiler resolved, not
+`unused_pub`, `excess_visibility`, `field_write`, `wildcard_match`, `misplaced_item`, `module_cycle` and
+`foreign_reexport` read what the compiler resolved, not
 names, so two items of the same name are never confused. They run in two phases:
 
 1. **Facts.** `tool/probe` is a rustc driver, built with the latest nightly (its
@@ -121,7 +122,8 @@ names, so two items of the same name are never confused. They run in two phases:
    crate defines, and every use of a workspace item, with the module and the function or
    type it is in, and how it is used: called, constructed, matched in a pattern, written,
    mutably borrowed, or only named. A catch-all arm of a match on an enum is recorded as a
-   use of the enum. The probe holds no rule.
+   use of the enum. Every `use` that is not private is written with what it names, also outside the
+   workspace. The probe holds no rule.
 2. **Rules.** `lint`, on stable, reads the files and reports.
 
 The probe is not a workspace member and nothing depends on it, so stable builds, Clippy
@@ -185,7 +187,7 @@ reason. There is no exception wider than an item.
 Every comment of the form `// lint: <verb>(<rule>)` is checked, so none is left behind
 when a rule or the code under it goes. The markers are `expect(unused_pub)`,
 `expect(excess_visibility)`, `expect(misplaced_item)`, `expect(module_cycle)`,
-`expect(wildcard_match)` and
+`expect(wildcard_match)`, `expect(foreign_reexport)` and
 `enforce(field_write)`; any other
 verb or rule is reported as `unknown_lints`. One that is not directly above something its
 rule checks, such as a private item, is reported as `unfulfilled_lint_expectations`.
@@ -355,3 +357,28 @@ one is cut.
 
 Exception: `// lint: expect(module_cycle)` directly above a use leaves it out of the graph.
 It covers the uses on that line, and is not needed unless one of them is part of a circle.
+
+## Foreign re-exports
+
+| Rule | Requirement |
+| --- | --- |
+| `foreign_reexport` | A `use` that is not private names only what its module or the modules inside it define, or a crate from outside the workspace. |
+
+A re-export makes a module look like the owner of a name. That is what a parent is to its children, so
+a module, and the crate root for the whole crate, hands on what is defined inside it. Anything else is
+named where it is defined:
+
+- A module does not re-export an item of a sibling or of a module above it. The item is judged by where
+  it is defined, so going through another re-export changes nothing.
+- No crate re-exports an item of another workspace crate, the root included. Its users depend on the
+  owning crate and name it there, which keeps the manifests the true dependency graph and shows a
+  dependency in the wrong direction. This holds for derives too: users depend on the macro crate.
+- A crate from outside the workspace may be re-exported from any module. A framework crate hands on the
+  types its API needs, in the module they belong to, so callers get one version and no dependency of
+  their own.
+
+`pub(crate) use` and other restricted forms count like `pub use`; a private `use` is an import. Tests,
+and declarations a macro writes, are not checked.
+
+Exception: `// lint: expect(foreign_reexport)` directly above the declaration, or above the name inside
+a `use` list. It is reported when the rule would not report the declaration.
