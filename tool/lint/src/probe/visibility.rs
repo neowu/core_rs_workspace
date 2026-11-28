@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -48,6 +49,8 @@ struct Item<'a> {
     tested: bool,
     /// Used so outside tests; an item only tests use is dead code once it is narrowed.
     live: bool,
+    /// The file and line of each `pub use` of it in its crate, which rustc rejects once it is not `pub`.
+    reexports: Vec<(&'a str, usize)>,
 }
 
 impl Item<'_> {
@@ -63,6 +66,25 @@ impl Item<'_> {
 
     const fn unused(&self) -> bool {
         self.exported && !self.real
+    }
+
+    /// How to narrow it to what its uses need, with its `pub use` declarations.
+    fn narrowing(&self, needed: Level, visibility: &str) -> String {
+        let mut fix = match needed {
+            Level::Private => format!("is not used outside its module; remove `{visibility}`"),
+            Level::Crate | Level::Public => "is not used outside its crate; change it to `pub(crate)`".to_owned(),
+        };
+        if !self.reexports.is_empty() {
+            let places: Vec<String> = self.reexports.iter().map(|(file, line)| format!("{file}:{line}")).collect();
+            write!(fix, ", also in its `pub use` at {}", places.join(", ")).expect("write to string");
+        }
+        fix
+    }
+
+    /// Reported when it is more visible than its uses need, so what its interface names can be narrowed with it.
+    /// Any other item stays as visible as declared, and rustc holds the names in its interface to that.
+    fn narrowed(&self) -> bool {
+        !self.keep && !self.unused() && (self.live || self.unseen())
     }
 }
 
@@ -104,6 +126,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>, api_tests: &[&str]) -
                 real: false,
                 tested: false,
                 live: false,
+                reexports: Vec::new(),
             });
         }
     }
@@ -142,14 +165,20 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>, api_tests: &[&str]) -
             item.real |= direct && counted;
             item.tested |= direct && !counted;
             item.live |= direct && !unit.test;
+            // a module on the way to what a `pub use` names is not re-exported
+            let reexport = used.reexport && used.kind != "through" && unit.root == item.root;
+            if reexport && !item.reexports.contains(&(used.file.as_str(), used.line)) {
+                item.reexports.push((&used.file, used.line));
+            }
             if let Some(interface) = &used.interface {
                 interfaces.push((interface, id));
             }
         }
     }
     let mut required: Vec<Level> =
-        items.iter().map(|item| if item.keep { item.declared } else { item.used.min(item.declared) }).collect();
-    // interfaces are taken at the visibility they need, not the one they declare, so one run reports a whole chain
+        items.iter().map(|item| if item.narrowed() { item.used.min(item.declared) } else { item.declared }).collect();
+    // the interface of an item that is reported is taken at the visibility it needs, not the one it declares, so
+    // one run reports a whole chain
     loop {
         let mut changed = false;
         for (interface, id) in &interfaces {
@@ -210,10 +239,7 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>, api_tests: &[&str]) -
             unused.push(report("unused_pub", format!("{what} {found}; {fix}")));
         } else if is_excess && !item.keep {
             let visibility = written(sources.text(file), item.def);
-            let fix = match needed {
-                Level::Private => format!("is not used outside its module; remove `{visibility}`"),
-                Level::Crate | Level::Public => "is not used outside its crate; change it to `pub(crate)`".to_owned(),
-            };
+            let fix = item.narrowing(needed, &visibility);
             let message = format!("`{visibility}` {kind} `{name}` {fix}, or mark it with `// {EXPECT_EXCESS}`");
             excess.push(report("excess_visibility", message));
         }

@@ -78,6 +78,8 @@ struct Use {
     column: usize,
     /// In a `use` declaration.
     import: bool,
+    /// In a `pub use`.
+    reexport: bool,
     /// `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through` for a module on the way
     /// to an item, `wildcard` for an enum matched by a catch-all arm, else `use`.
     kind: String,

@@ -36,3 +36,8 @@ pub fn ten() {}
 
 // used only by the tests of `e2e`, which stand for callers
 pub fn eleven() {}
+
+// called by no one, so it stays `pub` until it is removed, and `Held` in its signature with it
+pub fn twelve(_held: &Held) {}
+
+pub struct Held;

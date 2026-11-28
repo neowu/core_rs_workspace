@@ -1,5 +1,6 @@
 pub mod a;
 mod b;
+pub mod named;
 pub mod parts;
 mod place;
 pub mod state;

@@ -23,3 +23,6 @@ pub trait Source {
     // implemented by the app, called by no one
     fn skip(&self);
 }
+
+// used only by the sibling `b`, through the re-export
+pub struct Local;

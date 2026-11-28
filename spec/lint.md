@@ -5,7 +5,10 @@ cargo lint
 cargo +nightly fmt --all -- --check
 ```
 
-The repository Cargo configuration also treats build warnings as errors.
+Every rule is a warning, the workspace's own and the Clippy and rustc lints `Cargo.toml` turns on, and
+no warning is left: each is fixed, or excused where it stands with `#[expect(.., reason = "..")]` or the
+rule's marker comment. Only what does not compile is an error. The repository Cargo configuration denies
+warnings in every build (`[build] warnings = "deny"`), and `cargo lint` fails on any.
 
 ## Packaging
 
@@ -24,8 +27,8 @@ must therefore be started through `cargo run`.
 `cargo lint` runs repository checks through the `xtask` workspace member, then
 Clippy with `--workspace --all-targets -- -D warnings`. Either phase failing makes
 the command fail. `cargo lint --custom-only` runs only the repository checks.
-Repository checks are errors, except rules marked as advice, which are printed as
-warnings and do not fail the command.
+Repository checks are printed as warnings, and any of them fails the command, so a caller
+that only reads the exit status cannot miss one.
 CI uses the same command as local development.
 Unit tests live in the same file as the code they test, in a `#[cfg(test)] mod tests`.
 The probe rules are tested end to end instead, by `test/lint_test`: it runs `cargo lint --custom-only`
@@ -149,11 +152,15 @@ writes.
 
 Limits: only the configuration compiled is seen, so an item used only under another
 target or feature looks unused, and a path in a `macro_rules!` body is seen only where
-the macro is invoked in the workspace. Both are handled with the exceptions below.
+the macro is invoked in the workspace. The path of a macro invocation (`a::b::submit!`) is
+resolved before the facts are taken, so a module only such paths go through looks unused.
+All are handled with the exceptions below.
 
 Exceptions are comments, since stable Rust rejects lint names of unknown tools in
 `#[expect]`: `// lint: expect(<rule>)` (a reason may follow) in the comment block directly
-above an item or field, above its attributes, or between them and its name. Like
+above an item or field, above its attributes, or between them and its name. An item a
+macro writes around a name given by argument starts inside the macro, so its marker goes
+directly above the line of the name. Like
 `#[expect]`, a marker must excuse something: one on an item the rule would not report is
 itself reported, as `unfulfilled_lint_expectations`, so exceptions do not outlive their
 reason. There is no exception wider than an item.
@@ -215,6 +222,11 @@ equivalent: `unreachable_pub` only catches `pub` that the crate does not export.
   definition) must stay as visible as that interface needs to be, matching rustc's
   `private_interfaces`. This is solved to a fixed point, so one run reports a whole chain.
   An associated type in a trait impl is as visible as the impl's self type.
+- Advice never asks for what rustc rejects. Only an interface that is itself reported is
+  taken at the visibility it needs; one that is unused, only used by tests or marked stays
+  as declared, and so does what it names, until it is removed or narrowed.
+- An item that would no longer be `pub` is reported with the lines of its `pub use`
+  declarations in its crate, which rustc rejects unless they are narrowed with it.
 - An item nothing uses is left to `unused_pub` and rustc's `dead_code`, and so is one only
   tests use, since narrowing it makes it dead code. Fields and modules are reported either
   way, since neither rule sees them.
@@ -278,18 +290,14 @@ about a few variants of a large enum.
 
 | Rule | Requirement |
 | --- | --- |
-| `misplaced_item` (advice) | A function, constant or static is not used by only one other part of its crate while needing nothing private to its own module. |
+| `misplaced_item` | A function, constant or static is not used by only one other part of its crate while needing nothing private to its own module. |
 
 Such an item can move to the module that uses it and be private there: one name less for
 the rest of the crate, nothing else widened, and no module cycle created, since its user
 already depended on its module and its module never used it. Whether it also reads better
-there is a judgement (it may be grouped by topic on purpose), so the rule is advice:
-
-- It is reported as a warning in the same output as the errors and does not change the
-  exit status.
-- Each finding is decided once: the item is moved, or marked with
-  `// lint: expect(misplaced_item)` and the reason it stays. The marker is reported when
-  the rule would no longer report the item.
+there is a judgement (it may be grouped by topic on purpose), so each finding is decided
+once: the item is moved, or marked with `// lint: expect(misplaced_item)` and the reason it
+stays. The marker is reported when the rule would no longer report the item.
 
 An item is reported when all of these hold:
 

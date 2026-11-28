@@ -12,7 +12,7 @@ e2e test: `test/`, spec: `@spec/test/spec.md`
 - Keep comments minimal and focused on intent or non-obvious behaviour
 - Prefer straightforward code over unnecessary encapsulation and abstraction
 - Format Rust code with `cargo +nightly fmt --all`
-- Fix all errors reported by `cargo lint`; its own warnings are advice: apply each, or mark it with the comment it names and the reason
+- Leave no warning from `cargo lint`: fix each, or where the rule does not fit, excuse it with `#[expect(.., reason = "..")]` or the marker comment it names, and the reason
 
 # spec
 

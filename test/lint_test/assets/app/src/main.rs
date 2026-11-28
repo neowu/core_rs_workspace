@@ -22,7 +22,7 @@ fn main() {
     let kind = if Zero.read() == 0 { Kind::Used } else { Kind::Named };
     let _used = matches!(kind, Kind::Used);
     let _named = name(&kind) + other(&kind) + excused(&kind) + optional(Some(kind));
-    let _first = Pair::new(1, 2).0;
+    let _first = Pair::new(1, 2).0 + visibility::named::FIRST;
 
     let mut counter = Counter::new();
     visibility::state::reset(&mut counter);

@@ -119,6 +119,8 @@ fn write_facts(tcx: TyCtxt<'_>, out: &Path, root: PathBuf) {
 struct Context {
     in_body: bool,
     in_use: bool,
+    /// In a `pub use`, which the item it names must stay `pub` for.
+    reexport: bool,
     /// Directly inside a struct, where each field is an interface of its own.
     in_struct: Option<String>,
     in_trait_impl: bool,
@@ -142,6 +144,7 @@ struct Place {
     line: usize,
     member: bool,
     import: bool,
+    reexport: bool,
     own: bool,
     /// How the item is used: `call`, `construct`, `pattern`, `write` or `borrow` (mutably) for a place, `through`
     /// for a module on the way to an item, `wildcard` for an enum matched by a catch-all arm, else `use`.
@@ -159,7 +162,7 @@ struct Detail {
 impl Place {
     fn json(&self, detail: &Detail) -> String {
         let mut json = format!(
-            "{{\"to\":{},\"module\":{},\"file\":{},\"line\":{},\"column\":{},\"member\":{},\"import\":{},\"own\":{},\"kind\":{}",
+            "{{\"to\":{},\"module\":{},\"file\":{},\"line\":{},\"column\":{},\"member\":{},\"import\":{},\"reexport\":{},\"own\":{},\"kind\":{}",
             quote(&self.to),
             quote(&self.module),
             quote(&self.file),
@@ -167,6 +170,7 @@ impl Place {
             detail.column,
             self.member,
             self.import,
+            self.reexport,
             self.own,
             quote(self.kind)
         );
@@ -281,8 +285,10 @@ impl<'tcx> Collector<'tcx> {
             return (Some(key.clone()), Some(key));
         }
         let Some((file, line, column)) = self.position(ident) else { return (Some(key), fixed) };
-        // where the item starts, below its attributes, which the compiler keeps no place for
-        let item_line = self.position(span).filter(|(start, ..)| *start == file).map_or(line, |(_, line, _)| line);
+        // where the item starts, below its attributes, which the compiler keeps no place for; an item a macro
+        // writes around the name starts in the macro, so only the line of the name is the caller's
+        let start = if span.from_expansion() { None } else { self.position(span) };
+        let item_line = start.filter(|(start, ..)| *start == file).map_or(line, |(_, line, _)| line);
         let module = self.module(self.tcx.parent_module_from_def_id(def_id).to_def_id());
         let mut json = format!(
             "{{\"key\":{},\"file\":{},\"line\":{line},\"column\":{column},\"item_line\":{item_line},\"kind\":{},\"name\":{},\"visibility\":{},\"module\":{}",
@@ -393,6 +399,7 @@ impl<'tcx> Collector<'tcx> {
             line,
             member,
             import: self.context.in_use,
+            reexport: self.context.reexport,
             kind,
             from: self.context.from.clone(),
             interface: if self.context.in_body { None } else { self.context.interface.clone() },
@@ -437,6 +444,7 @@ impl<'tcx> Collector<'tcx> {
         let context = self.context.clone();
         self.context.in_body = false;
         self.context.in_use = false;
+        self.context.reexport = false;
         self.context.in_struct = None;
         visit(self);
         self.context = context;
@@ -477,6 +485,7 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
         };
         self.nested(|this| {
             this.context.in_use = matches!(item.kind, hir::ItemKind::Use(..));
+            this.context.reexport = this.context.in_use && this.tcx.visibility(def_id).is_public();
             // what a derive writes for a type is the type using itself
             let derived = this.derived(item.span);
             this.context.own.extend(derived);

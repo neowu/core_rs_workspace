@@ -16,7 +16,7 @@ const EXPECT: &str = "lint: expect(misplaced_item)";
 
 /// `misplaced_item`: a function, constant or static that only one other part of its crate uses, and that needs
 /// nothing only its own module can see, can move to its user and be private there. Whether it reads better
-/// there is a judgement, so this is advice.
+/// there is a judgement, so the item is moved or marked.
 pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     // by key, an item with the root file of its crate
     let mut defs: HashMap<&str, (&Def, &str)> = HashMap::new();
