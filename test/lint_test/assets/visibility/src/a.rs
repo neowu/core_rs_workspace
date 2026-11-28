@@ -41,3 +41,20 @@ pub fn eleven() {}
 pub fn twelve(_held: &Held) {}
 
 pub struct Held;
+
+// used by the app, which never names `Aliased` or `Listed`: the aliases in the signature stand for them
+pub fn thirteen() -> Alias {
+    Aliased
+}
+
+pub fn fourteen() -> List {
+    Vec::new()
+}
+
+type Alias = Aliased;
+
+type List = Vec<Listed>;
+
+pub struct Aliased;
+
+pub struct Listed;

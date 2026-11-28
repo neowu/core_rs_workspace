@@ -148,7 +148,8 @@ How the facts are read:
 - A use is a resolved path, method call, field access, or field named in a struct literal
   or pattern, also inside macro expansions. `Type { ..base }` uses every field, and so
   does calling or matching the constructor of a tuple struct. A constructor or variant is a
-  use of its type, and a use of a trait's item is a use of the trait.
+  use of its type, and a use of a trait's item is a use of the trait. A type alias in an
+  interface is also a use of the types it stands for, as rustc reads it.
 - A module is used by every path that goes through it. Such a use counts for where the
   module must be visible, not as a use of the module by `module_cycle`, since the module
   may only re-export the item.

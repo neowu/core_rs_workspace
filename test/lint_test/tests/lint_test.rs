@@ -46,8 +46,8 @@ fn reports_what_the_compiler_resolved() {
             "excess_visibility visibility/src/parts.rs:2:9 `pub` module `inner` is not used outside its module; remove `pub`",
             "excess_visibility visibility/src/parts/inner.rs:12:26 `pub` field `1` is not used outside its module; remove `pub`",
             "excess_visibility visibility/src/parts/inner.rs:28:12 `pub` struct `Local` is not used outside its crate; change it to `pub(crate)`, also in its `pub use` at visibility/src/parts.rs:7",
-            "field_write app/src/main.rs:45:13 `add` changes `count`, `total` of `Counter` in 2 places (also line 46); move that into a method of `Counter`",
-            "field_write app/src/main.rs:51:13 `append` changes `name` of `Counter` in 2 places (also line 52); move that into a method of `Counter`",
+            "field_write app/src/main.rs:46:13 `add` changes `count`, `total` of `Counter` in 2 places (also line 47); move that into a method of `Counter`",
+            "field_write app/src/main.rs:52:13 `append` changes `name` of `Counter` in 2 places (also line 53); move that into a method of `Counter`",
             "misplaced_item cycle/src/marked/a.rs:1:15 function `item` is used only in `crate::marked::b` and needs nothing private to `crate::marked::a`; move it there and it can be private",
             "misplaced_item cycle/src/marked/b.rs:1:15 function `item` is used only in `crate::marked::a` and needs nothing private to `crate::marked::b`; move it there and it can be private",
             "misplaced_item cycle/src/nested/x.rs:2:15 function `item` is used only in `crate::nested::y` and needs nothing private to `crate::nested::x`; move it there and it can be private",
@@ -61,7 +61,7 @@ fn reports_what_the_compiler_resolved() {
             "misplaced_item visibility/src/place/helper.rs:34:15 function `held` is used only in `crate::place::deep` and needs nothing private to `crate::place::helper`; move it there and it can be private",
             "module_cycle cycle/src/pair/b.rs:2:15 modules `a`, `b` in `crate::pair` use each other in a circle: `b` uses `a` (`item`, 1 mention(s), cycle/src/pair/b.rs:2), `a` uses `b` (`item`, 2 mention(s), cycle/src/pair/a.rs:2); cut one of the uses",
             "module_cycle cycle/src/triangle/a.rs:2:15 modules `a`, `b`, `c` in `crate::triangle` use each other in a circle: `a` uses `b` (`item`, 1 mention(s), cycle/src/triangle/a.rs:2), `b` uses `a` (`item`, 2 mention(s), cycle/src/triangle/b.rs:4); cut one of the uses",
-            "unfulfilled_lint_expectations app/src/main.rs:82:12 `// lint: expect(wildcard_match)` is not directly above a catch-all arm of a match on an enum of the workspace, so it does nothing; remove it",
+            "unfulfilled_lint_expectations app/src/main.rs:83:12 `// lint: expect(wildcard_match)` is not directly above a catch-all arm of a match on an enum of the workspace, so it does nothing; remove it",
             "unfulfilled_lint_expectations cycle/src/unneeded/a.rs:3:15 `// lint: expect(module_cycle)` is not needed, the use is not part of a circle; remove the comment",
             "unfulfilled_lint_expectations visibility/src/a.rs:29:8 `// lint: expect(unused_pub)` on function `eight` is not needed; remove the comment",
             "unfulfilled_lint_expectations visibility/src/a.rs:32:8 `// lint: expect(excess_visibility)` on function `nine` is not needed; remove the comment",
@@ -77,8 +77,8 @@ fn reports_what_the_compiler_resolved() {
             "unused_pub visibility/src/a.rs:41:8 pub function `twelve` is not used in the workspace; remove it",
             "unused_pub visibility/src/parts/inner.rs:24:8 trait method `skip` of pub trait `Source` is not used in the workspace; remove it",
             "unused_pub visibility/src/parts/inner.rs:4:5 variant `Unused` of pub enum `Kind` is not used in the workspace; remove it",
-            "wildcard_match app/src/main.rs:59:9 `_` takes every variant added to enum `Kind` later; name the variants",
-            "wildcard_match app/src/main.rs:67:9 `rest` takes every variant added to enum `Kind` later; name the variants",
+            "wildcard_match app/src/main.rs:60:9 `_` takes every variant added to enum `Kind` later; name the variants",
+            "wildcard_match app/src/main.rs:68:9 `rest` takes every variant added to enum `Kind` later; name the variants",
         ]
     );
 }

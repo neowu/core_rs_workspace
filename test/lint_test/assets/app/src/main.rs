@@ -18,6 +18,7 @@ fn main() {
     visibility::a::five();
     visibility::a::eight();
     visibility::a::nine();
+    let _aliased = (visibility::a::thirteen(), visibility::a::fourteen());
 
     let kind = if Zero.read() == 0 { Kind::Used } else { Kind::Named };
     let _used = matches!(kind, Kind::Used);

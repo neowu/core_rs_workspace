@@ -588,7 +588,22 @@ impl<'tcx> Visitor<'tcx> for Collector<'tcx> {
             }
         }
         match path.res {
-            Res::Def(_, def_id) => self.record(def_id, path.span, id, false, kind),
+            Res::Def(def_kind, def_id) => {
+                self.record(def_id, path.span, id, false, kind);
+                // rustc reads an alias in an interface as the type it stands for
+                if def_kind == DefKind::TyAlias && self.context.interface.is_some() && !self.context.in_body {
+                    for part in self.tcx.type_of(def_id).instantiate_identity().skip_normalization().walk() {
+                        let named = part.as_type().and_then(|ty| match ty.kind() {
+                            ty::Adt(adt, _) => Some(adt.did()),
+                            ty::Dynamic(predicates, ..) => predicates.principal_def_id(),
+                            _ => None,
+                        });
+                        if let Some(named) = named {
+                            self.add(named, path.span, id, false, "use");
+                        }
+                    }
+                }
+            }
             // `Self(..)` names every field, as the constructor does
             Res::SelfCtor(impl_id) => {
                 if let Some(adt) = self.tcx.type_of(impl_id).instantiate_identity().skip_normalization().ty_adt_def()
