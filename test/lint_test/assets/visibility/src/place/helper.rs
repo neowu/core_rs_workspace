@@ -24,3 +24,13 @@ pub(crate) const KEPT: u32 = 4;
 pub(crate) fn excused() -> u32 {
     5
 }
+
+// `deep::one` and `deep::two` call it, and `deep` is only their parent
+pub(crate) fn spread() -> u32 {
+    6
+}
+
+// `deep` and `deep::one` call it
+pub(crate) fn held() -> u32 {
+    7
+}

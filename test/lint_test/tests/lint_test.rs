@@ -58,6 +58,7 @@ fn reports_what_the_compiler_resolved() {
             "misplaced_item visibility/src/a.rs:11:8 function `four` is used only in `crate::b` and needs nothing private to `crate::a`; move it there and it can be private",
             "misplaced_item visibility/src/a.rs:35:8 function `ten` is used only in `crate::b` and needs nothing private to `crate::a`; move it there and it can be private",
             "misplaced_item visibility/src/place/helper.rs:2:15 function `lone` is used only in `crate::place::user` and needs nothing private to `crate::place::helper`; move it there and it can be private",
+            "misplaced_item visibility/src/place/helper.rs:34:15 function `held` is used only in `crate::place::deep` and needs nothing private to `crate::place::helper`; move it there and it can be private",
             "module_cycle cycle/src/pair/b.rs:2:15 modules `a`, `b` in `crate::pair` use each other in a circle: `b` uses `a` (`item`, 1 mention(s), cycle/src/pair/b.rs:2), `a` uses `b` (`item`, 2 mention(s), cycle/src/pair/a.rs:2); cut one of the uses",
             "module_cycle cycle/src/triangle/a.rs:2:15 modules `a`, `b`, `c` in `crate::triangle` use each other in a circle: `a` uses `b` (`item`, 1 mention(s), cycle/src/triangle/a.rs:2), `b` uses `a` (`item`, 2 mention(s), cycle/src/triangle/b.rs:4); cut one of the uses",
             "unfulfilled_lint_expectations app/src/main.rs:82:12 `// lint: expect(wildcard_match)` is not directly above a catch-all arm of a match on an enum of the workspace, so it does nothing; remove it",

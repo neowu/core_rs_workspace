@@ -31,8 +31,9 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
     let open_modules: HashSet<(&str, String)> =
         modules.map(|(def, root)| (*root, join(&def.module, &def.name))).collect();
 
-    // by item, the module all of its uses are in or under; none when another crate uses it
-    let mut users: HashMap<&str, Option<Vec<&str>>> = HashMap::new();
+    // by item, the module all of its uses are in or under, and the depth of the shallowest module using it; none
+    // when another crate uses it
+    let mut users: HashMap<&str, Option<(Vec<&str>, usize)>> = HashMap::new();
     // by item, what its definition uses
     let mut needs: HashMap<&str, Vec<&Use>> = HashMap::new();
     for unit in units {
@@ -49,29 +50,38 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 continue;
             }
             let module = path(&used.module);
-            let shared = users.entry(&used.to).or_insert_with(|| Some(module.clone()));
+            let user = users.entry(&used.to).or_insert_with(|| Some((module.clone(), module.len())));
             if unit.root != *root {
-                *shared = None;
-            } else if let Some(shared) = shared {
+                *user = None;
+            } else if let Some((shared, depth)) = user {
                 let same = shared.iter().zip(&module).take_while(|(left, right)| left == right).count();
                 shared.truncate(same);
+                *depth = (*depth).min(module.len());
             }
         }
     }
 
-    let mut diagnostics = Vec::new();
     let mut items: Vec<&(&Def, &str)> = defs.values().collect();
     items.sort_by_key(|(def, _)| (&def.file, def.line, def.column));
-    for (def, root) in items {
-        if !matches!(def.kind.as_str(), "function" | "constant" | "static") || !in_src(sources, &def.file) {
+    items.retain(|(def, _)| {
+        matches!(def.kind.as_str(), "function" | "constant" | "static") && in_src(sources, &def.file)
+    });
+    // by item, the module it can move to
+    let mut movable: HashMap<&str, String> = HashMap::new();
+    for (def, root) in &items {
+        // modules that only share a parent are several users, and the parent is not one of them
+        let user = users.get(def.key.as_str()).and_then(|user| user.as_ref());
+        let Some(user) = user.filter(|(shared, depth)| shared.len() == *depth).map(|(shared, _)| shared.join("::"))
+        else {
+            continue;
+        };
+        // used from above is how a module is split into children; used from inside can be private as it is
+        if within(&def.module, &user) || within(&user, &def.module) {
             continue;
         }
-        let Some(member) = sources.member(&def.file) else { continue };
-        let user = users.get(def.key.as_str()).and_then(|user| user.as_ref()).map(|user| user.join("::"));
-        // used from above is how a module is split into children; used from inside can be private as it is
-        let elsewhere = user.as_ref().filter(|user| !within(&def.module, user) && !within(user, &def.module));
-        let movable = elsewhere.filter(|user| {
-            let needs = needs.get(def.key.as_str()).map_or(&[][..], Vec::as_slice);
+        let needs = needs.get(def.key.as_str()).map_or(&[][..], Vec::as_slice);
+        let reachable = {
+            let user = &user;
             needs.iter().all(|used| {
                 let Some(to_module) = &used.to_module else { return true };
                 let (home, is_open) = match defs.get(used.to.as_str()) {
@@ -86,9 +96,26 @@ pub(super) fn check(units: &[Unit], sources: &Sources<'_>) -> Vec<Diagnostic> {
                 let shared = from.iter().zip(&to).take_while(|(left, right)| left == right).count();
                 is_open && (shared + 1..to.len()).all(|end| open_modules.contains(&(*root, to[..=end].join("::"))))
             })
-        });
+        };
+        if reachable {
+            movable.insert(&def.key, user);
+        }
+    }
+    // a constant stays with the constants beside it: one that stays keeps the others of its module
+    let value = |def: &Def| matches!(def.kind.as_str(), "constant" | "static");
+    let tables: HashSet<(&str, &str)> = items
+        .iter()
+        .filter(|(def, _)| value(def) && !movable.contains_key(def.key.as_str()))
+        .map(|(def, root)| (*root, def.module.as_str()))
+        .collect();
+
+    let mut diagnostics = Vec::new();
+    for (def, root) in items {
+        let Some(member) = sources.member(&def.file) else { continue };
+        let kept = value(def) && tables.contains(&(*root, def.module.as_str()));
+        let user = movable.get(def.key.as_str()).filter(|_| !kept);
         let marked = sources.marked(&def.file, def.item_line, def.line, EXPECT);
-        let (rule, message) = match movable {
+        let (rule, message) = match user {
             Some(user) if !marked => {
                 let message = format!(
                     "{} `{}` is used only in `{}` and needs nothing private to `{}`; move it there and it can be \

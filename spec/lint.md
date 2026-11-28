@@ -319,11 +319,14 @@ An item is reported when all of these hold:
 
 - Every use of it, outside the unit tests of its crate, is in one module of its crate or under it, and that
   module is neither above its own module (a module split into children) nor inside it
-  (`excess_visibility` then applies).
+  (`excess_visibility` then applies). The module uses it itself: modules that only share a parent are
+  several users, and the item is shared where it is.
 - Everything its signature and body use is visible from that module as declared: items of
   other crates, items in modules around the user, and `pub` or `pub(crate)` items reached
   through `pub` or `pub(crate)` modules. An item that needs something private belongs
   where it is.
+- A constant or static is one of a table when its module holds others: it is reported only when every
+  constant and static of its module that other modules can see is.
 
 Not checked: methods and types, which bring their impls along, and items used by another
 crate, its tests included, which could not reach a private item.
